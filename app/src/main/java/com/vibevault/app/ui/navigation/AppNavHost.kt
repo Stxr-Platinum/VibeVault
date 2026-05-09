@@ -1,0 +1,136 @@
+package com.vibevault.app.ui.navigation
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.navigation.NavHostController
+import com.vibevault.app.ui.theme.VibeBg
+import com.vibevault.app.ui.theme.VibeOnSurface
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import com.vibevault.app.ui.screens.artist.ArtistScreen
+import com.vibevault.app.ui.screens.home.HomeScreen
+import com.vibevault.app.ui.screens.library.LibraryScreen
+import com.vibevault.app.ui.screens.liked.LikedSongsScreen
+import com.vibevault.app.ui.screens.login.LoginScreen
+import com.vibevault.app.ui.screens.player.PlayerScreen
+import com.vibevault.app.ui.screens.search.SearchScreen
+import com.vibevault.app.ui.viewmodel.PlayerViewModel
+
+@Composable
+fun AppNavHost(
+    navController: NavHostController,
+    innerPadding: PaddingValues,
+    playerViewModel: PlayerViewModel,
+    startDestination: String
+) {
+    NavHost(
+        navController = navController,
+        startDestination = startDestination,
+        modifier = Modifier.padding(innerPadding)
+    ) {
+        composable(Screen.Login.route) {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable(Screen.Home.route) {
+            HomeScreen(
+                onTrackClick = { trackId ->
+                    navController.navigate(Screen.Player.createRoute(trackId))
+                },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
+                },
+                onProfileClick = {
+                    navController.navigate(Screen.Profile.route)
+                }
+            )
+        }
+        composable(Screen.Profile.route) {
+            com.vibevault.app.ui.screens.profile.ProfileScreen(
+                onBack = { navController.popBackStack() },
+                onPremiumClick = { navController.navigate(Screen.Premium.route) },
+                onLogout = { 
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onEditProfileClick = { navController.navigate(Screen.EditProfile.route) }
+            )
+        }
+        composable(Screen.Premium.route) {
+            com.vibevault.app.ui.screens.premium.PremiumScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.EditProfile.route) {
+            com.vibevault.app.ui.screens.profile.EditProfileScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Search.route) {
+            SearchScreen(
+                onTrackClick = { trackId ->
+                    navController.navigate(Screen.Player.createRoute(trackId))
+                }
+            )
+        }
+        composable(Screen.Library.route) {
+            LibraryScreen(
+                onTrackClick = { trackId ->
+                    navController.navigate(Screen.Player.createRoute(trackId))
+                },
+                onLikedSongsClick = {
+                    navController.navigate("likedSongs")
+                },
+                onPlaylistClick = { playlistId ->
+                    navController.navigate("playlist/$playlistId")
+                }
+            )
+        }
+        composable("likedSongs") {
+            LikedSongsScreen(
+                onBack = { navController.popBackStack() },
+                onTrackClick = { trackId ->
+                    navController.navigate(Screen.Player.createRoute(trackId))
+                }
+            )
+        }
+        composable("playlist/{playlistId}") { backStackEntry ->
+            val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
+            // Will implement PlaylistScreen here
+            com.vibevault.app.ui.screens.playlist.PlaylistScreen(
+                playlistId = playlistId,
+                onBackClick = { navController.popBackStack() },
+                onTrackClick = { trackId ->
+                    navController.navigate(Screen.Player.createRoute(trackId))
+                }
+            )
+        }
+        composable(Screen.Player.route) { backStackEntry ->
+            val trackId = backStackEntry.arguments?.getString("trackId")
+            PlayerScreen(
+                trackId = trackId,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Artist.route) { backStackEntry ->
+            val artistName = backStackEntry.arguments?.getString("artistName") ?: ""
+            ArtistScreen(
+                artistName = artistName,
+                onBack = { navController.popBackStack() },
+                onTrackClick = { trackId ->
+                    navController.navigate(Screen.Player.createRoute(trackId))
+                }
+            )
+        }
+    }
+}

@@ -1,0 +1,275 @@
+package com.vibevault.app.ui.screens.player
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import com.vibevault.app.ui.theme.VibeOnSurfaceVariant
+import com.vibevault.app.ui.theme.VibePrimary
+import com.vibevault.app.ui.viewmodel.PlayerViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlayerScreen(
+    trackId: String?,
+    onBackClick: () -> Unit,
+    viewModel: PlayerViewModel = hiltViewModel()
+) {
+    val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val position by viewModel.currentPosition.collectAsStateWithLifecycle()
+    val volume by viewModel.volume.collectAsStateWithLifecycle()
+
+    var showPlaylistMenu by remember { mutableStateOf(false) }
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+
+    if (showAddToPlaylistDialog && currentTrack != null) {
+        AlertDialog(
+            onDismissRequest = { showAddToPlaylistDialog = false },
+            title = { Text("Add to Playlist", color = Color.White) },
+            text = {
+                LazyColumn {
+                    items(playlists, key = { it.id }) { playlist ->
+                        Text(
+                            text = playlist.title,
+                            color = Color.White,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.addTrackToPlaylist(playlist.id, currentTrack!!.id)
+                                    showAddToPlaylistDialog = false
+                                }
+                                .padding(16.dp)
+                        )
+                    }
+                    if (playlists.isEmpty()) {
+                        item {
+                            Text("No playlists available", color = Color.Gray, modifier = Modifier.padding(16.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAddToPlaylistDialog = false }) {
+                    Text("Close", color = VibePrimary)
+                }
+            },
+            containerColor = Color(0xFF282828)
+        )
+    }
+
+    LaunchedEffect(trackId) {
+        if (trackId != null && currentTrack?.id != trackId) {
+            viewModel.playTrack(trackId)
+        }
+    }
+
+    if (currentTrack == null) {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0A)), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = VibePrimary)
+        }
+        return
+    }
+
+    val track = currentTrack!!
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0A0A0A))
+            .padding(16.dp)
+    ) {
+        // Top Bar
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            IconButton(onClick = onBackClick) {
+                Icon(Icons.Default.KeyboardArrowDown, "Close", tint = Color.White)
+            }
+            Text(
+                text = track.album,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White
+            )
+            IconButton(onClick = { }) {
+                Icon(Icons.Default.MoreVert, "More Options", tint = Color.White)
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        // Album Art
+        AsyncImage(
+            model = track.albumImageUrl,
+            contentDescription = track.album,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(10.dp)),
+            contentScale = ContentScale.Crop
+        )
+
+        Spacer(Modifier.height(32.dp))
+
+        // Title and Actions
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = VibeOnSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = { viewModel.toggleLike() }) {
+                Icon(
+                    if (track.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Like",
+                    tint = if (track.isLiked) VibePrimary else Color.White
+                )
+            }
+            Box {
+                IconButton(onClick = { showPlaylistMenu = true }) {
+                    Icon(Icons.Default.MoreVert, "More", tint = Color.White)
+                }
+                DropdownMenu(
+                    expanded = showPlaylistMenu,
+                    onDismissRequest = { showPlaylistMenu = false },
+                    modifier = Modifier.background(Color(0xFF282828))
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Add to playlist", color = Color.White) },
+                        onClick = {
+                            showPlaylistMenu = false
+                            showAddToPlaylistDialog = true
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // Progress Bar
+        Slider(
+            value = position.toFloat(),
+            onValueChange = { viewModel.seekTo(it.toLong()) },
+            valueRange = 0f..(track.durationMs.toFloat().coerceAtLeast(1f)),
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = Color.White,
+                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+            )
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(formatTime(position), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
+            Text(formatTime(track.durationMs), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Playback Controls
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { viewModel.toggleShuffle() }) {
+                Icon(Icons.Default.Shuffle, "Shuffle", tint = Color.White)
+            }
+            IconButton(onClick = { viewModel.skipPrevious() }) {
+                Icon(Icons.Default.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(36.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(VibePrimary)
+                    .clickable { viewModel.togglePlayPause() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = "Play/Pause",
+                    tint = Color.Black,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            IconButton(onClick = { viewModel.skipNext() }) {
+                Icon(Icons.Default.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(36.dp))
+            }
+            IconButton(onClick = { viewModel.cycleRepeatMode() }) {
+                Icon(Icons.Default.Repeat, "Repeat", tint = Color.White)
+            }
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // Volume Bar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.AutoMirrored.Filled.VolumeDown, "Volume Down", tint = VibeOnSurfaceVariant)
+            Spacer(Modifier.width(8.dp))
+            Slider(
+                value = volume,
+                onValueChange = { viewModel.setVolume(it) },
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color.White,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.AutoMirrored.Filled.VolumeUp, "Volume Up", tint = VibeOnSurfaceVariant)
+        }
+        
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+private fun formatTime(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%d:%02d", minutes, seconds)
+}
