@@ -14,7 +14,11 @@ data class PlaylistEntity(
     val description: String? = null,
     val coverUrl: String? = null,
     val trackCount: Int = 0,
+    val durationMs: Long = 0,
+    val isPublic: Boolean = false,
     val isSynced: Boolean = true,
+    val isDeleted: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val clientTimestamp: Long = System.currentTimeMillis()
 )

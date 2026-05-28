@@ -2,18 +2,13 @@ package com.vibevault.app.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
-import com.vibevault.app.data.local.dao.LikedSongDao
-import com.vibevault.app.data.local.dao.PfpDao
-import com.vibevault.app.data.local.dao.PlaylistDao
-import com.vibevault.app.data.local.dao.ProfileDao
-import com.vibevault.app.data.local.entity.LikedSongEntity
-import com.vibevault.app.data.local.entity.PfpEntity
-import com.vibevault.app.data.local.entity.PlaylistEntity
-import com.vibevault.app.data.local.entity.PlaylistTrackCrossRef
-import com.vibevault.app.data.local.entity.ProfileEntity
+import com.vibevault.app.data.local.dao.*
+import com.vibevault.app.data.local.entity.*
 
 /**
  * AppDatabase — Room database definition.
+ * Version 8: Resetting schema to ensure clean slate and fix launch crashes.
+ * Using destructive migration to guarantee parity between Entities and DB.
  */
 @Database(
     entities = [
@@ -21,9 +16,12 @@ import com.vibevault.app.data.local.entity.ProfileEntity
         PlaylistTrackCrossRef::class,
         ProfileEntity::class,
         PfpEntity::class,
-        LikedSongEntity::class
+        LikedSongEntity::class,
+        DeviceEntity::class,
+        HistoryEntity::class,
+        LogEntity::class
     ],
-    version = 5,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,4 +29,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun profileDao(): ProfileDao
     abstract fun pfpDao(): PfpDao
+    abstract fun deviceDao(): DeviceDao
+    abstract fun historyDao(): HistoryDao
+    abstract fun logDao(): LogDao
 }

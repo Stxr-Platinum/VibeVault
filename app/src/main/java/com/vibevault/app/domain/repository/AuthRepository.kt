@@ -33,6 +33,10 @@ interface AuthRepository {
     /** Updates the user's profile metadata. */
     suspend fun updateProfile(username: String, avatarUrl: String): Result<Unit>
 
+    /** Syncs Spotify profile data to Supabase. */
+    suspend fun syncSpotifyProfile(spotifyUserId: String, displayName: String?, avatarUrl: String?): Result<Unit>
+
     /** Deletes the current user's account. */
     suspend fun deleteAccount(): Result<Unit>
+
 }

@@ -1,7 +1,14 @@
 package com.vibevault.app.ui
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import com.vibevault.app.ui.viewmodel.AuthViewModel
+import com.vibevault.app.core.session.SessionManager
+import com.vibevault.app.data.sync.RealtimeSyncManager
+import javax.inject.Inject
 import androidx.activity.ComponentActivity
+
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -50,15 +57,37 @@ import dagger.hilt.android.AndroidEntryPoint
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var sessionManager: SessionManager
+
+    @Inject
+    lateinit var realtimeSyncManager: RealtimeSyncManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d("VibeVault", "MainActivity: onCreate started")
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        Log.d("VibeVault", "MainActivity: super.onCreate finished")
+        
+        // Start Realtime Sync if logged in
+        if (sessionManager.isLoggedIn) {
+            realtimeSyncManager.startSync()
+        }
         
         val mainViewModel: MainViewModel by viewModels()
+        val authViewModel: AuthViewModel by viewModels()
+        Log.d("VibeVault", "MainActivity: ViewModels initialized")
         
-        // Keep splash screen visible until we have a start destination
+        // Handle deep links in onCreate (First launch)
+        handleIntent(intent)
+        
+        // Safer splash condition - don't hang forever
+        val startTime = System.currentTimeMillis()
         splashScreen.setKeepOnScreenCondition {
-            mainViewModel.startDestination.value == null
+            val elapsed = System.currentTimeMillis() - startTime
+            // Hide splash if we have a destination OR if 2 seconds have passed (failsafe)
+            mainViewModel.startDestination.value == null && elapsed < 2000
         }
         
         enableEdgeToEdge()
@@ -130,6 +159,36 @@ class MainActivity : ComponentActivity() {
                 }
 
             }
+        }
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // CRITICAL: Update the activity's intent to the new one
+        setIntent(intent) 
+        Log.d("SpotifyDebug", "onNewIntent triggered")
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val authViewModel: AuthViewModel by viewModels()
+        Log.d("SpotifyDebug", "MainActivity: handleIntent called")
+        val uri = intent?.data
+        Log.d("SpotifyDebug", "URI = $uri")
+
+        if (uri != null && uri.toString().startsWith("vibevault://spotify-auth-callback")) {
+            Log.d("SpotifyDebug", "Spotify callback received")
+            val code = uri.getQueryParameter("code")
+            val error = uri.getQueryParameter("error")
+
+            Log.d("SpotifyDebug", "AUTH CODE = $code")
+            if (error != null) Log.e("SpotifyDebug", "MainActivity: Auth Error = $error")
+
+            code?.let {
+                Log.d("SpotifyDebug", "MainActivity: Triggering callback handling in ViewModel")
+                authViewModel.handleSpotifyCallback(it)
+            }
+        } else {
+            Log.d("SpotifyDebug", "MainActivity: URI null or mismatch: $uri")
         }
     }
 }

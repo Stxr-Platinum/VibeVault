@@ -47,4 +47,13 @@ object DatabaseModule {
 
     @Provides
     fun providePfpDao(db: AppDatabase): PfpDao = db.pfpDao()
+
+    @Provides
+    fun provideDeviceDao(db: AppDatabase): com.vibevault.app.data.local.dao.DeviceDao = db.deviceDao()
+
+    @Provides
+    fun provideHistoryDao(db: AppDatabase): com.vibevault.app.data.local.dao.HistoryDao = db.historyDao()
+
+    @Provides
+    fun provideLogDao(db: AppDatabase): com.vibevault.app.data.local.dao.LogDao = db.logDao()
 }

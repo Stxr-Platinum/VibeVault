@@ -7,12 +7,16 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.vibevault.app.data.local.dao.PlaylistDao
 import com.vibevault.app.data.local.dao.LikedSongDao
+import com.vibevault.app.data.local.dao.LogDao
 import com.vibevault.app.data.remote.dto.LikeDto
+import com.vibevault.app.data.remote.dto.PlaylistDto
+import com.vibevault.app.data.remote.dto.PlaylistTrackDto
 import com.vibevault.app.core.session.SessionManager
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
+import java.time.Instant
 
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
@@ -20,6 +24,7 @@ class SyncWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val likedSongDao: LikedSongDao,
     private val playlistDao: PlaylistDao,
+    private val logDao: LogDao,
     private val postgrest: Postgrest,
     private val sessionManager: SessionManager
 ) : CoroutineWorker(appContext, workerParams) {
@@ -36,6 +41,7 @@ class SyncWorker @AssistedInject constructor(
             syncLikes(userId)
             syncPlaylists(userId)
             syncPlaylistTracks()
+            syncLogs(userId)
             Log.i(TAG, "Sync completed successfully")
             Result.success()
         } catch (e: Exception) {
@@ -52,13 +58,23 @@ class SyncWorker @AssistedInject constructor(
         Log.d(TAG, "Syncing ${unsyncedLikes.size} liked song mutations")
 
         for (song in unsyncedLikes) {
-            // Since LikedSongEntity ONLY exists if it is liked,
-            // we upsert to Supabase.
-            // Note: In this version, unliking deletes the local record immediately.
-            // A more robust way would be a 'isDeleted' flag, but for now we'll upsert what's there.
             postgrest.from("liked_songs").upsert(
-                LikeDto(userId = userId, trackId = song.id)
-            )
+                listOf(
+                    LikeDto(
+                        userId = userId,
+                        trackId = song.id,
+                        songTitle = song.title,
+                        artist = song.artist,
+                        album = song.album,
+                        coverUrl = song.albumImageUrl,
+                        durationMs = song.durationMs.toInt(),
+                        isDeleted = song.isDeleted,
+                        clientTimestamp = Instant.ofEpochMilli(song.clientTimestamp).toString()
+                    )
+                )
+            ) {
+                onConflict = "user_id, track_id"
+            }
         }
 
         likedSongDao.markSynced(unsyncedLikes.map { it.id })
@@ -70,14 +86,17 @@ class SyncWorker @AssistedInject constructor(
 
         for (playlist in unsyncedPlaylists) {
             postgrest.from("playlists").upsert(
-                mapOf(
-                    "id" to playlist.id,
-                    "user_id" to userId,
-                    "title" to playlist.title,
-                    "description" to (playlist.description ?: ""),
-                    "cover_url" to (playlist.coverUrl ?: ""),
-                    "track_count" to playlist.trackCount,
-                    "updated_at" to java.time.Instant.now().toString()
+                PlaylistDto(
+                    id = playlist.id,
+                    userId = userId,
+                    title = playlist.title,
+                    description = playlist.description,
+                    coverUrl = playlist.coverUrl,
+                    trackCount = playlist.trackCount,
+                    durationMs = playlist.durationMs,
+                    isPublic = playlist.isPublic,
+                    isDeleted = playlist.isDeleted,
+                    clientTimestamp = Instant.ofEpochMilli(playlist.clientTimestamp).toString()
                 )
             )
         }
@@ -90,14 +109,49 @@ class SyncWorker @AssistedInject constructor(
 
         for (ref in unsyncedTracks) {
             postgrest.from("playlist_tracks").upsert(
-                mapOf(
-                    "playlist_id" to ref.playlistId,
-                    "track_id" to ref.trackId,
-                    "sort_order" to ref.sortOrder,
-                    "added_at" to java.time.Instant.ofEpochMilli(ref.addedAt).toString()
+                listOf(
+                    PlaylistTrackDto(
+                        playlistId = ref.playlistId,
+                        trackId = ref.trackId,
+                        sortOrder = ref.sortOrder,
+                        songTitle = ref.title,
+                        artist = ref.artist,
+                        album = ref.album,
+                        coverUrl = ref.albumImageUrl,
+                        durationMs = ref.durationMs.toInt(),
+                        isDeleted = ref.isDeleted,
+                        clientTimestamp = Instant.ofEpochMilli(ref.clientTimestamp).toString()
+                    )
                 )
-            )
+            ) {
+                onConflict = "playlist_id, track_id"
+            }
             playlistDao.markTrackSynced(ref.playlistId, ref.trackId)
         }
+    }
+
+    private suspend fun syncLogs(userId: String) {
+        val unsyncedLogs = logDao.getUnsyncedLogs()
+        if (unsyncedLogs.isEmpty()) return
+
+        Log.d(TAG, "Syncing ${unsyncedLogs.size} logs to remote")
+
+        for (log in unsyncedLogs) {
+            try {
+                postgrest.from("logs").insert(
+                    mapOf(
+                        "user_id" to userId,
+                        "action" to log.tag,
+                        "event_type" to "debug",
+                        "severity" to log.level.lowercase(),
+                        "metadata" to mapOf("message" to log.message),
+                        "client_timestamp" to java.time.Instant.ofEpochMilli(log.timestamp).toString()
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to sync individual log", e)
+            }
+        }
+        logDao.markSynced(unsyncedLogs.map { it.id })
     }
 }

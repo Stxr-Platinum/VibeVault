@@ -1,5 +1,6 @@
 package com.vibevault.app.di
 
+import android.util.Log
 import com.vibevault.app.BuildConfig
 import dagger.Module
 import dagger.Provides
@@ -13,7 +14,11 @@ import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.realtime
+import io.github.jan.supabase.functions.Functions
+import io.github.jan.supabase.functions.functions
+import io.ktor.client.engine.okhttp.OkHttp
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * NetworkModule — Configures the Supabase client with all required plugins.
@@ -23,8 +28,8 @@ import javax.inject.Singleton
  *   - Postgrest: Typed REST queries against the Supabase database.
  *   - Realtime: WebSocket subscriptions for live data sync.
  *
- * The Ktor Android engine is resolved automatically by supabase-kt
- * from the ktor-client-android dependency on the classpath.
+ * The Ktor OkHttp engine is used because it supports WebSockets,
+ * which is required by Supabase Realtime.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -32,17 +37,39 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideSupabaseClient(): SupabaseClient = createSupabaseClient(
-        supabaseUrl = BuildConfig.SUPABASE_URL,
-        supabaseKey = BuildConfig.SUPABASE_ANON_KEY
-    ) {
+    fun provideSupabaseClient(): SupabaseClient {
+        Log.d("SpotifyDebug", "NetworkModule: Providing SupabaseClient...")
+        Log.d("SpotifyDebug", "NetworkModule: URL = ${BuildConfig.SUPABASE_URL.take(15)}...")
+        Log.d("SpotifyDebug", "NetworkModule: Key Prefix = ${BuildConfig.SUPABASE_ANON_KEY.take(10)}...")
+        
+        return createSupabaseClient(
+            supabaseUrl = BuildConfig.SUPABASE_URL,
+            supabaseKey = BuildConfig.SUPABASE_ANON_KEY
+        ) {
+            defaultSerializer = io.github.jan.supabase.serializer.KotlinXSerializer(kotlinx.serialization.json.Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+            })
+            httpEngine = OkHttp.create {
+                config {
+                    pingInterval(20, java.util.concurrent.TimeUnit.SECONDS)
+                    retryOnConnectionFailure(true)
+                }
+            }
         install(Auth) {
             // Deep link scheme for OAuth callback
             scheme = "vibevault"
             host = "auth-callback"
         }
         install(Postgrest)
-        install(Realtime)
+        install(Realtime) {
+            // Prevent fatal socket aborts from taking down the app
+            disconnectOnSessionLoss = false
+            // Keep the WebSocket alive at the application layer
+            heartbeatInterval = 15.seconds
+        }
+        install(Functions)
+    }
     }
 
     @Provides
@@ -56,4 +83,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRealtime(client: SupabaseClient): Realtime = client.realtime
+
+    @Provides
+    @Singleton
+    fun provideFunctions(client: SupabaseClient): Functions = client.functions
 }

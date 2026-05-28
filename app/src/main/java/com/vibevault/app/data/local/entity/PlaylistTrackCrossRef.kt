@@ -6,7 +6,7 @@ import androidx.room.Index
 
 /**
  * PlaylistTrackCrossRef — Junction table linking playlists to tracks.
- * Stores denormalized track metadata to support offline playback without a central tracks table.
+ * Stores denormalized track metadata for offline support.
  */
 @Entity(
     tableName = "playlist_tracks",
@@ -38,5 +38,7 @@ data class PlaylistTrackCrossRef(
     
     val sortOrder: Int = 0,
     val addedAt: Long = System.currentTimeMillis(),
-    val isSynced: Boolean = true
+    val isSynced: Boolean = true,
+    val isDeleted: Boolean = false,
+    val clientTimestamp: Long = System.currentTimeMillis()
 )

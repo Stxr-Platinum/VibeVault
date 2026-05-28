@@ -8,5 +8,6 @@ data class Playlist(
     val title: String,
     val description: String? = null,
     val coverUrl: String? = null,
+    val ownerName: String? = null,
     val trackCount: Int = 0
 )

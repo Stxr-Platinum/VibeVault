@@ -15,7 +15,7 @@ data class ProfileDto(
     @SerialName("is_admin") val isAdmin: Boolean? = false,
     @SerialName("subscription_tier") val subscriptionTier: String? = "free",
     @SerialName("onboarding_completed") val onboardingCompleted: Boolean? = false,
-    val preferences: String? = null,
+    val preferences: kotlinx.serialization.json.JsonObject? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )

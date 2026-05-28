@@ -39,7 +39,8 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
-    val results by viewModel.results.collectAsStateWithLifecycle()
+    val searchResult by viewModel.searchResult.collectAsStateWithLifecycle()
+    val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -95,29 +96,70 @@ fun SearchScreen(
 
         // ── Results / Browse ──────────────────────────────
         if (query.isNotEmpty()) {
-            LazyColumn(
-                contentPadding = PaddingValues(bottom = 120.dp)
-            ) {
-                items(results, key = { it.id }) { track ->
-                    SearchResultRow(
-                        track = track,
-                        onClick = { onTrackClick(track.id, results) }
-                    )
+            if (isSearching) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = VibePrimary)
                 }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(bottom = 120.dp)
+                ) {
+                    searchResult?.let { result ->
+                        // Songs Section
+                        if (result.tracks.isNotEmpty()) {
+                            item { SectionHeader("Songs") }
+                            items(result.tracks) { track ->
+                                SearchResultRow(
+                                    title = track.title,
+                                    subtitle = "${track.artist} • ${track.album}",
+                                    imageUrl = track.albumImageUrl,
+                                    onClick = { onTrackClick(track.id, result.tracks) }
+                                )
+                            }
+                        }
 
-                if (results.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(48.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "No results found for \"$query\"",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = VibeOnSurfaceVariant
-                            )
+                        // Artists Section
+                        if (result.artists.isNotEmpty()) {
+                            item { SectionHeader("Artists") }
+                            items(result.artists) { artist ->
+                                SearchResultRow(
+                                    title = artist.name,
+                                    subtitle = "Artist",
+                                    imageUrl = artist.imageUrl,
+                                    isCircular = true,
+                                    onClick = { /* Navigate to Artist */ }
+                                )
+                            }
+                        }
+
+                        // Playlists Section
+                        if (result.playlists.isNotEmpty()) {
+                            item { SectionHeader("Playlists") }
+                            items(result.playlists) { playlist ->
+                                SearchResultRow(
+                                    title = playlist.title,
+                                    subtitle = "Playlist • ${playlist.description ?: ""}",
+                                    imageUrl = playlist.coverUrl,
+                                    onClick = { /* Navigate to Playlist */ }
+                                )
+                            }
+                        }
+                    }
+
+                    if (searchResult == null || (searchResult?.tracks?.isEmpty() == true && searchResult?.artists?.isEmpty() == true)) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No results found for \"$query\"",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = VibeOnSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -184,8 +226,21 @@ fun SearchScreen(
 }
 
 @Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+        color = Color.White,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+    )
+}
+
+@Composable
 private fun SearchResultRow(
-    track: Track,
+    title: String,
+    subtitle: String,
+    imageUrl: String?,
+    isCircular: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
@@ -196,24 +251,24 @@ private fun SearchResultRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
-            model = track.albumImageUrl,
-            contentDescription = track.album,
+            model = imageUrl,
+            contentDescription = title,
             modifier = Modifier
                 .size(48.dp)
-                .clip(RoundedCornerShape(6.dp)),
+                .clip(if (isCircular) RoundedCornerShape(24.dp) else RoundedCornerShape(6.dp)),
             contentScale = ContentScale.Crop
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = track.title,
+                text = title,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "${track.artist} • ${track.album}",
+                text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = VibeOnSurfaceVariant,
                 maxLines = 1,

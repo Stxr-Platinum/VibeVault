@@ -21,20 +21,38 @@ interface MusicRepository {
     /** Search tracks by title, artist, or album. */
     fun searchTracks(query: String): Flow<List<Track>>
 
+    /** Observe discovery/recommended tracks. */
+    fun getDiscoveryTracks(): Flow<List<Track>>
+
     /** Get tracks by artist name. */
     fun getTracksByArtist(artistName: String): Flow<List<Track>>
+
+    /** Search tracks specifically on Spotify. */
+    suspend fun searchSpotify(query: String): Result<List<Track>>
 
     /** Toggle like status for a track. */
     suspend fun toggleLike(trackId: String)
 
     /** Record that a track was played. */
-    suspend fun recordPlay(trackId: String)
+    suspend fun recordPlay(track: Track)
+
+    /** Get system logs. */
+    fun getLogs(): Flow<List<com.vibevault.app.data.local.entity.LogEntity>>
+
+    /** Get authenticated devices. */
+    fun getDevices(): Flow<List<com.vibevault.app.data.local.entity.DeviceEntity>>
+
+    /** Clear local cache. */
+    suspend fun clearLocalData()
 
     /** Fetch and cache tracks from remote source. */
     suspend fun refreshTracks()
 
     /** Full synchronization: Fetches user likes and playlists from Supabase. */
     suspend fun syncFromRemote()
+
+    /** Fetches recent history IDs from Supabase and rich metadata from Spotify. */
+    suspend fun syncRecentlyPlayed()
 
     /** Seed the database with mock data for development. */
     suspend fun seedMockData()
@@ -48,4 +66,14 @@ interface MusicRepository {
     suspend fun deletePlaylist(playlistId: String)
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String)
     suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String)
+
+    // ── Spotify Specific Data ────────────────────────────────
+    fun getSpotifyRecentlyPlayed(): Flow<List<Track>>
+    fun getFeaturedPlaylists(): Flow<List<com.vibevault.app.domain.model.Playlist>>
+    fun getNewReleases(): Flow<List<Track>>
+    fun getTopArtists(): Flow<List<com.vibevault.app.domain.model.Artist>>
+    fun getUserSpotifyPlaylists(): Flow<List<com.vibevault.app.domain.model.Playlist>>
+    fun getBrowseCategories(): Flow<List<com.vibevault.app.domain.model.Category>>
+    suspend fun searchSpotifyAll(query: String): Result<com.vibevault.app.domain.model.SpotifySearchResult>
+    fun getGlobalTop50(): Flow<List<Track>>
 }

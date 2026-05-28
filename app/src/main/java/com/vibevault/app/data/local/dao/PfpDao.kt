@@ -13,6 +13,9 @@ interface PfpDao {
     @Query("SELECT * FROM pfps WHERE userId = :userId AND isActive = 1 LIMIT 1")
     fun getActivePfp(userId: String): Flow<PfpEntity?>
 
+    @Query("SELECT * FROM pfps WHERE userId = :userId AND isActive = 1 LIMIT 1")
+    suspend fun getActivePfpSync(userId: String): PfpEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPfp(pfp: PfpEntity)
 

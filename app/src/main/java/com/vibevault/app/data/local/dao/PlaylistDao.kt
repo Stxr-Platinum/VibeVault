@@ -40,6 +40,9 @@ interface PlaylistDao {
     @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String)
 
+    @Query("SELECT * FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun getCrossRef(playlistId: String, trackId: String): PlaylistTrackCrossRef?
+
     @Query("""
         SELECT * FROM playlist_tracks 
         WHERE playlistId = :playlistId 

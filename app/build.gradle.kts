@@ -24,6 +24,8 @@ android {
         buildConfigField("String", "SUPABASE_URL", "\"https://zmkvknwtqclvtijdoobh.supabase.co\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpta3Zrbnd0cWNsdnRpamRvb2JoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjI3MTAsImV4cCI6MjA5MjY5ODcxMH0.EAmQAyov7gZkRlk1g1gWOs4QmyZHXpEYBiohN9Net5I\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"721678895902-g3h3crf4odmibqopop0nlfktcqeae23i.apps.googleusercontent.com\"")
+        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"a5949efaa0b54f29b37220ad1c3eda18\"")
+        buildConfigField("String", "SPOTIFY_REDIRECT_URI", "\"vibevault://spotify-auth-callback\"")
     }
 
     buildTypes {
@@ -70,6 +72,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.browser)
 
     // ── Compose (BOM-managed) ──────────────────────────────
     implementation(platform(libs.androidx.compose.bom))
@@ -107,9 +110,10 @@ dependencies {
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.realtime)
+    implementation(libs.supabase.functions)
 
     // ── Ktor Engine (required by supabase-kt) ──────────────
-    implementation(libs.ktor.client.android)
+    implementation(libs.ktor.client.okhttp)
 
     // ── Coroutines ─────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
@@ -128,6 +132,10 @@ dependencies {
 
     // ── WorkManager ────────────────────────────────────────
     implementation(libs.androidx.work.runtime.ktx)
+
+    // ── Spotify App Remote SDK ──────────────────────────────
+    implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // ── Testing ────────────────────────────────────────────
     testImplementation(libs.junit)

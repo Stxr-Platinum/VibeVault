@@ -27,6 +27,7 @@ sealed class Screen(
     }
 
     data object Login : Screen("login", "Login")
+    data object SpotifyLogin : Screen("spotify_login", "Connect Spotify")
     data object LikedSongs : Screen("liked_songs", "Liked Songs")
     data object Podcast : Screen("podcast", "Podcast")
     data object Premium : Screen("premium", "Premium")

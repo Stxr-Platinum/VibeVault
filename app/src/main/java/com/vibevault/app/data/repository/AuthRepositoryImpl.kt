@@ -161,9 +161,9 @@ class AuthRepositoryImpl @Inject constructor(
 
     override fun getCurrentUserId(): String? = sessionManager.userId
 
-    override suspend fun refreshProfile(): Result<Unit> {
-        return try {
-            val userId = sessionManager.userId ?: return Result.failure(Exception("Not logged in"))
+    override suspend fun refreshProfile(): Result<Unit> = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+        return@withContext try {
+            val userId = sessionManager.userId ?: return@withContext Result.failure(Exception("Not logged in"))
             
             // 1. Fetch Profile
             val profile = postgrest.from("profiles")
@@ -285,7 +285,44 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun syncSpotifyProfile(spotifyUserId: String, displayName: String?, avatarUrl: String?): Result<Unit> {
+        return try {
+            val userId = sessionManager.userId ?: return Result.failure(Exception("Not logged in"))
+            
+            // Update Supabase profile
+            postgrest.from("profiles").update(
+                mapOf(
+                    "username" to (displayName ?: ""),
+                    "avatar_url" to (avatarUrl ?: ""),
+                    "updated_at" to java.time.Instant.now().toString()
+                )
+            ) {
+                filter { eq("id", userId) }
+            }
+
+            // Update local profile
+            val currentProfile = profileDao.getProfileSync(userId)
+            profileDao.insertProfile(
+                ProfileEntity(
+                    id = userId,
+                    username = displayName ?: currentProfile?.username,
+                    accountHolderName = currentProfile?.accountHolderName,
+                    avatarUrl = avatarUrl ?: currentProfile?.avatarUrl,
+                    email = sessionManager.userEmail
+                )
+            )
+
+            // Update session manager
+            sessionManager.updateProfileMetadata(displayName, avatarUrl)
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     fun getProfileFlow(userId: String): Flow<ProfileEntity?> = profileDao.getProfile(userId)
+
 
     override suspend fun deleteAccount(): Result<Unit> {
         return try {

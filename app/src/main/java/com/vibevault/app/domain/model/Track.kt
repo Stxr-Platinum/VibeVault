@@ -1,8 +1,8 @@
 package com.vibevault.app.domain.model
 
 /**
- * Track — Pure domain model, free of Room/Serialization annotations.
- * Used across the domain and UI layers.
+ * Track — Pure domain model representing a music track.
+ * Enhanced to support multiple sources (Spotify, Local, etc.) and external links.
  */
 data class Track(
     val id: String,
@@ -13,5 +13,7 @@ data class Track(
     val audioUrl: String? = null,
     val durationMs: Long,
     val isLiked: Boolean = false,
-    val localPath: String? = null
+    val localPath: String? = null,
+    val source: String = "stream",
+    val externalUrl: String? = null
 )

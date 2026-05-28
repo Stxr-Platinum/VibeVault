@@ -2,6 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Android 11+ Package Visibility for Spotify App Remote SDK -->
+    <queries>
+        <package android:name="com.spotify.music" />
+    </queries>
+
     <!-- Network & Connectivity -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -28,20 +33,20 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.VibeVault.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link for Supabase OAuth callback -->
-            <intent-filter>
+            <!-- OAuth Callbacks -->
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="vibevault"
-                    android:host="auth-callback" />
+                <data android:scheme="vibevault" android:host="spotify-auth-callback" />
+                <data android:scheme="vibevault" android:host="auth-callback" />
             </intent-filter>
         </activity>
 

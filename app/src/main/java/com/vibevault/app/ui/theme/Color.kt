@@ -64,3 +64,9 @@ val VibeGlassWhite            = Color(0x0DFFFFFF)   // 5% white
 val VibeGlassBorder           = Color(0x1AFFFFFF)   // 10% white
 val VibeHoverHighlight        = Color(0x1AFFFFFF)   // 10% white (track row hover)
 val VibeCardBackground        = Color(0xFF282828)   // Stitch media card spec
+
+// ── Additional UI tokens for Premium Design ────────────────
+val VibePrimaryLight          = Color(0xFF90F2A8)
+val VibeSurfaceElevated       = Color(0xFF1E261E)
+val VibeOnSurfaceMedium       = Color(0x99DDE5D9)
+val VibeOnSurfaceDim          = Color(0x66DDE5D9)
