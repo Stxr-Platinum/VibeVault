@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -147,17 +148,44 @@ fun PlaylistScreen(
                     )
                 }
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    text = playlist!!.title,
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "Playlist • ${tracks.size} songs",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = VibeOnSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = playlist!!.title,
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Playlist • ${tracks.size} songs",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = VibeOnSurfaceVariant
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(VibePrimary)
+                            .clickable {
+                                if (tracks.isNotEmpty()) {
+                                    onTrackClick(tracks.first().id, tracks)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Play Playlist",
+                            tint = Color.Black,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(16.dp))

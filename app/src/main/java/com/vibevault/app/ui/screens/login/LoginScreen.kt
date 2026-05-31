@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
+import android.util.Log
 import com.vibevault.app.BuildConfig
 import com.vibevault.app.ui.theme.*
 
@@ -79,7 +80,8 @@ fun LoginScreen(
                 viewModel.onGoogleIdTokenReceived(idToken, onLoginSuccess)
             }
         } catch (e: ApiException) {
-            // Handle error
+            Log.e("LoginScreen", "Google sign in failed", e)
+            viewModel.onError("Google sign in failed: ${e.statusCode} ${e.message}")
         }
     }
 

@@ -27,3 +27,8 @@
 # Media3
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
+
+# Missing classes identified by R8
+-dontwarn com.fasterxml.jackson.databind.deser.std.StdDeserializer
+-dontwarn com.fasterxml.jackson.databind.ser.std.StdSerializer
+-dontwarn com.spotify.base.annotations.NotNull

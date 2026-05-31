@@ -11,7 +11,14 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PlaylistDao {
 
-    @Query("SELECT * FROM playlists ORDER BY updatedAt DESC")
+    @Query("""
+        SELECT p.id, p.title, p.description, p.coverUrl, 
+               (SELECT COUNT(*) FROM playlist_tracks pt WHERE pt.playlistId = p.id AND pt.isDeleted = 0) as trackCount,
+               p.durationMs, p.isPublic, p.isSynced, p.isDeleted, p.createdAt, p.updatedAt, p.clientTimestamp
+        FROM playlists p 
+        WHERE p.isDeleted = 0
+        ORDER BY p.updatedAt DESC
+    """)
     fun getAllPlaylists(): Flow<List<PlaylistEntity>>
 
     @Query("SELECT * FROM playlists WHERE id = :playlistId")

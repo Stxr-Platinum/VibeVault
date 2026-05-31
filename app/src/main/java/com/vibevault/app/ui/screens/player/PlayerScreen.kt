@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +39,7 @@ fun PlayerScreen(
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val position by viewModel.currentPosition.collectAsStateWithLifecycle()
+    val duration by viewModel.duration.collectAsStateWithLifecycle()
     val volume by viewModel.volume.collectAsStateWithLifecycle()
 
     var showPlaylistMenu by remember { mutableStateOf(false) }
@@ -162,22 +164,22 @@ fun PlayerScreen(
                     tint = if (track.isLiked) VibePrimary else Color.White
                 )
             }
+            var isAddAnimating by remember { mutableStateOf(false) }
+            val addScale by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = if (isAddAnimating) 1.2f else 1f,
+                finishedListener = { if (isAddAnimating) isAddAnimating = false },
+                label = "addScale"
+            )
+
             Box {
-                IconButton(onClick = { showPlaylistMenu = true }) {
-                    Icon(Icons.Default.MoreVert, "More", tint = Color.White)
-                }
-                DropdownMenu(
-                    expanded = showPlaylistMenu,
-                    onDismissRequest = { showPlaylistMenu = false },
-                    modifier = Modifier.background(Color(0xFF282828))
+                IconButton(
+                    onClick = { 
+                        isAddAnimating = true
+                        showAddToPlaylistDialog = true 
+                    },
+                    modifier = Modifier.scale(addScale)
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Add to playlist", color = Color.White) },
-                        onClick = {
-                            showPlaylistMenu = false
-                            showAddToPlaylistDialog = true
-                        }
-                    )
+                    Icon(Icons.Default.Add, "Add to playlist", tint = Color.White)
                 }
             }
         }
@@ -185,10 +187,24 @@ fun PlayerScreen(
         Spacer(Modifier.height(24.dp))
 
         // Progress Bar
+        var isDragging by remember { mutableStateOf(false) }
+        var dragPosition by remember { mutableStateOf(0f) }
+        
+        // Use duration from viewModel or fallback to track.durationMs
+        val safeDuration = (if (duration > 0) duration else track.durationMs).toFloat().coerceAtLeast(1f)
+        val displayPosition = if (isDragging) dragPosition else position.toFloat()
+
         Slider(
-            value = position.toFloat(),
-            onValueChange = { viewModel.seekTo(it.toLong()) },
-            valueRange = 0f..(track.durationMs.toFloat().coerceAtLeast(1f)),
+            value = displayPosition.coerceIn(0f, safeDuration),
+            onValueChange = { 
+                isDragging = true
+                dragPosition = it
+            },
+            onValueChangeFinished = {
+                isDragging = false
+                viewModel.seekTo(dragPosition.toLong())
+            },
+            valueRange = 0f..safeDuration,
             colors = SliderDefaults.colors(
                 thumbColor = Color.White,
                 activeTrackColor = Color.White,
@@ -199,8 +215,8 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatTime(position), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
-            Text(formatTime(track.durationMs), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
+            Text(formatTime(displayPosition.toLong()), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
+            Text(formatTime(safeDuration.toLong()), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
         }
 
         Spacer(Modifier.height(16.dp))

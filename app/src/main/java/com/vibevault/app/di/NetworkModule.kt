@@ -46,6 +46,8 @@ object NetworkModule {
             supabaseUrl = BuildConfig.SUPABASE_URL,
             supabaseKey = BuildConfig.SUPABASE_ANON_KEY
         ) {
+            requestTimeout = 30.seconds
+            
             defaultSerializer = io.github.jan.supabase.serializer.KotlinXSerializer(kotlinx.serialization.json.Json {
                 ignoreUnknownKeys = true
                 isLenient = true
@@ -54,6 +56,9 @@ object NetworkModule {
                 config {
                     pingInterval(20, java.util.concurrent.TimeUnit.SECONDS)
                     retryOnConnectionFailure(true)
+                    connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 }
             }
         install(Auth) {

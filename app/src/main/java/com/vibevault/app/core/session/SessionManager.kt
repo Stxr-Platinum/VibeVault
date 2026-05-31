@@ -45,6 +45,9 @@ class SessionManager @Inject constructor(
         private const val KEY_SPOTIFY_REFRESH_TOKEN = "spotify_refresh_token"
         private const val KEY_SPOTIFY_EXPIRY = "spotify_expiry"
         private const val KEY_SPOTIFY_CODE_VERIFIER = "spotify_code_verifier"
+
+        // Playback Keys
+        private const val KEY_LAST_PLAYED_TRACK_ID = "last_played_track_id"
     }
 
     private val prefs: SharedPreferences by lazy { createPreferences() }
@@ -69,7 +72,11 @@ class SessionManager @Inject constructor(
         _userAvatarUrl.value = prefs.getString(KEY_USER_AVATAR_URL, null)
         _isLoggedInFlow.value = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
         _spotifyAccessTokenFlow.value = prefs.getString(KEY_SPOTIFY_ACCESS_TOKEN, null)
-        _isSpotifyConnected.value = _spotifyAccessTokenFlow.value != null && !isSpotifyExpired
+        
+        // The user is "connected" to Spotify if they have an active token OR a refresh token
+        // that can be used to silently get a new one.
+        val hasRefreshToken = prefs.getString(KEY_SPOTIFY_REFRESH_TOKEN, null) != null
+        _isSpotifyConnected.value = _spotifyAccessTokenFlow.value != null && (!isSpotifyExpired || hasRefreshToken)
     }
 
     private fun createPreferences(): SharedPreferences {
@@ -160,6 +167,14 @@ class SessionManager @Inject constructor(
         set(value) {
             Log.d("SpotifyDebug", "SessionManager: Setting spotifyCodeVerifier = $value")
             prefs.edit().putString(KEY_SPOTIFY_CODE_VERIFIER, value).apply()
+        }
+
+    // ── Playback State ─────────────────────────────────────────
+
+    var lastPlayedTrackId: String?
+        get() = prefs.getString(KEY_LAST_PLAYED_TRACK_ID, null)
+        set(value) {
+            prefs.edit().putString(KEY_LAST_PLAYED_TRACK_ID, value).apply()
         }
 
     // ── Read Accessors ─────────────────────────────────────────

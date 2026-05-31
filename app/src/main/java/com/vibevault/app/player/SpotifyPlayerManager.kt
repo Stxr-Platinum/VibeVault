@@ -11,6 +11,9 @@ import com.vibevault.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -40,6 +43,9 @@ class SpotifyPlayerManager @Inject constructor(
     private val _errorEvents = MutableSharedFlow<SpotifyError>(extraBufferCapacity = 1)
     val errorEvents: SharedFlow<SpotifyError> = _errorEvents.asSharedFlow()
 
+    private val _playerState = MutableStateFlow<com.spotify.protocol.types.PlayerState?>(null)
+    val playerState: StateFlow<com.spotify.protocol.types.PlayerState?> = _playerState.asStateFlow()
+
     /**
      * Represents a categorized Spotify error for UI consumption.
      */
@@ -50,6 +56,8 @@ class SpotifyPlayerManager @Inject constructor(
         class ConnectionFailed(reason: String?) : SpotifyError(reason ?: "Failed to connect to Spotify")
         /** Playback failed after connecting */
         class PlaybackFailed(reason: String?) : SpotifyError(reason ?: "Unable to play track")
+        /** Free-tier account cannot play on demand */
+        class NotPremium : SpotifyError("Spotify Premium is required to play specific songs. Free accounts can only shuffle-play.")
     }
 
     /**
@@ -73,6 +81,12 @@ class SpotifyPlayerManager @Inject constructor(
             override fun onConnected(spotifyAppRemote: SpotifyAppRemote) {
                 appRemote = spotifyAppRemote
                 Log.i(TAG, "Connected to Spotify App Remote!")
+                
+                // Subscribe to PlayerState to sync UI
+                spotifyAppRemote.playerApi.subscribeToPlayerState().setEventCallback { state ->
+                    _playerState.value = state
+                }
+                
                 continuation.resume(true)
             }
 
@@ -148,13 +162,37 @@ class SpotifyPlayerManager @Inject constructor(
                     if (continuation.isActive) continuation.resume(true)
                 }.setErrorCallback { error ->
                     Log.e(TAG, "Playback failed: ${error.message}", error)
-                    _errorEvents.tryEmit(SpotifyError.PlaybackFailed(error.message))
-                    Toast.makeText(
-                        context,
-                        "Unable to play: ${error.message ?: "Spotify Premium required or App Remote disconnected"}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    if (continuation.isActive) continuation.resume(false)
+                    if (error.message?.contains("CANT_PLAY_ON_DEMAND") == true) {
+                        Log.w(TAG, "Free user detected (CANT_PLAY_ON_DEMAND). Falling back to Spotify Radio...")
+                        // Fallback: Start a radio station based on the track for Free users
+                        val stationUri = "spotify:station:track:${trackId.removePrefix("spotify:track:")}"
+                        appRemote?.playerApi?.play(stationUri)?.setResultCallback {
+                            Log.d(TAG, "Radio playback started as fallback.")
+                            Toast.makeText(
+                                context,
+                                "Starting Spotify Radio (Free Tier limit)",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            if (continuation.isActive) continuation.resume(true)
+                        }?.setErrorCallback { stationError ->
+                            Log.e(TAG, "Radio fallback failed: ${stationError.message}")
+                            _errorEvents.tryEmit(SpotifyError.NotPremium())
+                            Toast.makeText(
+                                context,
+                                "Spotify Premium required to play this track.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            if (continuation.isActive) continuation.resume(false)
+                        }
+                    } else {
+                        _errorEvents.tryEmit(SpotifyError.PlaybackFailed(error.message))
+                        Toast.makeText(
+                            context,
+                            "Unable to play: ${error.message ?: "Spotify Premium required or App Remote disconnected"}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        if (continuation.isActive) continuation.resume(false)
+                    }
                 }
             }
         } catch (e: CouldNotFindSpotifyApp) {
@@ -184,6 +222,10 @@ class SpotifyPlayerManager @Inject constructor(
 
     fun resume() {
         appRemote?.playerApi?.resume()
+    }
+
+    fun seekTo(positionMs: Long) {
+        appRemote?.playerApi?.seekTo(positionMs)
     }
 
     fun disconnect() {

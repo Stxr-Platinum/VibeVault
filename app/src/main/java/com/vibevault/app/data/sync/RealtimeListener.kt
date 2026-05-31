@@ -209,11 +209,15 @@ class RealtimeListener @Inject constructor(
         // Nothing to stop
         if (job == null && channel == null) return
 
-        Log.d(TAG, "stopListening: tearing down Realtime in detached scope...")
+        syncChannel = null
+        syncJob = null
 
-        // 1. Tear down in a fully detached scope — this scope is NOT a child of `scope`
-        //    or `syncJob`, so it cannot be cancelled by their lifecycle.
-        CoroutineScope(Dispatchers.IO).launch {
+        Log.d(TAG, "stopListening: tearing down Realtime asynchronously...")
+
+        // Tear down asynchronously so we don't block the Main thread (onStop).
+        // We still follow the rule of disconnecting BEFORE cancelling the job to
+        // avoid the SDK catching CancellationException and entering a reconnect loop.
+        scope.launch {
             try {
                 channel?.unsubscribe()
                 channel?.let { realtime.removeChannel(it) }
@@ -221,13 +225,11 @@ class RealtimeListener @Inject constructor(
                 Log.d(TAG, "Realtime teardown complete.")
             } catch (e: Exception) {
                 Log.w(TAG, "Realtime teardown encountered error (non-fatal)", e)
+            } finally {
+                // NOW cancel the sync job — the SDK has already fully disconnected
+                job?.cancel()
             }
         }
-
-        // 2. NOW cancel the sync job — the SDK has already been told to disconnect
-        job?.cancel()
-        syncJob = null
-        syncChannel = null
     }
 
     /**

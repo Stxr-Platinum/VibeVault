@@ -58,7 +58,7 @@ fun AppNavHost(
                     navController.navigate(Screen.Player.createRoute(track.id))
                 },
                 onPlaylistClick = { playlistId ->
-                    navController.navigate("playlist/$playlistId")
+                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                 },
                 onProfileClick = {
                     navController.navigate(Screen.Profile.route)
@@ -101,7 +101,7 @@ fun AppNavHost(
                     navController.navigate("likedSongs")
                 },
                 onPlaylistClick = { playlistId ->
-                    navController.navigate("playlist/$playlistId")
+                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                 }
             )
         }
@@ -114,7 +114,7 @@ fun AppNavHost(
                 }
             )
         }
-        composable("playlist/{playlistId}") { backStackEntry ->
+        composable(Screen.PlaylistDetail.route) { backStackEntry ->
             val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
             // Will implement PlaylistScreen here
             com.vibevault.app.ui.screens.playlist.PlaylistScreen(

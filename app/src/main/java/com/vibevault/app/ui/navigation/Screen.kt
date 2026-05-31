@@ -25,6 +25,9 @@ sealed class Screen(
     data object Artist : Screen("artist/{artistName}", "Artist") {
         fun createRoute(artistName: String) = "artist/$artistName"
     }
+    data object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Playlist") {
+        fun createRoute(playlistId: String) = "playlist_detail/$playlistId"
+    }
 
     data object Login : Screen("login", "Login")
     data object SpotifyLogin : Screen("spotify_login", "Connect Spotify")

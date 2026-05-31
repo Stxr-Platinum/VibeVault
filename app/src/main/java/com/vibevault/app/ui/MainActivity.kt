@@ -68,12 +68,16 @@ class MainActivity : ComponentActivity() {
         Log.d("VibeVault", "MainActivity: onCreate started")
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        
+        // Start PlaybackService so it can intercept app termination (swipe from recents)
+        // and pause Spotify App Remote properly.
+        startService(Intent(this, com.vibevault.app.player.service.PlaybackService::class.java))
+        
         Log.d("VibeVault", "MainActivity: super.onCreate finished")
         
-        // Start Realtime Sync if logged in
-        if (sessionManager.isLoggedIn) {
-            realtimeSyncManager.startSync()
-        }
+        // Note: RealtimeListener handles real-time sync via ProcessLifecycleOwner.
+        // Do NOT also start RealtimeSyncManager here — both use the same Realtime
+        // instance and will conflict, causing 7s reconnect loops.
         
         val mainViewModel: MainViewModel by viewModels()
         val authViewModel: AuthViewModel by viewModels()

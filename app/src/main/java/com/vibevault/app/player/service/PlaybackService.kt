@@ -5,6 +5,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.vibevault.app.player.SpotifyPlayerManager
 
 /**
  * PlaybackService — Foreground service for uninterrupted audio playback.
@@ -25,8 +26,19 @@ class PlaybackService : MediaSessionService() {
     @Inject
     lateinit var mediaSession: MediaSession
 
+    @Inject
+    lateinit var spotifyPlayerManager: SpotifyPlayerManager
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession {
         return mediaSession
+    }
+
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        super.onTaskRemoved(rootIntent)
+        player.pause()
+        spotifyPlayerManager.pause()
+        spotifyPlayerManager.disconnect()
+        stopSelf()
     }
 
     override fun onDestroy() {

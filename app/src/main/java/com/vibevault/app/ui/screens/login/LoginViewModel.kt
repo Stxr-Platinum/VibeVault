@@ -39,6 +39,10 @@ class LoginViewModel @Inject constructor(
         _uiState.update { it.copy(isSignUp = !it.isSignUp, error = null) }
     }
 
+    fun onError(message: String) {
+        _uiState.update { it.copy(isLoading = false, error = message) }
+    }
+
     fun submit(onSuccess: () -> Unit) {
         val state = _uiState.value
         if (state.email.isBlank() || state.password.isBlank()) {

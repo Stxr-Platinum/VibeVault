@@ -36,7 +36,6 @@ class AuthViewModel @Inject constructor(
             val result = authRepository.signInWithGoogleIdToken(idToken)
             result.fold(
                 onSuccess = { 
-                    realtimeSyncManager.startSync()
                     _authState.value = AuthState.Success 
                 },
                 onFailure = { error -> 

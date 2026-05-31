@@ -21,6 +21,7 @@ import javax.inject.Singleton
  * AuthRepositoryImpl — Concrete implementation of AuthRepository.
  * Bridges the domain layer to Supabase Auth and the encrypted SessionManager.
  */
+@OptIn(kotlin.time.ExperimentalTime::class)
 @Singleton
 class AuthRepositoryImpl @Inject constructor(
     private val auth: Auth,
