@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.vibevault.app.ui.theme.VibeBg
 import com.vibevault.app.ui.theme.VibeOnSurface
@@ -60,8 +61,14 @@ fun AppNavHost(
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                 },
+                onAlbumClick = { albumId ->
+                    navController.navigate(Screen.AlbumDetail.createRoute(albumId))
+                },
                 onProfileClick = {
                     navController.navigate(Screen.Profile.route)
+                },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
                 }
             )
         }
@@ -123,6 +130,9 @@ fun AppNavHost(
                 onTrackClick = { trackId, context ->
                     playerViewModel.playTrack(trackId, context)
                     navController.navigate(Screen.Player.createRoute(trackId))
+                },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
                 }
             )
         }
@@ -130,7 +140,11 @@ fun AppNavHost(
             val trackId = backStackEntry.arguments?.getString("trackId")
             PlayerScreen(
                 trackId = trackId,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
+                },
+                viewModel = playerViewModel
             )
         }
         composable(Screen.Artist.route) { backStackEntry ->
@@ -143,6 +157,11 @@ fun AppNavHost(
                     navController.navigate(Screen.Player.createRoute(trackId))
                 }
             )
+        }
+        composable(Screen.AlbumDetail.route) { backStackEntry ->
+            val albumId = backStackEntry.arguments?.getString("albumId") ?: ""
+            // Mock screen for now since we haven't built AlbumScreen
+            androidx.compose.material3.Text("Album Detail: $albumId", modifier = Modifier.fillMaxSize().padding(16.dp))
         }
     }
 }

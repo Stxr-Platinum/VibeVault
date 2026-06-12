@@ -104,49 +104,21 @@ fun SearchScreen(
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
-                    searchResult?.let { result ->
-                        // Songs Section
-                        if (result.tracks.isNotEmpty()) {
+                    searchResult?.let { tracks ->
+                        if (tracks.isNotEmpty()) {
                             item { SectionHeader("Songs") }
-                            items(result.tracks) { track ->
+                            items(tracks) { track ->
                                 SearchResultRow(
                                     title = track.title,
                                     subtitle = "${track.artist} • ${track.album}",
                                     imageUrl = track.albumImageUrl,
-                                    onClick = { onTrackClick(track.id, result.tracks) }
-                                )
-                            }
-                        }
-
-                        // Artists Section
-                        if (result.artists.isNotEmpty()) {
-                            item { SectionHeader("Artists") }
-                            items(result.artists) { artist ->
-                                SearchResultRow(
-                                    title = artist.name,
-                                    subtitle = "Artist",
-                                    imageUrl = artist.imageUrl,
-                                    isCircular = true,
-                                    onClick = { /* Navigate to Artist */ }
-                                )
-                            }
-                        }
-
-                        // Playlists Section
-                        if (result.playlists.isNotEmpty()) {
-                            item { SectionHeader("Playlists") }
-                            items(result.playlists) { playlist ->
-                                SearchResultRow(
-                                    title = playlist.title,
-                                    subtitle = "Playlist • ${playlist.description ?: ""}",
-                                    imageUrl = playlist.coverUrl,
-                                    onClick = { /* Navigate to Playlist */ }
+                                    onClick = { onTrackClick(track.id, listOf(track)) }
                                 )
                             }
                         }
                     }
 
-                    if (searchResult == null || (searchResult?.tracks?.isEmpty() == true && searchResult?.artists?.isEmpty() == true)) {
+                    if (searchResult == null || searchResult?.isEmpty() == true) {
                         item {
                             Box(
                                 modifier = Modifier

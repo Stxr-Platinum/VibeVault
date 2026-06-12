@@ -3,7 +3,6 @@ package com.vibevault.app.di
 import android.content.Context
 import androidx.room.Room
 import com.vibevault.app.data.local.AppDatabase
-import com.vibevault.app.data.local.dao.PfpDao
 import com.vibevault.app.data.local.dao.PlaylistDao
 import com.vibevault.app.data.local.dao.ProfileDao
 import dagger.Module
@@ -45,8 +44,7 @@ object DatabaseModule {
     @Provides
     fun provideProfileDao(db: AppDatabase): ProfileDao = db.profileDao()
 
-    @Provides
-    fun providePfpDao(db: AppDatabase): PfpDao = db.pfpDao()
+
 
     @Provides
     fun provideDeviceDao(db: AppDatabase): com.vibevault.app.data.local.dao.DeviceDao = db.deviceDao()

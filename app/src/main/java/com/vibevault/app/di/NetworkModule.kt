@@ -16,7 +16,11 @@ import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.functions.functions
+import io.github.jan.supabase.storage.storage
 import io.ktor.client.engine.okhttp.OkHttp
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import com.vibevault.app.data.remote.api.SpotifyApiService
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
 
@@ -67,6 +71,7 @@ object NetworkModule {
             host = "auth-callback"
         }
         install(Postgrest)
+        install(io.github.jan.supabase.storage.Storage)
         install(Realtime) {
             // Prevent fatal socket aborts from taking down the app
             disconnectOnSessionLoss = false
@@ -92,4 +97,26 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideFunctions(client: SupabaseClient): Functions = client.functions
+
+    @Provides
+    @Singleton
+    fun provideStorage(client: SupabaseClient): io.github.jan.supabase.storage.Storage = client.storage
+
+    @Provides
+    @Singleton
+    fun provideRetrofit(): Retrofit {
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .build()
+        return Retrofit.Builder()
+            .baseUrl("https://api.spotify.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideSpotifyApiService(retrofit: Retrofit): SpotifyApiService {
+        return retrofit.create(SpotifyApiService::class.java)
+    }
 }

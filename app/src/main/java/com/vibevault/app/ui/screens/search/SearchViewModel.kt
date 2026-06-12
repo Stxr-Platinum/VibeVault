@@ -2,7 +2,7 @@ package com.vibevault.app.ui.screens.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vibevault.app.domain.model.SpotifySearchResult
+import com.vibevault.app.domain.model.Track
 import com.vibevault.app.domain.repository.MusicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,18 +22,18 @@ class SearchViewModel @Inject constructor(
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-    val searchResult: StateFlow<SpotifySearchResult?> = _query
+    val searchResult: StateFlow<List<Track>?> = _query
         .debounce(500)
         .flatMapLatest { q ->
             if (q.isBlank()) {
                 _isSearching.value = false
-                flowOf<SpotifySearchResult?>(null)
+                flowOf<List<Track>?>(null)
             } else {
                 _isSearching.value = true
                 flow {
-                    val result = musicRepository.searchSpotifyAll(q).getOrNull()
+                    val tracks = musicRepository.searchQobuzMusic(q)
                     _isSearching.value = false
-                    emit(result)
+                    emit(tracks)
                 }
             }
         }

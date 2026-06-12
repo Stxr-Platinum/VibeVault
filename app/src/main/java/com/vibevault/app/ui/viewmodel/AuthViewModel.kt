@@ -4,7 +4,6 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vibevault.app.core.session.SessionManager
-import com.vibevault.app.data.remote.api.SpotifyApiService
 import com.vibevault.app.data.remote.auth.SpotifyAuthManager
 import com.vibevault.app.data.remote.dto.SpotifyTokenResponse
 import com.vibevault.app.data.remote.dto.TokenExchangeRequest
@@ -21,10 +20,8 @@ import javax.inject.Inject
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val spotifyAuthManager: SpotifyAuthManager,
-    private val spotifyApiService: SpotifyApiService,
     private val functions: Functions,
-    private val sessionManager: SessionManager,
-    private val realtimeSyncManager: com.vibevault.app.data.sync.RealtimeSyncManager
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
@@ -92,23 +89,16 @@ class AuthViewModel @Inject constructor(
                     Log.d("SpotifyAuth", "TOKEN SAVED")
                     Log.d("SpotifyDebug", "AuthViewModel: Session saved to SessionManager")
                     
-                    // Fetch Spotify profile to sync with Supabase
-                    Log.d("SpotifyDebug", "AuthViewModel: Fetching Spotify profile for sync...")
-                    val profileResult = spotifyApiService.getUserProfile()
-                    profileResult.onSuccess { spotifyUser ->
-                        Log.d("SpotifyDebug", "AuthViewModel: Profile fetched. ID = ${spotifyUser.id}, Name = ${spotifyUser.displayName}")
-                        authRepository.syncSpotifyProfile(
-                            spotifyUserId = spotifyUser.id,
-                            displayName = spotifyUser.displayName,
-                            avatarUrl = spotifyUser.images.firstOrNull()?.url
-                        )
-                        Log.d("SpotifyDebug", "AuthViewModel: Profile synced with Supabase")
-                    }.onFailure { 
-                        Log.e("SpotifyDebug", "AuthViewModel: Failed to fetch Spotify profile", it)
-                    }
-                    
+                    Log.d("SpotifyDebug", "AuthVM: Token obtained successfully")
+                
+                // Fetch user profile through musicRepository or directly
+                try {
+                    // For now just mark as authenticated since we purged Spotify API
                     _authState.value = AuthState.SpotifySuccess
-                    Log.d("SpotifyDebug", "AuthViewModel: AuthState updated to SpotifySuccess")
+                } catch (e: Exception) {
+                    Log.e("SpotifyDebug", "AuthVM: Profile fetch failed", e)
+                    _authState.value = AuthState.Error("Failed to fetch user profile")
+                }
                 } else {
                     Log.e("SpotifyDebug", "AuthViewModel: Exchange failed. Body: $bodyText")
                     _authState.value = AuthState.Error("Exchange failed: ${response.status}")

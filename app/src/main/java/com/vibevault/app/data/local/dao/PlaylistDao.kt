@@ -47,15 +47,25 @@ interface PlaylistDao {
     @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String)
 
+    @androidx.room.Update
+    suspend fun updateTrackOrders(crossRefs: List<PlaylistTrackCrossRef>)
+
     @Query("SELECT * FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun getCrossRef(playlistId: String, trackId: String): PlaylistTrackCrossRef?
 
     @Query("""
         SELECT * FROM playlist_tracks 
-        WHERE playlistId = :playlistId 
+        WHERE playlistId = :playlistId AND isDeleted = 0
         ORDER BY sortOrder ASC
     """)
     fun getTracksForPlaylist(playlistId: String): Flow<List<PlaylistTrackCrossRef>>
+
+    @Query("""
+        SELECT * FROM playlist_tracks 
+        WHERE playlistId = :playlistId AND isDeleted = 0
+        ORDER BY sortOrder ASC
+    """)
+    suspend fun getTracksForPlaylistSync(playlistId: String): List<PlaylistTrackCrossRef>
 
     @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlistId = :playlistId")
     suspend fun getTrackCountForPlaylist(playlistId: String): Int

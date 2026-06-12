@@ -3,7 +3,6 @@ package com.vibevault.app.data.repository
 import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.data.remote.dto.*
 import com.vibevault.app.data.mapper.*
-import com.vibevault.app.data.local.dao.PfpDao
 import com.vibevault.app.data.local.dao.ProfileDao
 import com.vibevault.app.data.local.entity.*
 import com.vibevault.app.domain.repository.AuthRepository
@@ -13,6 +12,7 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import io.github.jan.supabase.storage.Storage
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,9 +26,9 @@ import javax.inject.Singleton
 class AuthRepositoryImpl @Inject constructor(
     private val auth: Auth,
     private val postgrest: Postgrest,
+    private val storage: Storage,
     private val sessionManager: SessionManager,
-    private val profileDao: ProfileDao,
-    private val pfpDao: PfpDao
+    private val profileDao: ProfileDao
 ) : AuthRepository {
 
     override suspend fun isLoggedIn(): Boolean {
@@ -173,32 +173,18 @@ class AuthRepositoryImpl @Inject constructor(
                 }
                 .decodeSingleOrNull<ProfileDto>()
 
-            // 2. Fetch Reorganized PFPs
-            val pfps = postgrest.from("pfps")
-                .select {
-                    filter { eq("user_id", userId) }
-                }
-                .decodeList<PfpDto>()
-
-            val activePfp = pfps.find { it.isActive } ?: pfps.firstOrNull()
-
             if (profile != null) {
-                // Update Local Table (Reorganization)
+                // Update Local Table
                 profileDao.insertProfile(
                     ProfileEntity(
                         id = userId,
                         username = profile.username,
                         accountHolderName = profile.accountHolderName,
-                        avatarUrl = activePfp?.url ?: profile.avatarUrl,
+                        avatarUrl = profile.avatarUrl,
                         email = sessionManager.userEmail,
                         lastSyncedAt = System.currentTimeMillis()
                     )
                 )
-
-                // Update PFP Table
-                pfps.forEach { dto ->
-                    pfpDao.insertPfp(dto.toPfpEntity())
-                }
 
                 // Update Session (Legacy/Compatibility)
                 sessionManager.saveSession(
@@ -207,7 +193,7 @@ class AuthRepositoryImpl @Inject constructor(
                     userId = userId,
                     email = sessionManager.userEmail ?: "",
                     displayName = profile.username ?: profile.accountHolderName ?: sessionManager.userDisplayName,
-                    avatarUrl = activePfp?.url ?: profile.avatarUrl ?: sessionManager.userAvatarUrl,
+                    avatarUrl = profile.avatarUrl ?: sessionManager.userAvatarUrl,
                     expiresAtEpochMs = sessionManager.sessionExpiryMs
                 )
             }
@@ -221,40 +207,39 @@ class AuthRepositoryImpl @Inject constructor(
         return try {
             val userId = sessionManager.userId ?: return Result.failure(Exception("Not logged in"))
 
-            // 1. Update Auth Metadata
-            auth.updateUser {
-                data = kotlinx.serialization.json.buildJsonObject {
-                    put("username", kotlinx.serialization.json.JsonPrimitive(username))
-                    put("avatar_url", kotlinx.serialization.json.JsonPrimitive(avatarUrl))
+            // 1. Build the map of only the fields that actually changed
+            val currentProfile = profileDao.getProfileSync(userId)
+            val currentUsername = currentProfile?.username ?: sessionManager.userDisplayName
+            val currentAvatar = currentProfile?.avatarUrl ?: sessionManager.userAvatarUrl
+
+            val updateMap = mutableMapOf<String, String>()
+            if (username != currentUsername) {
+                updateMap["username"] = username
+            }
+            if (avatarUrl != currentAvatar) {
+                updateMap["avatar_url"] = avatarUrl
+            }
+
+            // Only make network calls if something actually changed
+            if (updateMap.isNotEmpty()) {
+                // 2. Update Auth Metadata
+                // By only sending changed fields, we prevent Supabase Auth triggers from 
+                // accidentally triggering duplicate key constraints on unchanged fields.
+                auth.updateUser {
+                    data = kotlinx.serialization.json.buildJsonObject {
+                        updateMap["username"]?.let { put("username", kotlinx.serialization.json.JsonPrimitive(it)) }
+                        updateMap["avatar_url"]?.let { put("avatar_url", kotlinx.serialization.json.JsonPrimitive(it)) }
+                    }
+                }
+
+                // 3. Update profiles table
+                updateMap["updated_at"] = java.time.Instant.now().toString()
+                postgrest.from("profiles").update(updateMap) {
+                    filter { eq("id", userId) }
                 }
             }
 
-            // 2. Update profiles table - Only update username and avatar_url
-            postgrest.from("profiles").upsert(
-                mapOf(
-                    "id" to userId,
-                    "username" to username,
-                    "avatar_url" to avatarUrl,
-                    "updated_at" to java.time.Instant.now().toString()
-                )
-            )
-
-            // 3. Reorganize PFP: Insert into pfps table and mark active
-            val newPfpId = java.util.UUID.randomUUID().toString()
-            postgrest.from("pfps").insert(
-                PfpDto(
-                    id = newPfpId,
-                    userId = userId,
-                    url = avatarUrl,
-                    isActive = true
-                )
-            )
-            
-            // Mark others inactive in Supabase (simplified: just do it via SQL or multiple calls)
-            // For now, we assume the latest one we inserted is active.
-            
             // 4. Update Local
-            val currentProfile = profileDao.getProfileSync(userId)
             profileDao.insertProfile(
                 ProfileEntity(
                     id = userId,
@@ -264,8 +249,6 @@ class AuthRepositoryImpl @Inject constructor(
                     email = sessionManager.userEmail
                 )
             )
-            pfpDao.setActivePfp(userId, newPfpId)
-            pfpDao.insertPfp(PfpEntity(id = newPfpId, userId = userId, url = avatarUrl, isActive = true))
 
             // 5. Update Session
             val session = auth.currentSessionOrNull()
@@ -282,7 +265,120 @@ class AuthRepositoryImpl @Inject constructor(
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            val errorMsg = if (e.message?.contains("profiles_username_key") == true) {
+                "Username is already taken."
+            } else {
+                e.message ?: "Failed to update profile"
+            }
+            Result.failure(Exception(errorMsg))
+        }
+    }
+
+    override suspend fun updateAvatarOnly(avatarUrl: String): Result<Unit> {
+        return try {
+            val userId = sessionManager.userId ?: return Result.failure(Exception("Not logged in"))
+
+            var finalAvatarUrl = avatarUrl
+
+            // If the avatarUrl is a local file path, upload to Supabase Storage
+            if (avatarUrl.startsWith("/") || avatarUrl.startsWith("file://")) {
+                val cleanPath = avatarUrl.removePrefix("file://")
+                val file = java.io.File(cleanPath)
+                if (file.exists()) {
+                    val bytes = file.readBytes()
+                    val ext = file.extension.ifBlank { "jpg" }
+                    val fileName = "${userId}_${System.currentTimeMillis()}.$ext"
+                    
+                    val bucket = storage.from("avatars")
+                    bucket.upload(fileName, bytes) {
+                        upsert = true
+                    }
+                    finalAvatarUrl = bucket.publicUrl(fileName)
+                }
+            }
+
+            // Update auth metadata (avatar only)
+            auth.updateUser {
+                data = kotlinx.serialization.json.buildJsonObject {
+                    put("avatar_url", kotlinx.serialization.json.JsonPrimitive(finalAvatarUrl))
+                }
+            }
+
+            // Update profiles table (avatar only)
+            postgrest.from("profiles").update(
+                mapOf(
+                    "avatar_url" to finalAvatarUrl,
+                    "updated_at" to java.time.Instant.now().toString()
+                )
+            ) {
+                filter { eq("id", userId) }
+            }
+
+            // Update local
+            val currentProfile = profileDao.getProfileSync(userId)
+            profileDao.insertProfile(
+                ProfileEntity(
+                    id = userId,
+                    username = currentProfile?.username,
+                    accountHolderName = currentProfile?.accountHolderName,
+                    avatarUrl = finalAvatarUrl,
+                    email = sessionManager.userEmail
+                )
+            )
+
+            // Update session
+            sessionManager.updateProfileMetadata(null, finalAvatarUrl)
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(Exception(e.message ?: "Failed to update avatar"))
+        }
+    }
+
+    override suspend fun updateUsernameOnly(username: String): Result<Unit> {
+        return try {
+            val userId = sessionManager.userId ?: return Result.failure(Exception("Not logged in"))
+
+            // Update auth metadata (username only)
+            auth.updateUser {
+                data = kotlinx.serialization.json.buildJsonObject {
+                    put("username", kotlinx.serialization.json.JsonPrimitive(username))
+                }
+            }
+
+            // Update profiles table (username only)
+            postgrest.from("profiles").update(
+                mapOf(
+                    "username" to username,
+                    "updated_at" to java.time.Instant.now().toString()
+                )
+            ) {
+                filter { eq("id", userId) }
+            }
+
+            // Update local
+            val currentProfile = profileDao.getProfileSync(userId)
+            profileDao.insertProfile(
+                ProfileEntity(
+                    id = userId,
+                    username = username,
+                    accountHolderName = currentProfile?.accountHolderName,
+                    avatarUrl = currentProfile?.avatarUrl,
+                    email = sessionManager.userEmail
+                )
+            )
+
+            // Update session
+            sessionManager.updateProfileMetadata(username, null)
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            val errorMsg = if (e.message?.contains("profiles_username_key") == true) {
+                "Username is already taken."
+            } else {
+                e.message ?: "Failed to update username"
+            }
+            Result.failure(Exception(errorMsg))
         }
     }
 

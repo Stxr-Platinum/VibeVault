@@ -22,7 +22,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.vibevault.app.ui.theme.VibeOnSurfaceVariant
@@ -34,7 +33,8 @@ import com.vibevault.app.ui.viewmodel.PlayerViewModel
 fun PlayerScreen(
     trackId: String?,
     onBackClick: () -> Unit,
-    viewModel: PlayerViewModel = hiltViewModel()
+    onArtistClick: (String) -> Unit,
+    viewModel: PlayerViewModel
 ) {
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
@@ -81,11 +81,7 @@ fun PlayerScreen(
         )
     }
 
-    LaunchedEffect(trackId) {
-        if (trackId != null && currentTrack?.id != trackId) {
-            viewModel.playTrack(trackId)
-        }
-    }
+
 
     if (currentTrack == null) {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0A)), contentAlignment = Alignment.Center) {
@@ -154,7 +150,8 @@ fun PlayerScreen(
                     style = MaterialTheme.typography.bodyLarge,
                     color = VibeOnSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable { onArtistClick(track.artist) }
                 )
             }
             IconButton(onClick = { viewModel.toggleLike() }) {

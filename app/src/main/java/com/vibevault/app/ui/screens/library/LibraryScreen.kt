@@ -44,7 +44,8 @@ fun LibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel()
 ) {
     val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
-    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val playlistsWithTracks by viewModel.playlistsWithTracks.collectAsStateWithLifecycle()
+    val spotifyPlaylists by viewModel.spotifyPlaylists.collectAsStateWithLifecycle()
     val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
     val userAvatarUrl by viewModel.userAvatarUrl.collectAsStateWithLifecycle()
     
@@ -279,17 +280,44 @@ fun LibraryScreen(
             }
 
             // ── Custom Playlists ────────────────────────────
-            items(playlists, key = { "pl_${it.id}" }) { playlist ->
+            items(playlistsWithTracks, key = { "pl_${it.playlist.id}" }) { item ->
                 LibraryListItem(
-                    title = playlist.title,
-                    subtitle = "Playlist • ${playlist.trackCount} songs",
-                    imageUri = null, // Future: fetch playlist cover
+                    title = item.playlist.title,
+                    subtitle = "Playlist • ${item.playlist.trackCount} songs",
+                    imageUri = item.playlist.coverUrl,
+                    imageUrls = item.coverTracks,
                     placeholderIcon = Icons.Default.QueueMusic,
-                    onClick = { onPlaylistClick(playlist.id) }
+                    onClick = { onPlaylistClick(item.playlist.id) }
                 )
             }
 
-            if (likedTracks.isEmpty() && playlists.isEmpty()) {
+            // ── Spotify Playlists ───────────────────────────
+            if (spotifyPlaylists.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "Spotify Playlists",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+                
+                items(spotifyPlaylists, key = { "sp_${it.id}" }) { playlist ->
+                    val ownerName = playlist.owner?.displayName ?: "Spotify"
+                    LibraryListItem(
+                        title = playlist.name,
+                        subtitle = "Playlist • $ownerName",
+                        imageUri = playlist.images.firstOrNull()?.url,
+                        placeholderIcon = Icons.Default.QueueMusic,
+                        onClick = { onPlaylistClick("spotify_${playlist.id}") }
+                    )
+                }
+            }
+
+            if (likedTracks.isEmpty() && playlistsWithTracks.isEmpty() && spotifyPlaylists.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -329,6 +357,7 @@ fun LibraryListItem(
     title: String,
     subtitle: String,
     imageUri: String? = null,
+    imageUrls: List<String>? = null,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     iconTint: Color = VibeOnSurfaceVariant,
     placeholderIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.MusicNote,
@@ -348,13 +377,39 @@ fun LibraryListItem(
                 .background(VibeSurface),
             contentAlignment = Alignment.Center
         ) {
-            if (imageUri != null) {
+            val customModel: Any? = when {
+                imageUri == null || imageUri.isBlank() -> null
+                imageUri.startsWith("/") -> java.io.File(imageUri)
+                else -> imageUri
+            }
+
+            if (customModel != null) {
                 AsyncImage(
-                    model = imageUri,
+                    model = customModel,
                     contentDescription = title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
+            } else if (!imageUrls.isNullOrEmpty()) {
+                if (imageUrls.size >= 4) {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.weight(1f)) {
+                            AsyncImage(model = imageUrls[0], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                            AsyncImage(model = imageUrls[1], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                        }
+                        Row(Modifier.weight(1f)) {
+                            AsyncImage(model = imageUrls[2], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                            AsyncImage(model = imageUrls[3], contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                        }
+                    }
+                } else {
+                    AsyncImage(
+                        model = imageUrls[0],
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             } else if (icon != null) {
                 Icon(
                     icon,

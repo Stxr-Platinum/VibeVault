@@ -19,6 +19,9 @@
     <!-- Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Android 12+ AppOps Attribution -->
+    <attribution android:tag="mediaPlayback" android:label="@string/app_name" />
+
     <application
         android:name=".VibeVaultApp"
         android:allowBackup="true"
@@ -52,7 +55,7 @@
 
         <!-- Media3 Playback Service -->
         <service
-            android:name=".player.service.PlaybackService"
+            android:name=".player.PlaybackService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>

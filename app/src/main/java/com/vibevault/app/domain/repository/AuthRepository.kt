@@ -33,6 +33,12 @@ interface AuthRepository {
     /** Updates the user's profile metadata. */
     suspend fun updateProfile(username: String, avatarUrl: String): Result<Unit>
 
+    /** Updates only the user's avatar URL. */
+    suspend fun updateAvatarOnly(avatarUrl: String): Result<Unit>
+
+    /** Updates only the user's username. */
+    suspend fun updateUsernameOnly(username: String): Result<Unit>
+
     /** Syncs Spotify profile data to Supabase. */
     suspend fun syncSpotifyProfile(spotifyUserId: String, displayName: String?, avatarUrl: String?): Result<Unit>
 

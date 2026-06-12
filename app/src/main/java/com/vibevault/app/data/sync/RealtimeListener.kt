@@ -28,6 +28,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import javax.inject.Inject
@@ -37,16 +39,14 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 
 /**
- * RealtimeListener — Enhanced bidirectional sync listener.
- * Handles instant updates from Supabase and propagates them to Room.
+ * RealtimeListener — Sole owner of the Supabase Realtime websocket.
  *
- * Teardown strategy:
- * The supabase-kt SDK runs internal coroutines for the WebSocket. If the parent
- * CoroutineScope is cancelled first, the SDK catches the CancellationException
- * internally and enters a 7-second reconnect loop. To avoid this, [stopListening]
- * tears down the channel and disconnects the Realtime engine in a fully detached
- * CoroutineScope BEFORE cancelling [syncJob]. This ensures the SDK's phx_leave
- * handshake completes while the parent scope is still active.
+ * Design rules:
+ *  1. ONLY this class subscribes to Supabase Realtime channels.
+ *  2. ONLY ProcessLifecycleOwner controls start/stop — no ViewModel.
+ *  3. We NEVER call realtime.disconnect() — the SDK manages the underlying
+ *     socket. We only unsubscribe/removeChannel for our channel.
+ *  4. A Mutex prevents start/stop races from lifecycle transitions.
  */
 @Singleton
 class RealtimeListener @Inject constructor(
@@ -66,127 +66,145 @@ class RealtimeListener @Inject constructor(
     private var syncChannel: RealtimeChannel? = null
     private var syncJob: Job? = null
 
+    /** Prevents start/stop from overlapping during rapid lifecycle transitions. */
+    private val lifecycleMutex = Mutex()
+
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
+                Log.d(TAG, "ProcessLifecycle → onStart. userId=${sessionManager.userId}")
                 if (sessionManager.userId != null) {
-                    startListening()
+                    scope.launch { startListeningSafe() }
                 }
             }
             override fun onStop(owner: LifecycleOwner) {
-                stopListening()
+                Log.d(TAG, "ProcessLifecycle → onStop")
+                scope.launch { stopListeningSafe() }
             }
         })
     }
 
-    /**
-     * Start listening to core tables for realtime updates.
-     */
+    // ── Public API (for manual calls from auth flows) ──────────────
+
     fun startListening() {
-        val userId = sessionManager.userId ?: return
-        
-        stopListening() // Ensure clean state
+        scope.launch { startListeningSafe() }
+    }
+
+    fun stopListening() {
+        scope.launch { stopListeningSafe() }
+    }
+
+    suspend fun stopListeningAndJoin() {
+        stopListeningSafe()
+    }
+
+    // ── Mutex-guarded entry points ─────────────────────────────────
+
+    private suspend fun startListeningSafe() = lifecycleMutex.withLock {
+        startListeningInternal()
+    }
+
+    private suspend fun stopListeningSafe() = lifecycleMutex.withLock {
+        teardownInternal()
+    }
+
+    // ── Core implementation ────────────────────────────────────────
+
+    private suspend fun startListeningInternal() {
+        val userId = sessionManager.userId
+        if (userId == null) {
+            Log.w(TAG, "startListeningInternal: No userId, skipping.")
+            return
+        }
+
+        // Already running? Don't duplicate.
+        if (syncJob?.isActive == true) {
+            Log.d(TAG, "startListeningInternal: syncJob already active, skipping.")
+            return
+        }
+
+        Log.i(TAG, "startListeningInternal: Launching sync for user=$userId")
 
         syncJob = scope.launch {
             while (isActive) {
                 try {
-                    // Explicitly cleanup old channel so we don't attach listeners to an already-joined channel
-                    try {
-                        syncChannel?.unsubscribe()
-                        syncChannel?.let { realtime.removeChannel(it) }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (ignored: Exception) {}
-
-                    // Check cancellation before creating a new channel
+                    // ── 1. Clean up any stale channel ────────────────
+                    cleanupChannelQuietly()
                     ensureActive()
 
-                    // Channel creation can NPE/ISE if the SDK's internal state was
-                    // invalidated after a clean disconnect. Catch and reset.
+                    // ── 2. Create a fresh channel ────────────────────
                     val channel: RealtimeChannel
                     try {
                         channel = realtime.channel(CHANNEL_SYNC)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        // Covers NullPointerException & IllegalStateException from
-                        // RealtimeImpl.channel() when internal maps are invalidated
-                        if (e is NullPointerException || e is IllegalStateException) {
-                            Log.w(TAG, "Realtime plugin state invalidated (${e.javaClass.simpleName}). Resetting...", e)
-                            try { realtime.disconnect() } catch (ignored: Exception) {}
-                            delay(3000)
-                            continue // Retry from the top of the while-loop
-                        }
-                        throw e // Re-throw anything else to the outer catch
+                        // SDK NPE/ISE can happen if internal state was invalidated
+                        Log.w(TAG, "Channel creation failed (${e.javaClass.simpleName}). Retrying in 5s...", e)
+                        delay(5000)
+                        continue
                     }
                     syncChannel = channel
 
-                    // 1. Listen to Playlists
+                    // ── 3. Register postgres change flows ────────────
                     channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                         table = "playlists"
                         filter("user_id", FilterOperator.EQ, userId)
                     }.onEach { handlePlaylistChange(it) }
-                     .catch { Log.e(TAG, "Playlists sync error", it) }
+                     .catch { e -> if (e !is CancellationException) Log.e(TAG, "Playlists sync error", e) else throw e }
                      .retryWhen { cause, _ -> if (cause is CancellationException) throw cause; delay(5000); true }
                      .launchIn(this)
 
-                    // 2. Listen to Playlist Tracks
                     channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                         table = "playlist_tracks"
                     }.onEach { handlePlaylistTrackChange(it) }
-                     .catch { Log.e(TAG, "PlaylistTracks sync error", it) }
+                     .catch { e -> if (e !is CancellationException) Log.e(TAG, "PlaylistTracks sync error", e) else throw e }
                      .retryWhen { cause, _ -> if (cause is CancellationException) throw cause; delay(5000); true }
                      .launchIn(this)
 
-                    // 3. Listen to Profiles
                     channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                         table = "profiles"
                         filter("id", FilterOperator.EQ, userId)
                     }.onEach { handleProfileChange(it) }
-                     .catch { Log.e(TAG, "Profiles sync error", it) }
+                     .catch { e -> if (e !is CancellationException) Log.e(TAG, "Profiles sync error", e) else throw e }
                      .retryWhen { cause, _ -> if (cause is CancellationException) throw cause; delay(5000); true }
                      .launchIn(this)
 
-                    // 4. Listen to Liked Songs
                     channel.postgresChangeFlow<PostgresAction>(schema = "public") {
                         table = "liked_songs"
                         filter("user_id", FilterOperator.EQ, userId)
                     }.onEach { handleLikeChange(it) }
-                     .catch { Log.e(TAG, "Likes sync error", it) }
+                     .catch { e -> if (e !is CancellationException) Log.e(TAG, "Likes sync error", e) else throw e }
                      .retryWhen { cause, _ -> if (cause is CancellationException) throw cause; delay(5000); true }
                      .launchIn(this)
 
-                    // Check cancellation before initiating network connection
                     ensureActive()
 
-                    // Ensure underlying realtime connection is active before subscribing
+                    // ── 4. Connect + Subscribe ───────────────────────
+                    Log.d(TAG, "Realtime status = ${realtime.status.value}")
                     if (realtime.status.value == Realtime.Status.DISCONNECTED) {
+                        Log.d(TAG, "Connecting Realtime engine...")
                         realtime.connect()
                     }
 
-                    // Check cancellation between connect and subscribe
                     ensureActive()
 
-                    Log.i(TAG, "Realtime engine started for user: $userId")
-                    // Block until subscribed and hold the connection. If the socket dies, it throws.
+                    Log.i(TAG, "Subscribing to channel '$CHANNEL_SYNC'...")
                     channel.subscribe(blockUntilSubscribed = true)
-                    
-                    // Suspend indefinitely until cancelled or socket aborts
+                    Log.i(TAG, "✅ Channel subscribed! Realtime is LIVE.")
+
+                    // ── 5. Hold connection until cancelled ───────────
                     awaitCancellation()
 
                 } catch (e: CancellationException) {
-                    // stopListening() already performed a clean teardown in a detached scope
-                    // BEFORE cancelling this job, so the SDK has already sent phx_leave.
-                    // Just log and rethrow — do NOT attempt cleanup here (scope is cancelled).
-                    Log.d(TAG, "Realtime listener cancelled, shutting down cleanly.")
+                    Log.d(TAG, "Sync coroutine cancelled. Clean shutdown.")
                     throw e
                 } catch (e: java.net.SocketException) {
-                    // Transient network drop — log as warning and reconnect gracefully
-                    Log.w(TAG, "Network drop, reconnecting in 5s...", e)
+                    Log.w(TAG, "Network drop. Reconnecting in 5s...", e)
                     cleanupChannelQuietly()
                     delay(5000)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Realtime Socket aborted or failed. Reconnecting in 5s...", e)
+                    Log.e(TAG, "Realtime error. Reconnecting in 5s...", e)
                     cleanupChannelQuietly()
                     delay(5000)
                 }
@@ -195,79 +213,36 @@ class RealtimeListener @Inject constructor(
     }
 
     /**
-     * Cleanly tears down the Realtime connection BEFORE cancelling the coroutine job.
-     *
-     * This is the critical fix: the supabase-kt SDK's internal coroutines are children
-     * of the Realtime engine's scope. If we cancel our job first, the SDK catches the
-     * CancellationException and enters a 7s reconnect loop. By disconnecting in a
-     * detached scope first, the SDK can send phx_leave and shut down gracefully.
+     * Tears down the channel only — does NOT call realtime.disconnect().
+     * The SDK manages its own socket lifecycle; forcibly disconnecting it
+     * causes CancellationException in its internal coroutines, which triggers
+     * the 7-second reconnect loop.
      */
-    fun stopListening() {
+    private suspend fun teardownInternal() {
         val channel = syncChannel
         val job = syncJob
 
-        // Nothing to stop
         if (job == null && channel == null) return
+
+        Log.d(TAG, "teardownInternal: removing channel...")
 
         syncChannel = null
         syncJob = null
 
-        Log.d(TAG, "stopListening: tearing down Realtime asynchronously...")
-
-        // Tear down asynchronously so we don't block the Main thread (onStop).
-        // We still follow the rule of disconnecting BEFORE cancelling the job to
-        // avoid the SDK catching CancellationException and entering a reconnect loop.
-        scope.launch {
-            try {
-                channel?.unsubscribe()
-                channel?.let { realtime.removeChannel(it) }
-                realtime.disconnect()
-                Log.d(TAG, "Realtime teardown complete.")
-            } catch (e: Exception) {
-                Log.w(TAG, "Realtime teardown encountered error (non-fatal)", e)
-            } finally {
-                // NOW cancel the sync job — the SDK has already fully disconnected
-                job?.cancel()
-            }
-        }
-    }
-
-    /**
-     * Suspending variant of [stopListening] that waits for the teardown to complete.
-     * Use from ViewModel.onCleared() or other lifecycle-aware components.
-     */
-    suspend fun stopListeningAndJoin() {
-        val channel = syncChannel
-        val job = syncJob
-
-        if (job == null && channel == null) return
-
-        Log.d(TAG, "stopListeningAndJoin: tearing down Realtime and waiting...")
-
-        val teardownJob = CoroutineScope(Dispatchers.IO).launch {
-            try {
-                channel?.unsubscribe()
-                channel?.let { realtime.removeChannel(it) }
-                realtime.disconnect()
-                Log.d(TAG, "Realtime teardown complete.")
-            } catch (e: Exception) {
-                Log.w(TAG, "Realtime teardown encountered error (non-fatal)", e)
-            }
+        // 1. Gracefully unsubscribe + remove the channel
+        try {
+            channel?.unsubscribe()
+            channel?.let { realtime.removeChannel(it) }
+            Log.d(TAG, "Channel removed successfully.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Channel cleanup error (non-fatal)", e)
         }
 
-        // Wait for the phx_leave to actually transmit before proceeding
-        teardownJob.join()
-
+        // 2. NOW cancel the sync coroutine — after the channel is gone
         job?.cancel()
-        syncJob = null
-        syncChannel = null
+        Log.d(TAG, "syncJob cancelled.")
     }
 
-    /**
-     * Best-effort cleanup of the current channel during error recovery.
-     * Called from within the active (non-cancelled) reconnect loop, so the scope
-     * is still alive and we can call unsubscribe() normally.
-     */
     private suspend fun cleanupChannelQuietly() {
         try {
             syncChannel?.unsubscribe()
@@ -275,6 +250,8 @@ class RealtimeListener @Inject constructor(
         } catch (ignored: Exception) {}
         syncChannel = null
     }
+
+    // ── Change handlers ────────────────────────────────────────────
 
     private suspend fun handlePlaylistChange(action: PostgresAction) {
         when (action) {
@@ -325,8 +302,6 @@ class RealtimeListener @Inject constructor(
         if (action is PostgresAction.Update) {
             val dto = json.decodeFromJsonElement<ProfileDto>(action.record)
             profileDao.insertProfile(dto.mapToProfileEntity())
-            
-            // Sync local session with remote profile change
             sessionManager.updateProfileMetadata(
                 displayName = dto.username ?: dto.accountHolderName,
                 avatarUrl = dto.avatarUrl

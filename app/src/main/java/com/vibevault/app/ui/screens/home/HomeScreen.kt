@@ -31,7 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.data.local.entity.PlaylistEntity
-import com.vibevault.app.data.remote.dto.SpotifySearchResponse
+import com.vibevault.app.ui.components.UserAvatar
 import com.vibevault.app.ui.theme.*
 import com.vibevault.app.ui.viewmodel.HomeViewModel
 
@@ -40,7 +40,9 @@ import com.vibevault.app.ui.viewmodel.HomeViewModel
 fun HomeScreen(
     onTrackClick: (Track) -> Unit,
     onPlaylistClick: (String) -> Unit,
+    onAlbumClick: (String) -> Unit,
     onProfileClick: () -> Unit,
+    onArtistClick: (String) -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
@@ -54,7 +56,10 @@ fun HomeScreen(
     val newReleases by viewModel.newReleases.collectAsStateWithLifecycle()
     val topArtists by viewModel.topArtists.collectAsStateWithLifecycle()
     val top50Tracks by viewModel.top50Tracks.collectAsStateWithLifecycle()
+    val savedAlbums by viewModel.savedAlbums.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val userAvatarUrl by viewModel.userAvatarUrl.collectAsStateWithLifecycle()
+    val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -68,16 +73,12 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(VibePrimary, VibePrimaryLight)))
-                    .clickable { onProfileClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("D", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
-            }
+            UserAvatar(
+                avatarUrl = userAvatarUrl,
+                displayName = userDisplayName,
+                size = 38.dp,
+                modifier = Modifier.clickable { onProfileClick() }
+            )
             Spacer(Modifier.width(12.dp))
             ChipFilter("All", true)
             Spacer(Modifier.width(8.dp))
@@ -130,11 +131,14 @@ fun HomeScreen(
                     newReleases = newReleases,
                     topArtists = topArtists,
                     playlists = playlists,
+                    savedAlbums = savedAlbums,
                     top50Tracks = top50Tracks,
                     onTrackClick = { viewModel.playTrack(it); onTrackClick(it) },
                     onPlaylistClick = onPlaylistClick,
+                    onAlbumClick = onAlbumClick,
                     onSearchClick = { /* Scroll to top or focus search */ },
-                    onProfileClick = onProfileClick
+                    onProfileClick = onProfileClick,
+                    onArtistClick = onArtistClick
                 )
             }
         }
@@ -210,11 +214,14 @@ fun HomeFeed(
     newReleases: List<Track>,
     topArtists: List<com.vibevault.app.domain.model.Artist>,
     playlists: List<PlaylistEntity>,
+    savedAlbums: List<com.vibevault.app.domain.model.Album>,
     top50Tracks: List<Track> = emptyList(),
     onTrackClick: (Track) -> Unit,
     onPlaylistClick: (String) -> Unit,
+    onAlbumClick: (String) -> Unit,
     onSearchClick: () -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onArtistClick: (String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -273,7 +280,7 @@ fun HomeFeed(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(topArtists) { artist ->
-                        ArtistCard(artist, onClick = { /* Navigate to Artist */ })
+                        ArtistCard(artist, onClick = { onArtistClick(artist.name) })
                     }
                 }
             }
@@ -312,6 +319,21 @@ fun HomeFeed(
                 ) {
                     items(playlists) { playlist ->
                         PlaylistCard(playlist, onClick = { onPlaylistClick(playlist.id) })
+                    }
+                }
+            }
+        }
+        
+        // Your Albums
+        if (savedAlbums.isNotEmpty()) {
+            item {
+                SectionHeader("Your Albums", Modifier.padding(top = 32.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(savedAlbums) { album ->
+                        AlbumCardHome(album, onClick = { onAlbumClick(album.id) })
                     }
                 }
             }
@@ -469,6 +491,45 @@ fun PlaylistCard(playlist: PlaylistEntity, onClick: () -> Unit) {
 }
 
 @Composable
+fun AlbumCardHome(album: com.vibevault.app.domain.model.Album, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(148.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = VibeSurfaceElevated,
+            modifier = Modifier.size(148.dp)
+        ) {
+            if (album.coverUrl != null) {
+                AsyncImage(
+                    model = album.coverUrl,
+                    contentDescription = album.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = album.name,
+            color = VibeOnSurface,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = "Album • ${album.artistName}",
+            color = VibeOnSurfaceDim,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 fun PlaylistCardDomain(playlist: com.vibevault.app.domain.model.Playlist, onClick: () -> Unit) {
     Column(
         modifier = Modifier
@@ -567,86 +628,13 @@ fun SearchHeader(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-private fun SearchResults(searchResponse: SpotifySearchResponse?, onTrackClick: (Track) -> Unit) {
+private fun SearchResults(tracks: List<Track>?, onTrackClick: (Track) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(bottom = 120.dp)) {
-        searchResponse?.tracks?.items?.let { tracks ->
-            item { SectionHeader("Tracks") }
-            items(tracks) { dto ->
-                val track = Track(
-                    id = dto.id,
-                    title = dto.name,
-                    artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                    album = dto.album?.name ?: "Unknown",
-                    albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                    audioUrl = dto.previewUrl,
-                    durationMs = dto.durationMs,
-                    isLiked = false,
-                    source = "spotify",
-                    externalUrl = dto.externalUrls["spotify"]
-                )
-                TrackRow(track, onClick = { onTrackClick(track) })
-            }
-        }
-
-        searchResponse?.artists?.items?.let { artists ->
-            item { SectionHeader("Artists") }
-            items(artists) { dto ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = dto.images.firstOrNull()?.url,
-                        contentDescription = dto.name,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = dto.name,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = VibeOnSurface
-                    )
-                }
-            }
-        }
-
-        searchResponse?.albums?.items?.let { albums ->
-            item { SectionHeader("Albums") }
-            items(albums) { dto ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = dto.images.firstOrNull()?.url,
-                        contentDescription = dto.name,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(6.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = dto.name,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = VibeOnSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = dto.artists.firstOrNull()?.name ?: "Unknown",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = VibeOnSurfaceDim
-                        )
-                    }
+        tracks?.let { trackList ->
+            if (trackList.isNotEmpty()) {
+                item { SectionHeader("Tracks") }
+                items(trackList) { track ->
+                    TrackRow(track, onClick = { onTrackClick(track) })
                 }
             }
         }

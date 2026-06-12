@@ -1,14 +1,10 @@
 package com.vibevault.app.ui
 
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import com.vibevault.app.ui.viewmodel.AuthViewModel
-import com.vibevault.app.core.session.SessionManager
-import com.vibevault.app.data.sync.RealtimeSyncManager
-import javax.inject.Inject
 import androidx.activity.ComponentActivity
-
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -26,27 +22,38 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.ui.components.MiniPlayer
 import com.vibevault.app.ui.navigation.AppNavHost
 import com.vibevault.app.ui.navigation.Screen
 import com.vibevault.app.ui.navigation.VibeBottomBar
 import com.vibevault.app.ui.theme.VibePrimary
 import com.vibevault.app.ui.theme.VibeVaultTheme
+import com.vibevault.app.ui.viewmodel.AuthViewModel
 import com.vibevault.app.ui.viewmodel.MainViewModel
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * MainActivity — Single-activity with Scaffold, bottom nav,
@@ -61,24 +68,19 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var sessionManager: SessionManager
 
-    @Inject
-    lateinit var realtimeSyncManager: RealtimeSyncManager
+    // Note: RealtimeListener handles real-time sync via ProcessLifecycleOwner.
+    // RealtimeSyncManager has been removed to avoid duplicate subscriptions.
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d("VibeVault", "MainActivity: onCreate started")
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         
-        // Start PlaybackService so it can intercept app termination (swipe from recents)
-        // and pause Spotify App Remote properly.
-        startService(Intent(this, com.vibevault.app.player.service.PlaybackService::class.java))
+        // Start PlaybackService so it can intercept app termination
+        startService(Intent(this, com.vibevault.app.player.PlaybackService::class.java))
         
         Log.d("VibeVault", "MainActivity: super.onCreate finished")
-        
-        // Note: RealtimeListener handles real-time sync via ProcessLifecycleOwner.
-        // Do NOT also start RealtimeSyncManager here — both use the same Realtime
-        // instance and will conflict, causing 7s reconnect loops.
-        
+
         val mainViewModel: MainViewModel by viewModels()
         val authViewModel: AuthViewModel by viewModels()
         Log.d("VibeVault", "MainActivity: ViewModels initialized")
@@ -104,6 +106,21 @@ class MainActivity : ComponentActivity() {
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
+
+                val context = LocalContext.current
+                var mediaController by remember { mutableStateOf<MediaController?>(null) }
+
+                LaunchedEffect(Unit) {
+                    val sessionToken = SessionToken(context, ComponentName(context, com.vibevault.app.player.PlaybackService::class.java))
+                    val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+                    controllerFuture.addListener({
+                        mediaController = controllerFuture.get()
+                    }, ContextCompat.getMainExecutor(context))
+                }
+
+                LaunchedEffect(mediaController) {
+                    mediaController?.let { playerViewModel.setMediaController(it) }
+                }
 
                 if (startDestination == null) {
                     // ── Spotify-style Splash Screen ──────────────────
@@ -135,7 +152,7 @@ class MainActivity : ComponentActivity() {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         bottomBar = {
-                            if (currentRoute != Screen.Player.route && currentRoute != Screen.Login.route) {
+                            if (currentRoute != Screen.Player.route && currentRoute != Screen.Login.route && currentRoute != Screen.SpotifyLogin.route) {
                                 Column(modifier = Modifier.navigationBarsPadding()) {
                                     // MiniPlayer sits above the bottom nav
                                     if (currentTrack != null) {

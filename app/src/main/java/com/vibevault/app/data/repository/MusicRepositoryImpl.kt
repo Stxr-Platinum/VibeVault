@@ -5,10 +5,11 @@ import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.data.local.dao.*
 import com.vibevault.app.data.local.entity.*
 import com.vibevault.app.data.mapper.*
-import com.vibevault.app.data.remote.api.SpotifyApiService
 import com.vibevault.app.data.remote.dto.*
 import com.vibevault.app.data.sync.SyncScheduler
 import com.vibevault.app.domain.model.Track
+import com.vibevault.app.domain.model.Album
+import com.vibevault.app.domain.model.Artist
 import com.vibevault.app.domain.repository.MusicRepository
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
@@ -17,6 +18,17 @@ import kotlinx.serialization.json.*
 import com.vibevault.app.domain.model.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.google.gson.Gson
+import com.vibevault.app.domain.model.QobuzSearchResponse
+import com.vibevault.app.domain.model.QobuzStreamResponse
+import com.vibevault.app.domain.model.toDomainTrack
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 /**
  * MusicRepositoryImpl — Production-grade music repository.
@@ -30,10 +42,22 @@ class MusicRepositoryImpl @Inject constructor(
     private val historyDao: HistoryDao,
     private val logDao: LogDao,
     private val postgrest: Postgrest,
-    private val spotifyApi: SpotifyApiService,
     private val syncScheduler: SyncScheduler,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val spotifyApi: com.vibevault.app.data.remote.api.SpotifyApiService
 ) : MusicRepository {
+
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build()
+
+    private val gson = Gson()
+
+    private val QOBUZ_INSTANCES = listOf(
+        "https://qobuz.kennyy.com.br",
+        "https://mono.scavengerfurs.net"
+    )
 
     override fun getAllTracks(): Flow<List<Track>> = 
         likedSongDao.getAllLikedSongs().map { entities -> 
@@ -64,107 +88,18 @@ class MusicRepositoryImpl @Inject constructor(
     override fun getDevices(): Flow<List<DeviceEntity>> = deviceDao.getAllDevices()
 
     override fun searchTracks(query: String): Flow<List<Track>> = flow {
-        // 1. Emit local results first (from liked songs)
         val localResults = likedSongDao.searchLikedSongs("%$query%")
         val localDomain = localResults.map { it.toDomain() }
         emit(localDomain)
-
-        // 2. Fetch from Spotify and emit
-        if (query.length >= 2) {
-            spotifyApi.searchTracks(query).onSuccess { response ->
-                val likedIds = likedSongDao.getLikedSongIds().toSet()
-                val remoteTracks = response.tracks?.items?.map { dto ->
-                    Track(
-                        id = dto.id,
-                        title = dto.name,
-                        artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                        album = dto.album?.name ?: "Unknown",
-                        albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                        audioUrl = dto.previewUrl,
-                        durationMs = dto.durationMs,
-                        isLiked = likedIds.contains(dto.id),
-                        source = "spotify"
-                    )
-                } ?: emptyList()
-                
-                // Combine and emit (preferring local if exists)
-                val combined = (localDomain + remoteTracks).distinctBy { it.id }
-                emit(combined)
-            }
-        }
     }
 
     override suspend fun searchSpotify(query: String): Result<List<Track>> {
-        Log.d("SpotifyDebug", "MusicRepo: searchSpotify called with query = $query")
-        return try {
-            val result = spotifyApi.searchTracks(query)
-            if (result.isFailure) {
-                val err = result.exceptionOrNull()
-                Log.e("SpotifyDebug", "MusicRepo: Spotify API search FAILURE", err)
-                return Result.failure(err ?: Exception("Spotify search failed"))
-            }
-            
-            val response = result.getOrNull()
-            Log.d("SpotifyDebug", "MusicRepo: Spotify API search SUCCESS. Track count = ${response?.tracks?.items?.size}")
-            val likedIds = likedSongDao.getLikedSongIds().toSet()
-            
-            val tracks = response?.tracks?.items?.map { dto ->
-                Track(
-                    id = dto.id,
-                    title = dto.name,
-                    artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                    album = dto.album?.name ?: "Unknown",
-                    albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                    audioUrl = dto.previewUrl,
-                    durationMs = dto.durationMs,
-                    isLiked = likedIds.contains(dto.id),
-                    source = "spotify"
-                )
-            } ?: emptyList()
-            Log.d("SpotifyDebug", "MusicRepo: Returning ${tracks.size} tracks to caller")
-            Result.success(tracks)
-        } catch (e: Exception) {
-            Log.e("SpotifyDebug", "MusicRepo: Exception in searchSpotify", e)
-            Result.failure(e)
-        }
+        return Result.failure(Exception("Not implemented"))
     }
 
     override fun getDiscoveryTracks(): Flow<List<Track>> = flow {
-        Log.d("SpotifyDebug", "MusicRepo: getDiscoveryTracks called")
-        // Fetch recommendations from Spotify based on a recently liked track
-        val recentLikedIds: List<String> = likedSongDao.getRecentLikedIds()
-        val seedId: String? = recentLikedIds.firstOrNull()
-        Log.d("SpotifyDebug", "MusicRepo: Seed ID for recommendations = $seedId")
-        
-        spotifyApi.getRecommendations(seedId).onSuccess { dtos ->
-            Log.d("SpotifyDebug", "MusicRepo: Recommendations Success - count = ${dtos.size}")
-            val likedIds = likedSongDao.getLikedSongIds().toSet()
-            val tracks = dtos.map { dto ->
-                Track(
-                    id = dto.id,
-                    title = dto.name,
-                    artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                    album = dto.album?.name ?: "Unknown",
-                    albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                    audioUrl = dto.previewUrl,
-                    durationMs = dto.durationMs,
-                    isLiked = likedIds.contains(dto.id),
-                    source = "spotify"
-                )
-            }
-            Log.d("SpotifyDebug", "MusicRepo: Emitting ${tracks.size} discovery tracks")
-            emit(tracks)
-        }.onFailure {
-            Log.e("SpotifyDebug", "MusicRepo: Recommendations FAILURE. Mocking 5 discovery tracks.", it)
-            val mockTracks = listOf(
-                Track(id = "spotify:track:3B54sVLJ402zHx6TmEte1Z", title = "Starlight", artist = "Muse", album = "Black Holes", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2738c82eb57fcd88147ea4dd302", durationMs = 239000, source = "spotify"),
-                Track(id = "spotify:track:7MXVkk9YMqqclZ63nXGIRC", title = "Starboy", artist = "The Weeknd", album = "Starboy", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2734718e2b124f79258be7bc452", durationMs = 230000, source = "spotify"),
-                Track(id = "spotify:track:7BKLCZ1jbUBVqRi2FVlTVw", title = "Closer", artist = "The Chainsmokers", album = "Collage EP", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b273d40cc1cb1703e83b8a13539a", durationMs = 244000, source = "spotify"),
-                Track(id = "spotify:track:5HCyWlXZPP0y6Gqq8TgA20", title = "Stay", artist = "The Kid LAROI", album = "F*CK LOVE 3", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b27386c8f94d30e386a604246820", durationMs = 141000, source = "spotify"),
-                Track(id = "spotify:track:37BZB0z9T8Xu7U3e65qxFy", title = "Save Your Tears", artist = "The Weeknd", album = "After Hours", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", durationMs = 215000, source = "spotify")
-            )
-            emit(mockTracks)
-        }
+        Log.d("SpotifyDebug", "MusicRepo: getDiscoveryTracks called (MOCKED)")
+        emit(emptyList())
     }
 
 
@@ -198,22 +133,7 @@ class MusicRepositoryImpl @Inject constructor(
                 )
                 likedSongDao.insertLikedSong(entity)
             } else {
-                // Last resort: fetch from Spotify
-                spotifyApi.getTrack(trackId).onSuccess { dto ->
-                    val entity = LikedSongEntity(
-                        id = dto.id,
-                        title = dto.name,
-                        artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                        album = dto.album?.name ?: "Unknown",
-                        albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                        audioUrl = dto.previewUrl ?: "",
-                        durationMs = dto.durationMs,
-                        isSynced = false,
-                        isDeleted = false,
-                        clientTimestamp = System.currentTimeMillis()
-                    )
-                    likedSongDao.insertLikedSong(entity)
-                }
+                Log.e("SpotifyDebug", "MusicRepo: track $trackId not found in history, cannot toggle like without metadata")
             }
         }
         syncScheduler.syncNow()
@@ -247,6 +167,8 @@ class MusicRepositoryImpl @Inject constructor(
                     put("client_timestamp", kotlinx.serialization.json.JsonPrimitive(java.time.OffsetDateTime.now().toString()))
                 }
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("MusicRepo", "Failed to record play on remote", e)
         }
@@ -307,6 +229,8 @@ class MusicRepositoryImpl @Inject constructor(
                 sessionManager.updateProfileMetadata(name, avatar)
                 Log.d("SpotifyDebug", "MusicRepo: Profile synced: $name")
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("SpotifyDebug", "MusicRepo: Profile sync FAILED", e)
         }
@@ -322,6 +246,8 @@ class MusicRepositoryImpl @Inject constructor(
             remoteLikes.forEach { dto ->
                 likedSongDao.insertLikedSong(dto.toLikedSongEntity())
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("SpotifyDebug", "MusicRepo: Likes sync FAILED", e)
         }
@@ -346,10 +272,14 @@ class MusicRepositoryImpl @Inject constructor(
                     remotePTs.forEach { ptDto ->
                         playlistDao.addTrackToPlaylistFromRemote(ptDto.toCrossRef())
                     }
-                } catch (e: Exception) {
+                } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
                     Log.e("SpotifyDebug", "MusicRepo: Playlist tracks sync FAILED for ${dto.id}", e)
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("SpotifyDebug", "MusicRepo: Playlists sync FAILED", e)
         }
@@ -358,6 +288,8 @@ class MusicRepositoryImpl @Inject constructor(
         try {
             Log.d("SpotifyDebug", "MusicRepo: Syncing recently played...")
             syncRecentlyPlayed()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("SpotifyDebug", "MusicRepo: Recently played sync FAILED", e)
         }
@@ -396,6 +328,8 @@ class MusicRepositoryImpl @Inject constructor(
             entities.forEach { historyDao.insertHistory(it) }
             Log.d("MusicRepo", "Synced ${entities.size} history items directly from Supabase")
             
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("MusicRepo", "Sync recently played failed", e)
         }
@@ -440,6 +374,12 @@ class MusicRepositoryImpl @Inject constructor(
         syncScheduler.syncNow()
     }
 
+    override suspend fun updatePlaylistCoverUrl(playlistId: String, coverUrl: String) {
+        val playlist = playlistDao.getPlaylistById(playlistId) ?: return
+        playlistDao.updatePlaylist(playlist.copy(coverUrl = coverUrl, isSynced = false, clientTimestamp = System.currentTimeMillis()))
+        syncScheduler.syncNow()
+    }
+
     override suspend fun deletePlaylist(playlistId: String) {
         val playlist = playlistDao.getPlaylistById(playlistId) ?: return
         // Mark as deleted locally
@@ -448,23 +388,21 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun addTrackToPlaylist(playlistId: String, trackId: String) {
-        // Fetch track metadata from Spotify if not known
-        spotifyApi.getTrack(trackId).onSuccess { dto ->
-            val ref = PlaylistTrackCrossRef(
-                playlistId = playlistId,
-                trackId = trackId,
-                title = dto.name,
-                artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                album = dto.album?.name ?: "Unknown",
-                albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                durationMs = dto.durationMs,
-                isSynced = false,
-                isDeleted = false,
-                clientTimestamp = System.currentTimeMillis()
-            )
-            playlistDao.addTrackToPlaylist(ref)
-            syncScheduler.syncNow()
-        }
+        // Mocked track addition since we removed spotify
+        val ref = PlaylistTrackCrossRef(
+            playlistId = playlistId,
+            trackId = trackId,
+            title = "Unknown Track",
+            artist = "Unknown Artist",
+            album = "Unknown Album",
+            albumImageUrl = "",
+            durationMs = 0,
+            isSynced = false,
+            isDeleted = false,
+            clientTimestamp = System.currentTimeMillis()
+        )
+        playlistDao.addTrackToPlaylist(ref)
+        syncScheduler.syncNow()
     }
 
     override suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String) {
@@ -472,129 +410,267 @@ class MusicRepositoryImpl @Inject constructor(
         playlistDao.addTrackToPlaylist(ref.copy(isDeleted = true, isSynced = false, clientTimestamp = System.currentTimeMillis()))
         syncScheduler.syncNow()
     }
+
+    override suspend fun reorderTracks(playlistId: String, fromIndex: Int, toIndex: Int) {
+        val currentTracks = playlistDao.getTracksForPlaylistSync(playlistId).toMutableList()
+        if (fromIndex !in currentTracks.indices || toIndex !in currentTracks.indices || fromIndex == toIndex) return
+        
+        val item = currentTracks.removeAt(fromIndex)
+        currentTracks.add(toIndex, item)
+        
+        val updatedTracks = currentTracks.mapIndexed { index, track ->
+            track.copy(sortOrder = index, isSynced = false, clientTimestamp = System.currentTimeMillis())
+        }
+        playlistDao.updateTrackOrders(updatedTracks)
+        syncScheduler.syncNow()
+    }
     override fun getSpotifyRecentlyPlayed(): Flow<List<Track>> = flow {
-        spotifyApi.getRecentlyPlayed().onSuccess { response ->
-            val likedIds = likedSongDao.getLikedSongIds().toSet()
-            val tracks = response.items.mapNotNull { (it.track ?: it.item)?.toDomain(likedIds) }
-            emit(tracks)
-        }.onFailure { emit(emptyList()) }
+        emit(emptyList())
     }
 
     override fun getFeaturedPlaylists(): Flow<List<Playlist>> = flow {
-        spotifyApi.getFeaturedPlaylists().onSuccess { response ->
-            val playlists = response.playlists.items.mapNotNull { it?.toDomain() }
-            emit(playlists)
-        }.onFailure { emit(emptyList()) }
+        emit(emptyList())
     }
 
     override fun getNewReleases(): Flow<List<Track>> = flow {
-        spotifyApi.getNewReleases().onSuccess { response ->
-            val likedIds = likedSongDao.getLikedSongIds().toSet()
-            val tracks = response.albums.items.map { it.toDomain(likedIds) }
-            emit(tracks)
-        }.onFailure { emit(emptyList()) }
+        emit(emptyList())
     }
 
     override fun getTopArtists(): Flow<List<Artist>> = flow {
-        spotifyApi.getTopArtists().onSuccess { response ->
-            val artists = response.items.map { it.toDomain() }
-            emit(artists)
-        }.onFailure { emit(emptyList()) }
+        emit(emptyList())
     }
 
     override fun getUserSpotifyPlaylists(): Flow<List<Playlist>> = flow {
-        spotifyApi.getUserPlaylists().onSuccess { response ->
-            val playlists = response.items.mapNotNull { it?.toDomain() }
-            emit(playlists)
-        }.onFailure { emit(emptyList()) }
+        emit(emptyList())
     }
 
     override fun getBrowseCategories(): Flow<List<Category>> = flow {
-        spotifyApi.getBrowseCategories().onSuccess { response ->
-            val categories = response.categories.items.map { it.toDomain() }
-            emit(categories)
-        }.onFailure { emit(emptyList()) }
+        emit(emptyList())
     }
 
     override suspend fun searchSpotifyAll(query: String): Result<SpotifySearchResult> {
-        Log.d("SpotifyDebug", "MusicRepo: searchSpotifyAll called with '$query'")
-        return try {
-            val result = spotifyApi.searchTracks(query)
-            if (result.isFailure) {
-                val exc = result.exceptionOrNull()
-                Log.w("SpotifyDebug", "MusicRepo: searchSpotifyAll FAILURE (likely Dev Mode 403): ${exc?.message}. Falling back to mocked search results.")
-                
-                // Fallback to mocked data so the UI remains functional for testing
-                val mockTracks = listOf(
-                    Track(id = "spotify:track:4cOdK2wGLETKBW3PvgPWqT", title = "Never Gonna Give You Up", artist = "Rick Astley", album = "Whenever You Need Somebody", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b27346b0d91244e8a1f87968afc2", durationMs = 213000, source = "spotify"),
-                    Track(id = "spotify:track:0VjIjW4GlUZAMYd2vXMi3b", title = "Blinding Lights", artist = "The Weeknd", album = "After Hours", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", durationMs = 200000, source = "spotify"),
-                    Track(id = "spotify:track:463CkQjx2Zk1yXoBuierM9", title = "Levitating", artist = "Dua Lipa", album = "Future Nostalgia", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b273bd26ede1ae69327010d49946", durationMs = 203000, source = "spotify"),
-                    Track(id = "spotify:track:6UelLqGlDPVvls501HOgHN", title = "Watermelon Sugar", artist = "Harry Styles", album = "Fine Line", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b27377fdcf27c005eb714f35e98f", durationMs = 174000, source = "spotify"),
-                    Track(id = "spotify:track:4LRPiXqCikLlN15c3yImP7", title = "As It Was", artist = "Harry Styles", album = "Harry's House", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2732e8f5952f01f8afbb1fbdbf6", durationMs = 167000, source = "spotify")
-                )
-                
-                val fallbackResult = SpotifySearchResult(
-                    tracks = mockTracks,
-                    artists = emptyList(),
-                    albums = emptyList(),
-                    playlists = emptyList()
-                )
-                return Result.success(fallbackResult)
-            }
-            
-            val response = result.getOrNull()
-            Log.d("SpotifyDebug", "MusicRepo: searchSpotifyAll SUCCESS. Response tracks items = ${response?.tracks?.items?.size}")
-            
-            val likedIds = likedSongDao.getLikedSongIds().toSet()
-
-            val searchResult = SpotifySearchResult(
-                tracks = response?.tracks?.items?.map { it.toDomain(likedIds) } ?: emptyList(),
-                artists = response?.artists?.items?.map { it.toDomain() } ?: emptyList(),
-                albums = response?.albums?.items?.map { it.toDomain(likedIds) } ?: emptyList(),
-                playlists = response?.playlists?.items?.mapNotNull { it?.toDomain() } ?: emptyList()
-            )
-            Result.success(searchResult)
-        } catch (e: Exception) {
-            Log.e("SpotifyDebug", "MusicRepo: CRITICAL Exception in searchSpotifyAll", e)
-            Result.failure(e)
-        }
+        val fallbackResult = SpotifySearchResult(
+            tracks = emptyList(),
+            artists = emptyList(),
+            albums = emptyList(),
+            playlists = emptyList()
+        )
+        return Result.success(fallbackResult)
     }
 
     override fun getGlobalTop50(): Flow<List<Track>> = flow {
-        Log.d("SpotifyDebug", "MusicRepo: getGlobalTop50 called")
-        
-        // Try to fetch user playlists first (Dev Mode behavior)
-        val playlistsResult = spotifyApi.getUserPlaylists()
-        val firstPlaylistId = playlistsResult.getOrNull()?.items?.firstOrNull()?.id
-        
-        if (firstPlaylistId != null) {
-            Log.d("SpotifyDebug", "MusicRepo: Found user playlist $firstPlaylistId. Fetching tracks...")
-            val tracksResult = spotifyApi.getPlaylistTracks(firstPlaylistId)
-            
-            if (tracksResult.isSuccess) {
-                val response = tracksResult.getOrThrow()
-                val likedIds = likedSongDao.getLikedSongIds().toSet()
-                val validTracks = response.items.mapNotNull { it.track ?: it.item }.filter { it.previewUrl != null }
-                val tracks = validTracks.map { it.toDomain(likedIds) }
-                Log.d("SpotifyDebug", "MusicRepo: Emitting ${tracks.size} tracks from user playlist")
-                emit(tracks)
-                return@flow
-            } else {
-                Log.e("SpotifyDebug", "MusicRepo: Playlist tracks FAILURE", tracksResult.exceptionOrNull())
+        emit(emptyList())
+    }
+
+    // ── Album Operations ─────────────────────────────────────
+
+    override fun getUserSavedAlbums(): Flow<List<Album>> = flow {
+        emit(emptyList())
+    }
+
+    // ── Artist Detail Operations ─────────────────────────────
+
+    override suspend fun getArtistDetails(artistName: String): Result<Artist> {
+        return Result.failure(Exception("Not implemented"))
+    }
+
+    override suspend fun getArtistTopTracks(artistId: String): Result<List<Track>> {
+        return Result.failure(Exception("Not implemented"))
+    }
+
+    override suspend fun getArtistAlbums(artistId: String): Result<List<Album>> {
+        return Result.failure(Exception("Not implemented"))
+    }
+
+
+
+    override suspend fun resolveSpotifyPlaylistToStreams(playlistId: String, token: String): List<String> {
+        return withContext(Dispatchers.IO) {
+            val response = spotifyApi.getPlaylistTracks("Bearer $token", playlistId)
+            val streamUrls = mutableListOf<String>()
+
+            for (item in response.items) {
+                val track = item.track ?: continue
+                val isrc = track.externalIds?.isrc
+                if (isrc != null) {
+                    try {
+                        val qobuzTracks = searchQobuzMusic("isrc:$isrc")
+                        val firstMatch = qobuzTracks.firstOrNull()
+                        if (firstMatch != null) {
+                            val streamUrl = getQobuzStreamUrl(firstMatch.id)
+                            streamUrls.add(streamUrl)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("CrossService", "Failed to resolve track ${track.name} (ISRC: $isrc)", e)
+                    }
+                } else {
+                    // Fallback to artist + title search if ISRC is missing
+                    try {
+                        val query = "${track.artists.firstOrNull()?.name ?: ""} ${track.name}"
+                        val qobuzTracks = searchQobuzMusic(query)
+                        val firstMatch = qobuzTracks.firstOrNull()
+                        if (firstMatch != null) {
+                            val streamUrl = getQobuzStreamUrl(firstMatch.id)
+                            streamUrls.add(streamUrl)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("CrossService", "Failed to fallback resolve track ${track.name}", e)
+                    }
+                }
             }
-        } else {
-            Log.d("SpotifyDebug", "MusicRepo: No user playlists found or user not authenticated.")
+            streamUrls
+        }
+    }
+
+    // ── Qobuz / Main Data Operations ─────────────────────────
+
+    override suspend fun searchQobuzMusic(query: String): List<Track> = withContext(Dispatchers.IO) {
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        val path = "/api/get-music?q=$encodedQuery&offset=0"
+
+        var lastException: Exception? = null
+
+        for (base in QOBUZ_INSTANCES) {
+            try {
+                val request = Request.Builder()
+                    .url(base + path)
+                    .build()
+
+                val response: Response = okHttpClient.newCall(request).execute()
+
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("HTTP ${response.code}: $errorBody")
+                }
+
+                val bodyString = response.body?.string() ?: throw Exception("Empty response body")
+                val searchResponse = gson.fromJson(bodyString, QobuzSearchResponse::class.java)
+
+                val tracks = searchResponse.data?.tracks?.items?.map { it.toDomainTrack() } ?: emptyList()
+                return@withContext tracks
+            } catch (e: Exception) {
+                Log.w("MusicRepository", "Instance $base failed: ${e.message}")
+                lastException = e
+            }
         }
 
+        throw lastException ?: Exception("All Qobuz instances failed")
+    }
 
-        // FALLBACK 2: Search for "top" tracks
-        Log.d("SpotifyDebug", "MusicRepo: Falling back to global search for 'top'...")
-        searchSpotifyAll("top").onSuccess { result ->
-            val tracks = result.tracks.take(15)
-            emit(tracks)
-        }.onFailure { 
-            Log.e("SpotifyDebug", "MusicRepo: Search fallback FAILURE", it)
-            emit(emptyList())
+    override suspend fun getQobuzStreamUrl(trackId: String): String = withContext(Dispatchers.IO) {
+        val path = "/api/download-music?track_id=$trackId&quality=6"
+
+        var lastException: Exception? = null
+
+        for (base in QOBUZ_INSTANCES) {
+            try {
+                val request = Request.Builder()
+                    .url(base + path)
+                    .build()
+
+                val response: Response = okHttpClient.newCall(request).execute()
+
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("HTTP ${response.code}: $errorBody")
+                }
+
+                val bodyString = response.body?.string() ?: throw Exception("Empty response body")
+                val streamResponse = gson.fromJson(bodyString, QobuzStreamResponse::class.java)
+
+                val url = streamResponse.data?.url
+                if (url.isNullOrEmpty()) {
+                    throw Exception("No playable stream URL returned")
+                }
+                return@withContext url
+            } catch (e: Exception) {
+                Log.w("MusicRepository", "Instance $base failed: ${e.message}")
+                lastException = e
+            }
+        }
+
+        throw lastException ?: Exception("All Qobuz instances failed to fetch stream")
+    }
+
+    override suspend fun getSpotifyPreviewUrl(trackId: String): String? = withContext(Dispatchers.IO) {
+        val token = sessionManager.spotifyAccessToken ?: return@withContext null
+        if (token.isEmpty()) return@withContext null
+        try {
+            val track = spotifyApi.getTrack("Bearer $token", trackId)
+            track.previewUrl
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override suspend fun getSpotifyPlaylists(): List<com.vibevault.app.data.remote.dto.SpotifyPlaylistDto> = withContext(Dispatchers.IO) {
+        val token = sessionManager.spotifyAccessToken ?: return@withContext emptyList()
+        if (token.isEmpty()) return@withContext emptyList()
+        try {
+            val response = spotifyApi.getMyPlaylists("Bearer $token")
+            response.items.filterNotNull()
+        } catch (e: Exception) {
+            Log.e("SpotifyPlaylists", "Failed to fetch Spotify playlists", e)
+            emptyList()
+        }
+    }
+
+    override suspend fun getSpotifyPlaylist(playlistId: String): com.vibevault.app.data.local.entity.PlaylistEntity? = withContext(Dispatchers.IO) {
+        val token = sessionManager.spotifyAccessToken ?: return@withContext null
+        if (token.isEmpty()) return@withContext null
+        try {
+            val dto = spotifyApi.getPlaylist("Bearer $token", playlistId)
+            dto.toPlaylistEntity()
+        } catch (e: Exception) {
+            Log.e("SpotifyPlaylist", "Failed to fetch Spotify playlist metadata", e)
+            null
+        }
+    }
+
+    override suspend fun getSpotifyPlaylistTracks(playlistId: String): List<Track> = withContext(Dispatchers.IO) {
+        val token = sessionManager.spotifyAccessToken
+        Log.d("PlaylistDebug", "getSpotifyPlaylistTracks: playlistId=$playlistId, tokenPresent=${token != null}, tokenEmpty=${token?.isEmpty()}")
+        if (token.isNullOrEmpty()) {
+            Log.w("PlaylistDebug", "getSpotifyPlaylistTracks: No Spotify token available — returning empty list")
+            return@withContext emptyList()
+        }
+        try {
+            val response = spotifyApi.getPlaylistTracks("Bearer $token", playlistId)
+            val tracks = response.items.mapNotNull { it.track?.toDomainTrack() }
+            Log.d("PlaylistDebug", "getSpotifyPlaylistTracks: API returned ${response.items.size} items, mapped to ${tracks.size} tracks")
+            tracks
+        } catch (e: Exception) {
+            Log.e("PlaylistDebug", "getSpotifyPlaylistTracks: API call failed for $playlistId", e)
+            emptyList()
+        }
+    }
+    override suspend fun getSimilarTracks(seedTrack: Track): List<Track> = withContext(Dispatchers.IO) {
+        val token = sessionManager.spotifyAccessToken
+        if (token.isNullOrEmpty()) {
+            Log.w("SpotifyAutoplay", "No Spotify token available for recommendations.")
+            return@withContext emptyList()
+        }
+        try {
+            var spotifyId = seedTrack.id
+            if (spotifyId.all { it.isDigit() }) { 
+                // It's a Qobuz ID. We must find the Spotify ID.
+                val searchResponse = spotifyApi.searchTracks("Bearer $token", "track:${seedTrack.title} artist:${seedTrack.artist}")
+                val foundId = searchResponse.tracks?.items?.firstOrNull()?.id
+                if (foundId != null) {
+                    spotifyId = foundId
+                } else {
+                    Log.e("SpotifyAutoplay", "Could not find Spotify ID for ${seedTrack.title}")
+                    return@withContext emptyList()
+                }
+            }
+
+            val response = spotifyApi.getRecommendations("Bearer $token", seedTracks = spotifyId)
+            val tracks = response.tracks.map { it.toDomainTrack() }
+            Log.d("SpotifyAutoplay", "Fetched ${tracks.size} similar tracks for seed $spotifyId")
+            tracks
+        } catch (e: Exception) {
+            Log.e("SpotifyAutoplay", "Failed to fetch similar tracks for ${seedTrack.id}", e)
+            emptyList()
         }
     }
 }

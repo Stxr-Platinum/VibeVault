@@ -1,9 +1,9 @@
 package com.vibevault.app.data.remote.dto
 
-import kotlinx.serialization.SerialName
+import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@Serializable
 data class SpotifySearchResponse(
     val tracks: SpotifyTracksResponse? = null,
     val artists: SpotifyArtistsResponse? = null,
@@ -11,45 +11,47 @@ data class SpotifySearchResponse(
     val playlists: SpotifyPlaylistsResponse? = null
 )
 
-@Serializable
+data class SpotifyRecommendationsResponse(
+    val tracks: List<SpotifyTrackDto> = emptyList()
+)
+
 data class SpotifyTracksResponse(
     val items: List<SpotifyTrackDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyBatchTracksResponse(
     val tracks: List<SpotifyTrackDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyArtistsResponse(
     val items: List<SpotifyArtistDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyAlbumsResponse(
     val items: List<SpotifyAlbumDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyTrackDto(
     val id: String,
     val name: String,
     val artists: List<SpotifyArtistDto> = emptyList(),
     val album: SpotifyAlbumDto? = null,
-    @SerialName("duration_ms") val durationMs: Long,
-    @SerialName("preview_url") val previewUrl: String? = null,
-    @SerialName("external_urls") val externalUrls: Map<String, String> = emptyMap()
+    @SerializedName("duration_ms") val durationMs: Long,
+    @SerializedName("preview_url") val previewUrl: String? = null,
+    @SerializedName("external_urls") val externalUrls: Map<String, String> = emptyMap(),
+    @SerializedName("external_ids") val externalIds: SpotifyExternalIdsDto? = null
 )
 
-@Serializable
+data class SpotifyExternalIdsDto(
+    val isrc: String? = null
+)
+
 data class SpotifyArtistDto(
     val id: String,
     val name: String,
     val images: List<SpotifyImageDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyAlbumDto(
     val id: String,
     val name: String,
@@ -57,7 +59,6 @@ data class SpotifyAlbumDto(
     val artists: List<SpotifyArtistDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyImageDto(
     val url: String,
     val height: Int? = null,
@@ -66,17 +67,16 @@ data class SpotifyImageDto(
 
 @Serializable
 data class SpotifyTokenResponse(
-    @SerialName("access_token") val accessToken: String,
-    @SerialName("token_type") val tokenType: String,
-    @SerialName("expires_in") val expiresIn: Int,
-    @SerialName("refresh_token") val refreshToken: String? = null,
-    @SerialName("scope") val scope: String? = null
+    @SerializedName("access_token") @SerialName("access_token") val accessToken: String,
+    @SerializedName("token_type") @SerialName("token_type") val tokenType: String,
+    @SerializedName("expires_in") @SerialName("expires_in") val expiresIn: Int,
+    @SerializedName("refresh_token") @SerialName("refresh_token") val refreshToken: String? = null,
+    @SerializedName("scope") @SerialName("scope") val scope: String? = null
 )
 
-@Serializable
 data class SpotifyUserDto(
     val id: String,
-    @SerialName("display_name") val displayName: String? = null,
+    @SerializedName("display_name") val displayName: String? = null,
     val images: List<SpotifyImageDto> = emptyList(),
     val email: String? = null
 )
@@ -84,15 +84,15 @@ data class SpotifyUserDto(
 @Serializable
 data class ListeningHistoryDto(
     val id: String,
-    val user_id: String,
-    val song_id: String,
-    val song_title: String,
+    @SerializedName("user_id") @SerialName("user_id") val user_id: String,
+    @SerializedName("song_id") @SerialName("song_id") val song_id: String,
+    @SerializedName("song_title") @SerialName("song_title") val song_title: String,
     val artist: String,
     val album: String,
-    val cover_url: String,
-    val duration_ms: Long,
+    @SerializedName("cover_url") @SerialName("cover_url") val cover_url: String,
+    @SerializedName("duration_ms") @SerialName("duration_ms") val duration_ms: Long,
     val source: String,
-    val played_at: String
+    @SerializedName("played_at") @SerialName("played_at") val played_at: String
 )
 
 @Serializable
@@ -103,59 +103,88 @@ data class TokenExchangeRequest(
 
 @Serializable
 data class TokenRefreshRequest(
-    val refresh_token: String
+    @SerializedName("refresh_token") val refresh_token: String
 )
 
-@Serializable
 data class SpotifyRecentlyPlayedResponse(
     val items: List<SpotifyHistoryItemDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyHistoryItemDto(
     val track: SpotifyTrackDto? = null,
     val item: SpotifyTrackDto? = null,
-    @SerialName("played_at") val playedAt: String? = null
+    @SerializedName("played_at") val playedAt: String? = null
 )
 
-@Serializable
 data class SpotifyFeaturedPlaylistsResponse(
     val playlists: SpotifyPlaylistsResponse
 )
 
-@Serializable
 data class SpotifyNewReleasesResponse(
     val albums: SpotifyAlbumsResponse
 )
 
-@Serializable
 data class SpotifyPlaylistsResponse(
     val items: List<SpotifyPlaylistDto?> = emptyList()
 )
 
-@Serializable
 data class SpotifyPlaylistDto(
     val id: String,
     val name: String,
     val description: String? = null,
     val images: List<SpotifyImageDto> = emptyList(),
-    @SerialName("external_urls") val externalUrls: Map<String, String> = emptyMap(),
+    @SerializedName("external_urls") val externalUrls: Map<String, String> = emptyMap(),
     val owner: SpotifyUserDto? = null
 )
 
-@Serializable
+data class SpotifyPlaylistTracksResponse(
+    val items: List<SpotifyPlaylistItemDto> = emptyList()
+)
+
+data class SpotifyPlaylistItemDto(
+    val track: SpotifyTrackDto? = null
+)
+
 data class SpotifyCategoriesResponse(
     val categories: SpotifyCategoriesListResponse
 )
 
-@Serializable
 data class SpotifyCategoriesListResponse(
     val items: List<SpotifyCategoryDto> = emptyList()
 )
 
-@Serializable
 data class SpotifyCategoryDto(
     val id: String,
     val name: String,
     val icons: List<SpotifyImageDto> = emptyList()
+)
+
+// ── Saved Albums (GET /me/albums) ────────────────────────
+data class SpotifySavedAlbumsResponse(
+    val items: List<SpotifySavedAlbumItemDto> = emptyList()
+)
+
+data class SpotifySavedAlbumItemDto(
+    val album: SpotifyAlbumDto
+)
+
+// ── Artist Top Tracks (GET /artists/{id}/top-tracks) ─────
+data class SpotifyArtistTopTracksResponse(
+    val tracks: List<SpotifyTrackDto> = emptyList()
+)
+
+// ── Artist Albums (GET /artists/{id}/albums) ─────────────
+data class SpotifyArtistAlbumsResponse(
+    val items: List<SpotifyAlbumDto> = emptyList()
+)
+
+// ── Extended SpotifyAlbumDto with extra fields ───────────
+data class SpotifyAlbumFullDto(
+    val id: String,
+    val name: String,
+    val images: List<SpotifyImageDto> = emptyList(),
+    val artists: List<SpotifyArtistDto> = emptyList(),
+    @SerializedName("release_date") val releaseDate: String? = null,
+    @SerializedName("total_tracks") val totalTracks: Int = 0,
+    @SerializedName("album_type") val albumType: String? = null
 )

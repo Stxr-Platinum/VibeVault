@@ -14,9 +14,7 @@ import com.vibevault.app.ui.theme.*
 /**
  * VibeBottomBar — Bottom navigation bar.
  *
- * Stitch spec: Dark background, green selected state, 5 tabs
- * (Home, Search, Your Library, Premium, Create).
- * Using glassmorphic aesthetic with subtle transparency.
+ * Dark background, green selected state, 3 tabs (Home, Search, Your Library).
  */
 @Composable
 fun VibeBottomBar(
@@ -32,14 +30,17 @@ fun VibeBottomBar(
         contentColor = Color.White
     ) {
         Screen.bottomNavItems.forEach { screen ->
-            val isSelected = currentRoute == screen.route
+            val selectedIcon = screen.selectedIcon ?: return@forEach
+            val unselectedIcon = screen.unselectedIcon ?: return@forEach
+            val route = screen.route
+            val title = screen.title
+            val isSelected = currentRoute == route
 
             NavigationBarItem(
                 selected = isSelected,
                 onClick = {
-                    if (currentRoute != screen.route) {
-                        navController.navigate(screen.route) {
-                            // Pop up to start destination to avoid stacking
+                    if (currentRoute != route) {
+                        navController.navigate(route) {
                             popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
@@ -48,13 +49,13 @@ fun VibeBottomBar(
                 },
                 icon = {
                     Icon(
-                        imageVector = if (isSelected) screen.selectedIcon!! else screen.unselectedIcon!!,
-                        contentDescription = screen.title
+                        imageVector = if (isSelected) selectedIcon else unselectedIcon,
+                        contentDescription = title
                     )
                 },
                 label = {
                     Text(
-                        text = screen.title,
+                        text = title,
                         style = MaterialTheme.typography.labelSmall
                     )
                 },
@@ -69,3 +70,5 @@ fun VibeBottomBar(
         }
     }
 }
+
+

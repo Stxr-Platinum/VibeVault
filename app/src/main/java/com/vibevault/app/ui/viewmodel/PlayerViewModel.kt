@@ -6,39 +6,41 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import com.vibevault.app.data.mapper.toDomain
-import com.vibevault.app.data.remote.api.SpotifyApiService
+import androidx.media3.session.MediaController
+import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.domain.repository.MusicRepository
 import com.vibevault.app.player.QueueManager
-import com.vibevault.app.player.SpotifyPlayerManager
-import com.vibevault.app.player.media.AudioFocusManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
-import com.vibevault.app.core.session.SessionManager
 
 /**
- * PlayerViewModel — Bridges Media3 ExoPlayer and Spotify App Remote to the Compose UI,
+ * PlayerViewModel — Bridges Media3 MediaController and the Compose UI,
  * using QueueManager as the single source of truth for playlist state.
  */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
-    val player: ExoPlayer,
     private val queueManager: QueueManager,
     private val musicRepository: MusicRepository,
-    private val audioFocusManager: AudioFocusManager,
-    private val spotifyPlayerManager: SpotifyPlayerManager,
-    private val spotifyApiService: SpotifyApiService,
     private val sessionManager: SessionManager
 ) : ViewModel() {
 
     // ── Playback State (Delegated to QueueManager) ──────────
-    val currentTrack: StateFlow<Track?> = queueManager.currentTrack
+    val currentTrack: StateFlow<Track?> = combine(
+        queueManager.currentTrack,
+        musicRepository.getLikedTracks()
+    ) { track, likedTracks ->
+        if (track == null) return@combine null
+        val isLiked = likedTracks.any { it.id == track.id }
+        if (track.isLiked != isLiked) track.copy(isLiked = isLiked) else track
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    
     val queue: StateFlow<List<Track>> = queueManager.queueState
     val currentIndex: StateFlow<Int> = queueManager.currentIndex
     val shuffleModeEnabled: StateFlow<Boolean> = queueManager.shuffleModeEnabled
@@ -57,27 +59,14 @@ class PlayerViewModel @Inject constructor(
     private val _volume = MutableStateFlow(1f)
     val volume: StateFlow<Float> = _volume.asStateFlow()
 
-    private val _spotifyError = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val spotifyError: SharedFlow<String> = _spotifyError.asSharedFlow()
-
     private var currentlyPlayingTrackId: String? = null
+    private var isTrackRestoredAndNotPlayed = false
+    private var isSeamlessTransitioning = false
+    private var isFetchingAutoplay = false
+
+    private var mediaController: MediaController? = null
 
     init {
-        // 0. Load last played track
-        viewModelScope.launch {
-            sessionManager.lastPlayedTrackId?.let { trackId ->
-                try {
-                    val result = spotifyApiService.getTrack(trackId)
-                    val dto = result.getOrNull()
-                    if (dto != null) {
-                        queueManager.syncExternalTrack(dto.toDomain())
-                    }
-                } catch (e: Exception) {
-                    // Ignore
-                }
-            }
-        }
-
         // 1. Observe QueueManager's currentTrack to trigger playback
         viewModelScope.launch {
             queueManager.currentTrack.collect { track ->
@@ -85,180 +74,260 @@ class PlayerViewModel @Inject constructor(
                     playInternal(track)
                     musicRepository.recordPlay(track)
                 } else if (track == null) {
-                    stopAllPlayback()
+                    mediaController?.pause()
+                    mediaController?.clearMediaItems()
                 }
             }
         }
 
-        // 2. Listen to ExoPlayer state changes
-        player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                if (isStreamableUrl(currentTrack.value?.audioUrl ?: currentTrack.value?.externalUrl ?: currentTrack.value?.id ?: "")) {
-                    _isPlaying.value = playing
-                }
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) {
-                    _duration.value = player.duration.coerceAtLeast(0)
-                } else if (playbackState == Player.STATE_ENDED) {
-                    // ExoPlayer finished the track. Let QueueManager advance.
-                    queueManager.next()
-                }
-            }
-        })
-
-        // 3. Progress ticker
+        // 2. Progress ticker
         viewModelScope.launch {
             while (isActive) {
-                if (player.isPlaying) {
-                    _currentPosition.value = player.currentPosition.coerceAtLeast(0)
-                } else {
-                    val spotifyState = spotifyPlayerManager.playerState.value
-                    if (spotifyState != null && !spotifyState.isPaused) {
-                        _currentPosition.value = (_currentPosition.value + 500L).coerceAtMost(_duration.value)
+                mediaController?.let { controller ->
+                    if (controller.isPlaying) {
+                        _currentPosition.value = controller.currentPosition.coerceAtLeast(0)
                     }
                 }
                 delay(500)
             }
         }
+    }
 
-        // 4. Observe Spotify App Remote PlayerState
-        viewModelScope.launch {
-            spotifyPlayerManager.playerState.collect { state ->
-                if (state != null) {
-                    _isPlaying.value = !state.isPaused
-                    _duration.value = state.track.duration
-                    
-                    if (kotlin.math.abs(_currentPosition.value - state.playbackPosition) > 1000) {
-                        _currentPosition.value = state.playbackPosition
-                    }
-                    
-                    val currentTrackId = currentTrack.value?.id ?: ""
-                    val stateTrackId = state.track.uri.removePrefix("spotify:track:")
-                    
-                    // If Spotify advanced to the next track on its own, sync the QueueManager
-                    if (stateTrackId != currentTrackId && stateTrackId.isNotEmpty() && !state.track.uri.contains("spotify:ad:")) {
-                        // Create basic track info
-                        val externalTrack = Track(
-                            id = stateTrackId,
-                            title = state.track.name,
-                            artist = state.track.artist.name,
-                            album = state.track.album.name,
-                            albumImageUrl = "", 
-                            audioUrl = state.track.uri,
-                            durationMs = state.track.duration,
-                            isLiked = false
-                        )
-                        
-                        // Sync QueueManager to this track (it will update currentIndex if it's in the queue)
-                        queueManager.syncExternalTrack(externalTrack)
-                        currentlyPlayingTrackId = stateTrackId
-                        
-                        // Fetch full metadata for images
-                        try {
-                            val result = spotifyApiService.getTrack(stateTrackId)
-                            val dto = result.getOrNull()
-                            if (dto != null) {
-                                queueManager.syncExternalTrack(dto.toDomain())
-                            }
-                        } catch (e: Exception) {
-                            // Ignored
+    // ── MediaController Setup ────────────────────────────────
+    fun setMediaController(controller: MediaController) {
+        this.mediaController = controller
+
+        controller.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                _isPlaying.value = playing
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    _duration.value = controller.duration.coerceAtLeast(0)
+                }
+                
+                if (playbackState == Player.STATE_ENDED) {
+                    // Queue exhausted! Trigger infinite autoplay
+                    val currentIndex = queueManager.currentIndex.value
+                    val queueSize = queueManager.queueState.value.size
+                    if (currentIndex >= queueSize - 1 && queueManager.repeatMode.value == Player.REPEAT_MODE_OFF) {
+                        sessionManager.lastPlayedTrackId?.let { lastTrackId ->
+                            val seedTrack = queueManager.queueState.value.find { it.id == lastTrackId }
+                            if (seedTrack != null) triggerInfiniteAutoplay(seedTrack, resumePlayback = true) 
                         }
                     }
                 }
             }
-        }
 
-        viewModelScope.launch {
-            spotifyPlayerManager.errorEvents.collect { error ->
-                _isPlaying.value = false
-                _spotifyError.tryEmit(error.message)
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                super.onMediaItemTransition(mediaItem, reason)
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    // ExoPlayer seamlessly transitioned to the preloaded next track!
+                    Log.d("PlaybackDebug", "Seamless auto-transition to ${mediaItem?.mediaId}")
+                    isSeamlessTransitioning = true
+                    queueManager.next(isAutoTransition = true)
+                }
             }
-        }
+        })
     }
 
     // ── Internal Playback Execution ────────────────────────
 
-    private fun isStreamableUrl(uri: String): Boolean =
-        uri.startsWith("http://") || uri.startsWith("https://")
-
-    private fun stopAllPlayback() {
-        player.pause()
-        player.clearMediaItems()
-        if (_isPlaying.value && !isStreamableUrl(currentTrack.value?.audioUrl ?: currentTrack.value?.externalUrl ?: currentTrack.value?.id ?: "")) {
-            spotifyPlayerManager.pause()
-        }
-        _isPlaying.value = false
-        currentlyPlayingTrackId = null
-    }
-
     /**
-     * Executes playback for EXACTLY ONE track. Queue progression is handled by STATE_ENDED.
+     * Executes playback and preloads the next track for gapless playback.
      */
     private fun playInternal(track: Track) {
-        currentlyPlayingTrackId = track.id
-        sessionManager.lastPlayedTrackId = track.id
-        val uriString = track.audioUrl ?: track.externalUrl ?: track.id
-        
-        Log.d("PlaybackDebug", "playInternal: ${track.title} ($uriString)")
-        
-        if (!isStreamableUrl(uriString)) {
-            player.pause()
-            player.clearMediaItems()
-            _isPlaying.value = true
+        val controller = mediaController
+        if (controller == null) {
+            Log.w("PlaybackDebug", "playInternal called but MediaController is null!")
+            return
+        }
+
+        if (isSeamlessTransitioning) {
+            isSeamlessTransitioning = false
+            currentlyPlayingTrackId = track.id
+            sessionManager.lastPlayedTrackId = track.id
+            Log.d("PlaybackDebug", "Seamlessly continuing playback: '${track.title}'")
+
+            // ExoPlayer's timeline currently has [OldTrack, CurrentTrack].
+            // We remove the OldTrack and append the new NextTrack to keep a 2-item rolling window.
+            if (controller.mediaItemCount > 1) {
+                controller.removeMediaItem(0)
+            }
             
-            // Fix: Spotify App Remote playTrack is a suspend function.
-            // Launch a coroutine to call it safely without blocking UI flow.
-            viewModelScope.launch {
-                val success = spotifyPlayerManager.playTrack("spotify:track:${track.id}")
-                if (!success) {
-                    _isPlaying.value = false
-                }
+            val queueList = queueManager.queueState.value
+            val currentIndex = queueManager.currentIndex.value
+            
+            // --- INFINITE AUTOPLAY CHECK ---
+            if (currentIndex == queueList.size - 1 && queueManager.repeatMode.value == Player.REPEAT_MODE_OFF) {
+                triggerInfiniteAutoplay(track, resumePlayback = false)
+            }
+            
+            val nextTrack = if (currentIndex + 1 < queueList.size) queueList[currentIndex + 1] else null
+            
+            if (nextTrack != null && controller.mediaItemCount < 2) {
+                val extrasBundle = android.os.Bundle().apply { if (nextTrack.isrc.isNotBlank()) putString("isrc", nextTrack.isrc) }
+                val nextMediaItem = MediaItem.Builder()
+                    .setMediaId(nextTrack.id)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(nextTrack.title)
+                            .setArtist(nextTrack.artist)
+                            .setAlbumTitle(nextTrack.album)
+                            .setExtras(extrasBundle)
+                            .build()
+                    ).build()
+                controller.addMediaItem(nextMediaItem)
             }
             return
         }
 
-        // It is streamable. Stop Spotify.
-        spotifyPlayerManager.pause()
+        // Check if the user manually skipped to the track we ALREADY preloaded!
+        val isPreloadedNext = controller.mediaItemCount > 1 && controller.getMediaItemAt(1).mediaId == track.id
+        
+        if (isPreloadedNext) {
+            Log.d("PlaybackDebug", "Manual skip to preloaded track. Removing current track for instant play!")
+            
+            currentlyPlayingTrackId = track.id
+            isTrackRestoredAndNotPlayed = false
+            sessionManager.lastPlayedTrackId = track.id
+            
+            // Removing the currently playing item forces ExoPlayer to instantly play the next preloaded item!
+            controller.removeMediaItem(0)
+            
+            // Now preload the NEW next track
+            val queueList = queueManager.queueState.value
+            val currentIndex = queueManager.currentIndex.value
+            val nextTrack = if (currentIndex + 1 < queueList.size) queueList[currentIndex + 1] else null
+            
+            if (nextTrack != null) {
+                val nextExtrasBundle = android.os.Bundle().apply { if (nextTrack.isrc.isNotBlank()) putString("isrc", nextTrack.isrc) }
+                val nextMediaItem = MediaItem.Builder()
+                    .setMediaId(nextTrack.id)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(nextTrack.title)
+                            .setArtist(nextTrack.artist)
+                            .setAlbumTitle(nextTrack.album)
+                            .setExtras(nextExtrasBundle)
+                            .build()
+                    ).build()
+                controller.addMediaItem(nextMediaItem)
+            }
+            
+            controller.play()
+            return
+        }
+
+        // Standard manual play (random song tap, etc.)
+        // INSTANTLY pause to prevent audio overlap during URL fetch
+        controller.pause() 
+
+        currentlyPlayingTrackId = track.id
+        isTrackRestoredAndNotPlayed = false
+        sessionManager.lastPlayedTrackId = track.id
+        
+        Log.d("PlaybackDebug", "playInternal: '${track.title}' by '${track.artist}' [id=${track.id}, isrc=${track.isrc}]")
+
+        val extrasBundle = android.os.Bundle().apply {
+            if (track.isrc.isNotBlank()) putString("isrc", track.isrc)
+        }
 
         val mediaItem = MediaItem.Builder()
             .setMediaId(track.id)
-            .setUri(uriString)
+            // URI is left null — PlaybackService will resolve via Qobuz search using title+artist
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(track.title)
                     .setArtist(track.artist)
                     .setAlbumTitle(track.album)
+                    .setExtras(extrasBundle)
                     .build()
             )
             .build()
 
-        audioFocusManager.requestFocus(player)
-        // Set only this single item so STATE_ENDED triggers reliably
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        player.play()
+        controller.clearMediaItems()
+        controller.addMediaItem(mediaItem)
+
+        // Preload next track
+        val queueList = queueManager.queueState.value
+        val currentIndex = queueManager.currentIndex.value
+        val nextTrack = if (currentIndex + 1 < queueList.size) queueList[currentIndex + 1] else null
+        
+        if (nextTrack != null) {
+            val nextExtrasBundle = android.os.Bundle().apply { if (nextTrack.isrc.isNotBlank()) putString("isrc", nextTrack.isrc) }
+            val nextMediaItem = MediaItem.Builder()
+                .setMediaId(nextTrack.id)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(nextTrack.title)
+                        .setArtist(nextTrack.artist)
+                        .setAlbumTitle(nextTrack.album)
+                        .setExtras(nextExtrasBundle)
+                        .build()
+                ).build()
+            controller.addMediaItem(nextMediaItem)
+        }
+
+        controller.prepare()
+        controller.play()
     }
 
     // ── Public API ─────────────────────────────────────────
 
     fun playTrack(trackId: String, context: List<Track> = emptyList()) {
-        viewModelScope.launch {
-            val effectiveContext = if (context.isEmpty()) {
-                try {
-                    val result = spotifyApiService.getTrack(trackId)
-                    val dto = result.getOrNull()
-                    if (dto != null) listOf(dto.toDomain()) else emptyList()
-                } catch (e: Exception) {
-                    emptyList()
+        if (context.isNotEmpty()) {
+            queueManager.playTrack(trackId, context)
+            val current = queueManager.currentTrack.value
+            if (current != null && current.id == trackId && (trackId == currentlyPlayingTrackId || isTrackRestoredAndNotPlayed)) {
+                playInternal(current)
+                viewModelScope.launch {
+                    musicRepository.recordPlay(current)
                 }
-            } else {
-                context
             }
+            return
+        }
+        
+        // Context is empty (e.g. played from search). We start a Radio/Autoplay queue.
+        val shellTrack = Track(
+            id = trackId,
+            title = "Loading...",
+            artist = "Unknown",
+            album = "Unknown",
+            albumImageUrl = "",
+            durationMs = 0
+        )
+        queueManager.playTrack(trackId, listOf(shellTrack))
 
-            if (effectiveContext.isNotEmpty()) {
-                queueManager.playTrack(trackId, effectiveContext)
+        // Fetch similar tracks asynchronously and append to queue
+        viewModelScope.launch {
+            try {
+                val similarTracks = musicRepository.getSimilarTracks(shellTrack)
+                if (similarTracks.isNotEmpty()) {
+                    queueManager.appendTracks(similarTracks)
+                    // If we just appended the next track while the current one is playing,
+                    // we need to push it to ExoPlayer for preloading.
+                    val controller = mediaController
+                    if (controller != null && controller.mediaItemCount == 1) {
+                        val nextTrack = similarTracks.first()
+                        val nextExtrasBundle = android.os.Bundle().apply { if (nextTrack.isrc.isNotBlank()) putString("isrc", nextTrack.isrc) }
+                        val nextMediaItem = MediaItem.Builder()
+                            .setMediaId(nextTrack.id)
+                            .setMediaMetadata(
+                                MediaMetadata.Builder()
+                                    .setTitle(nextTrack.title)
+                                    .setArtist(nextTrack.artist)
+                                    .setAlbumTitle(nextTrack.album)
+                                    .setExtras(nextExtrasBundle)
+                                    .build()
+                            ).build()
+                        controller.addMediaItem(nextMediaItem)
+                        Log.d("SpotifyAutoplay", "Pushed newly fetched Autoplay track to ExoPlayer timeline")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SpotifyAutoplay", "Failed to generate autoplay queue", e)
             }
         }
     }
@@ -268,27 +337,19 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun togglePlayPause() {
-        val currentUri = currentTrack.value?.let { it.audioUrl ?: it.externalUrl ?: it.id } ?: ""
-        if (!isStreamableUrl(currentUri)) {
-            if (_isPlaying.value) {
-                spotifyPlayerManager.pause()
-                _isPlaying.value = false
-            } else {
-                spotifyPlayerManager.resume()
-                _isPlaying.value = true
-            }
-        } else {
-            if (player.isPlaying) player.pause() else player.play()
+        val controller = mediaController ?: return
+        
+        if (isTrackRestoredAndNotPlayed) {
+            isTrackRestoredAndNotPlayed = false
+            currentTrack.value?.let { playInternal(it) }
+            return
         }
+
+        if (controller.isPlaying) controller.pause() else controller.play()
     }
 
     fun seekTo(positionMs: Long) {
-        val currentUri = currentTrack.value?.let { it.audioUrl ?: it.externalUrl ?: it.id } ?: ""
-        if (!isStreamableUrl(currentUri)) {
-            spotifyPlayerManager.seekTo(positionMs)
-        } else {
-            player.seekTo(positionMs)
-        }
+        mediaController?.seekTo(positionMs)
         _currentPosition.value = positionMs
     }
 
@@ -299,7 +360,6 @@ class PlayerViewModel @Inject constructor(
 
     fun skipPrevious() {
         Log.d("PlaybackDebug", "skipPrevious called")
-        // 5-second rule: If we are past 5 seconds, restart current track
         if (_currentPosition.value > 5000L) {
             seekTo(0L)
         } else {
@@ -317,7 +377,7 @@ class PlayerViewModel @Inject constructor(
 
     fun setVolume(volume: Float) {
         val clampedVolume = volume.coerceIn(0f, 1f)
-        player.volume = clampedVolume
+        mediaController?.volume = clampedVolume
         _volume.value = clampedVolume
     }
 
@@ -340,6 +400,56 @@ class PlayerViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        audioFocusManager.abandonFocus()
+        mediaController?.release()
+    }
+
+    // ── Infinite Autoplay ──────────────────────────────────
+    private fun triggerInfiniteAutoplay(seedTrack: Track, resumePlayback: Boolean) {
+        if (isFetchingAutoplay) return
+        isFetchingAutoplay = true
+        Log.d("SpotifyAutoplay", "Triggering infinite autoplay for seed ${seedTrack.title}")
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val similarTracks = musicRepository.getSimilarTracks(seedTrack)
+                if (similarTracks.isNotEmpty()) {
+                    val existingIds = queueManager.queueState.value.map { it.id }.toSet()
+                    val newTracks = similarTracks.filter { it.id !in existingIds }
+                    
+                    if (newTracks.isNotEmpty()) {
+                        queueManager.appendTracks(newTracks)
+                        
+                        withContext(Dispatchers.Main) {
+                            // Check if ExoPlayer ended while we were fetching or if we were explicitly told to resume
+                            if (mediaController?.playbackState == Player.STATE_ENDED || resumePlayback) {
+                                isSeamlessTransitioning = false
+                                queueManager.next(isAutoTransition = true)
+                            } else {
+                                // We are still playing the last track. Inject the next one into the rolling window!
+                                if (mediaController?.mediaItemCount == 1) {
+                                    val nextTrack = newTracks.first()
+                                    val extrasBundle = android.os.Bundle().apply { if (nextTrack.isrc.isNotBlank()) putString("isrc", nextTrack.isrc) }
+                                    val nextMediaItem = MediaItem.Builder()
+                                        .setMediaId(nextTrack.id)
+                                        .setMediaMetadata(
+                                            MediaMetadata.Builder()
+                                                .setTitle(nextTrack.title)
+                                                .setArtist(nextTrack.artist)
+                                                .setAlbumTitle(nextTrack.album)
+                                                .setExtras(extrasBundle)
+                                                .build()
+                                        ).build()
+                                    mediaController?.addMediaItem(nextMediaItem)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SpotifyAutoplay", "Failed infinite autoplay fetch", e)
+            } finally {
+                isFetchingAutoplay = false
+            }
+        }
     }
 }

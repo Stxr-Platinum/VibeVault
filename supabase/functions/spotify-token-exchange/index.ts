@@ -13,7 +13,7 @@ Deno.serve(async (req: Request) => {
 
     // 2. Get environment variables (ensure these are set in Supabase)
     const clientId = "a5949efaa0b54f29b37220ad1c3eda18"
-    const clientSecret = "690056aea533424d85e6fe27486c1694"
+    const clientSecret = "b8b6df65d31c497ebc83b6aa7e308a83"
 
     // 3. Prepare Basic Auth header
     const basic = btoa(`${clientId}:${clientSecret}`)

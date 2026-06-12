@@ -16,6 +16,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.storage.Storage
 import java.time.Instant
 
 @HiltWorker
@@ -26,6 +27,7 @@ class SyncWorker @AssistedInject constructor(
     private val playlistDao: PlaylistDao,
     private val logDao: LogDao,
     private val postgrest: Postgrest,
+    private val storage: Storage,
     private val sessionManager: SessionManager
 ) : CoroutineWorker(appContext, workerParams) {
 
@@ -85,13 +87,39 @@ class SyncWorker @AssistedInject constructor(
         if (unsyncedPlaylists.isEmpty()) return
 
         for (playlist in unsyncedPlaylists) {
+            var finalCoverUrl = playlist.coverUrl
+            
+            // Upload to Supabase Storage if it's a local file
+            if (finalCoverUrl != null && (finalCoverUrl.startsWith("/") || finalCoverUrl.startsWith("file://"))) {
+                try {
+                    val cleanPath = finalCoverUrl.removePrefix("file://")
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        val bytes = file.readBytes()
+                        val ext = file.extension.ifBlank { "jpg" }
+                        val fileName = "${userId}_${playlist.id}_${System.currentTimeMillis()}.$ext"
+                        
+                        val bucket = storage.from("covers")
+                        bucket.upload(fileName, bytes) {
+                            upsert = true
+                        }
+                        finalCoverUrl = bucket.publicUrl(fileName)
+                        
+                        // Update local DB so we don't try to upload it again next time
+                        playlistDao.updatePlaylist(playlist.copy(coverUrl = finalCoverUrl))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to upload playlist cover", e)
+                }
+            }
+
             postgrest.from("playlists").upsert(
                 PlaylistDto(
                     id = playlist.id,
                     userId = userId,
                     title = playlist.title,
                     description = playlist.description,
-                    coverUrl = playlist.coverUrl,
+                    coverUrl = finalCoverUrl,
                     trackCount = playlist.trackCount,
                     durationMs = playlist.durationMs,
                     isPublic = playlist.isPublic,

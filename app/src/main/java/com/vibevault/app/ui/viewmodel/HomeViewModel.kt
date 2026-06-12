@@ -3,8 +3,6 @@ package com.vibevault.app.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vibevault.app.data.remote.dto.SpotifySearchResponse
-import com.vibevault.app.data.remote.api.SpotifyApiService
 import com.vibevault.app.domain.model.*
 import com.vibevault.app.domain.repository.MusicRepository
 import com.vibevault.app.data.local.entity.PlaylistEntity
@@ -17,9 +15,12 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
-    private val spotifyApi: SpotifyApiService,
     private val sessionManager: com.vibevault.app.core.session.SessionManager
 ) : ViewModel() {
+
+    // User Profile (reactive)
+    val userAvatarUrl: StateFlow<String?> = sessionManager.userAvatarUrlFlow
+    val userDisplayName: StateFlow<String?> = sessionManager.userDisplayNameFlow
 
     // 1. State Properties (Initialized first)
 
@@ -62,6 +63,10 @@ class HomeViewModel @Inject constructor(
     private val _categories = MutableStateFlow<List<Category>>(emptyList())
     val categories: StateFlow<List<Category>> = _categories.asStateFlow()
 
+    // Saved Albums
+    private val _savedAlbums = MutableStateFlow<List<Album>>(emptyList())
+    val savedAlbums: StateFlow<List<Album>> = _savedAlbums.asStateFlow()
+
     // Global Top 50
     private val _top50Tracks = MutableStateFlow<List<Track>>(emptyList())
     val top50Tracks: StateFlow<List<Track>> = _top50Tracks.asStateFlow()
@@ -70,8 +75,8 @@ class HomeViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _searchResults = MutableStateFlow<SpotifySearchResponse?>(null)
-    val searchResults: StateFlow<SpotifySearchResponse?> = _searchResults.asStateFlow()
+    private val _searchResults = MutableStateFlow<List<Track>?>(null)
+    val searchResults: StateFlow<List<Track>?> = _searchResults.asStateFlow()
 
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
@@ -80,13 +85,8 @@ class HomeViewModel @Inject constructor(
 
     init {
         Log.d("SpotifyDebug", "HomeVM: Initialized")
-        // RE-NAVIGATE and FETCH: If token is null, wait for it.
+        // Just refresh data immediately.
         viewModelScope.launch {
-            while (sessionManager.spotifyAccessToken == null) {
-                Log.d("SpotifyDebug", "HomeVM: Waiting for Spotify token...")
-                delay(1000)
-            }
-            Log.d("SpotifyDebug", "HomeVM: Token detected! Triggering auto-refresh.")
             refresh()
         }
     }
@@ -95,11 +95,6 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         Log.d("SpotifyDebug", "HomeVM: refresh() triggered")
-        val token = sessionManager.spotifyAccessToken
-        if (token == null) {
-            Log.w("SpotifyDebug", "HomeVM: Spotify token null, skipping refresh")
-            return
-        }
         
         viewModelScope.launch {
             Log.d("SpotifyDebug", "HomeVM: Starting sync sequence...")
@@ -154,6 +149,9 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             musicRepository.getGlobalTop50().collect { _top50Tracks.value = it }
         }
+        viewModelScope.launch {
+            musicRepository.getUserSavedAlbums().collect { _savedAlbums.value = it }
+        }
     }
 
     fun onSearchQueryChange(query: String) {
@@ -167,24 +165,13 @@ class HomeViewModel @Inject constructor(
 
     private fun performSearch(query: String) {
         Log.d("SpotifyDebug", "HomeVM: performSearch called for '$query'")
-        val token = sessionManager.spotifyAccessToken
-        if (token == null) {
-            Log.e("SpotifyDebug", "HomeVM: Search aborted - No token")
-            return
-        }
         
         viewModelScope.launch {
             _isSearching.value = true
             try {
-                val result = spotifyApi.searchTracks(query)
-                result.onSuccess { response ->
-                    Log.d("SpotifyDebug", "HomeVM: Search result SUCCESS - tracks count = ${response.tracks?.items?.size}")
-                    _searchResults.value = response
-                }
-                result.onFailure {
-                    Log.e("SpotifyDebug", "HomeVM: Search result FAILURE", it)
-                    _searchResults.value = null
-                }
+                val tracks = musicRepository.searchQobuzMusic(query)
+                Log.d("SpotifyDebug", "HomeVM: Search result SUCCESS - tracks count = ${tracks.size}")
+                _searchResults.value = tracks
             } catch (e: Exception) {
                 Log.e("SpotifyDebug", "HomeVM: Search exception", e)
                 _searchResults.value = null

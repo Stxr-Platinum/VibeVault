@@ -108,6 +108,7 @@ dependencies {
     // ── Supabase (BOM-managed) ─────────────────────────────
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth)
+    implementation(libs.supabase.storage)
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.realtime)
     implementation(libs.supabase.functions)
@@ -117,6 +118,7 @@ dependencies {
 
     // ── Coroutines ─────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
 
     // ── Google Auth ─────────────────────────────────────────
     implementation(libs.google.play.services.auth)
@@ -132,6 +134,10 @@ dependencies {
 
     // ── WorkManager ────────────────────────────────────────
     implementation(libs.androidx.work.runtime.ktx)
+
+    // ── Networking (Retrofit) ──────────────────────────────
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
 
     // ── Spotify App Remote SDK ──────────────────────────────
     implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))

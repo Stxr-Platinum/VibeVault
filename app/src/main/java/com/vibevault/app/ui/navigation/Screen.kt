@@ -23,10 +23,13 @@ sealed class Screen(
         fun createRoute(trackId: String) = "player/$trackId"
     }
     data object Artist : Screen("artist/{artistName}", "Artist") {
-        fun createRoute(artistName: String) = "artist/$artistName"
+        fun createRoute(artistName: String) = "artist/${android.net.Uri.encode(artistName)}"
     }
     data object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Playlist") {
         fun createRoute(playlistId: String) = "playlist_detail/$playlistId"
+    }
+    data object AlbumDetail : Screen("album_detail/{albumId}", "Album") {
+        fun createRoute(albumId: String) = "album_detail/$albumId"
     }
 
     data object Login : Screen("login", "Login")
@@ -38,6 +41,6 @@ sealed class Screen(
     data object EditProfile : Screen("edit_profile", "Edit Profile")
 
     companion object {
-        val bottomNavItems = listOf(Home, Search, Library)
+        val bottomNavItems by lazy { listOf(Home, Search, Library) }
     }
 }

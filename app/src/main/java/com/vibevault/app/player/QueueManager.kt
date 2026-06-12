@@ -62,7 +62,19 @@ class QueueManager @Inject constructor() {
         setQueue(context, index)
     }
 
-    fun next() {
+    fun appendTracks(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        originalQueue.addAll(tracks)
+        
+        // If shuffling, append them to the end of the current queue (unshuffled or reshuffled depending on desired behavior)
+        // Simple approach: just add them to the end of currentQueue
+        currentQueue.addAll(tracks)
+        
+        _queueState.value = currentQueue.toList()
+        debugLog()
+    }
+
+    fun next(isAutoTransition: Boolean = false) {
         if (currentQueue.isEmpty()) return
 
         val newIndex = _currentIndex.value + 1

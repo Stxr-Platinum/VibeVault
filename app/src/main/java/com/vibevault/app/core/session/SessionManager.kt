@@ -73,10 +73,12 @@ class SessionManager @Inject constructor(
         _isLoggedInFlow.value = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
         _spotifyAccessTokenFlow.value = prefs.getString(KEY_SPOTIFY_ACCESS_TOKEN, null)
         
-        // The user is "connected" to Spotify if they have an active token OR a refresh token
-        // that can be used to silently get a new one.
+        // The user is "connected" to Spotify if they have a refresh token stored.
+        // Even if the access token has expired, MainViewModel will silently refresh it
+        // on startup, so we should NOT send the user back to the Connect screen.
         val hasRefreshToken = prefs.getString(KEY_SPOTIFY_REFRESH_TOKEN, null) != null
-        _isSpotifyConnected.value = _spotifyAccessTokenFlow.value != null && (!isSpotifyExpired || hasRefreshToken)
+        val hasAccessToken = _spotifyAccessTokenFlow.value != null
+        _isSpotifyConnected.value = hasRefreshToken || (hasAccessToken && !isSpotifyExpired)
     }
 
     private fun createPreferences(): SharedPreferences {
@@ -114,6 +116,7 @@ class SessionManager @Inject constructor(
             putString(KEY_REFRESH_TOKEN, refreshToken)
             putString(KEY_USER_ID, userId)
             putString(KEY_USER_EMAIL, email)
+            putBoolean(KEY_IS_LOGGED_IN, true)
             displayName?.let { putString(KEY_USER_DISPLAY_NAME, it) }
             avatarUrl?.let { putString(KEY_USER_AVATAR_URL, it) }
             putLong(KEY_SESSION_EXPIRY, expiresAtEpochMs)
@@ -130,8 +133,8 @@ class SessionManager @Inject constructor(
             avatarUrl?.let { putString(KEY_USER_AVATAR_URL, it) }
             apply()
         }
-        _userDisplayName.value = displayName
-        _userAvatarUrl.value = avatarUrl
+        displayName?.let { _userDisplayName.value = it }
+        avatarUrl?.let { _userAvatarUrl.value = it }
     }
 
     // ── Spotify Session ────────────────────────────────────────

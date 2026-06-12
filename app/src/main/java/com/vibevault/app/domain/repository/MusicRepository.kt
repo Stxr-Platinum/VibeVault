@@ -63,9 +63,11 @@ interface MusicRepository {
     suspend fun getPlaylist(playlistId: String): com.vibevault.app.data.local.entity.PlaylistEntity?
     suspend fun createPlaylist(title: String): String
     suspend fun renamePlaylist(playlistId: String, newTitle: String)
+    suspend fun updatePlaylistCoverUrl(playlistId: String, coverUrl: String)
     suspend fun deletePlaylist(playlistId: String)
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String)
     suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String)
+    suspend fun reorderTracks(playlistId: String, fromIndex: Int, toIndex: Int)
 
     // ── Spotify Specific Data ────────────────────────────────
     fun getSpotifyRecentlyPlayed(): Flow<List<Track>>
@@ -76,4 +78,28 @@ interface MusicRepository {
     fun getBrowseCategories(): Flow<List<com.vibevault.app.domain.model.Category>>
     suspend fun searchSpotifyAll(query: String): Result<com.vibevault.app.domain.model.SpotifySearchResult>
     fun getGlobalTop50(): Flow<List<Track>>
+
+    // ── Album Operations ─────────────────────────────────────
+    fun getUserSavedAlbums(): Flow<List<com.vibevault.app.domain.model.Album>>
+
+    // ── Artist Detail Operations ─────────────────────────────
+    suspend fun getArtistDetails(artistName: String): Result<com.vibevault.app.domain.model.Artist>
+    suspend fun getArtistTopTracks(artistId: String): Result<List<Track>>
+    suspend fun getArtistAlbums(artistId: String): Result<List<com.vibevault.app.domain.model.Album>>
+
+    // ── Qobuz / Main Data Operations ─────────────────────────
+    suspend fun searchQobuzMusic(query: String): List<Track>
+    suspend fun getQobuzStreamUrl(trackId: String): String
+
+    // Spotify fallback
+    suspend fun getSpotifyPreviewUrl(trackId: String): String?
+    suspend fun getSpotifyPlaylists(): List<com.vibevault.app.data.remote.dto.SpotifyPlaylistDto>
+    suspend fun getSpotifyPlaylist(playlistId: String): com.vibevault.app.data.local.entity.PlaylistEntity?
+    suspend fun getSpotifyPlaylistTracks(playlistId: String): List<Track>
+
+    // Cross-Service Playback Resolution
+    suspend fun resolveSpotifyPlaylistToStreams(playlistId: String, token: String): List<String>
+    
+    // Autoplay / Queue Generation
+    suspend fun getSimilarTracks(seedTrack: Track): List<Track>
 }

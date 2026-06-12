@@ -138,14 +138,6 @@ fun ProfileDto.mapToProfileEntity(): ProfileEntity = ProfileEntity(
     lastSyncedAt = System.currentTimeMillis()
 )
 
-// ── Pfp: DTO → Entity ─────────────────────────────────────
-fun PfpDto.toPfpEntity(): PfpEntity = PfpEntity(
-    id = id ?: java.util.UUID.randomUUID().toString(),
-    userId = userId,
-    url = url,
-    isActive = isActive,
-    createdAt = createdAt?.let { Instant.parse(it).toEpochMilli() } ?: System.currentTimeMillis()
-)
 
 // ── Spotify: DTO → Domain ────────────────────────────────
 fun SpotifyTrackDto.toDomain(likedIds: Set<String> = emptySet()): Track = Track(
@@ -200,3 +192,11 @@ private fun parseTimestamp(timestamp: String): Long {
         System.currentTimeMillis()
     }
 }
+
+// ── Spotify Album → Domain Album ─────────────────────────
+fun SpotifyAlbumDto.toAlbumDomain(): com.vibevault.app.domain.model.Album = com.vibevault.app.domain.model.Album(
+    id = id,
+    name = name,
+    artistName = artists.firstOrNull()?.name ?: "Unknown",
+    coverUrl = images.firstOrNull()?.url
+)

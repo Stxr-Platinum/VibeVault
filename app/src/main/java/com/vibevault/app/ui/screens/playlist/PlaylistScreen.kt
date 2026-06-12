@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,13 +36,22 @@ fun PlaylistScreen(
     playlistId: String,
     onBackClick: () -> Unit,
     onTrackClick: (String, List<Track>) -> Unit,
+    onArtistClick: (String) -> Unit,
     viewModel: PlaylistViewModel = hiltViewModel()
 ) {
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
     
     var showMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
+
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { viewModel.onImagePicked(it) }
+    }
 
     if (showRenameDialog) {
         var newName by remember { mutableStateOf(playlist?.title ?: "") }
@@ -126,26 +137,74 @@ fun PlaylistScreen(
             }
         }
 
-        if (playlist != null) {
+        if (isLoading && playlist == null) {
+            // Full-screen loading state while playlist metadata loads
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = VibePrimary)
+            }
+        } else if (playlist != null) {
             // Header
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(140.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF282828)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.QueueMusic,
-                        contentDescription = "Playlist",
-                        tint = Color.White,
-                        modifier = Modifier.size(64.dp)
+                val customCover = playlist!!.coverUrl
+                val customModel = customCover?.takeIf { it.isNotBlank() }
+
+                if (customModel != null) {
+                    AsyncImage(
+                        model = customModel,
+                        contentDescription = "Playlist Cover",
+                        modifier = Modifier
+                            .size(140.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { launcher.launch("image/*") },
+                        contentScale = ContentScale.Crop
                     )
+                } else if (tracks.isNotEmpty()) {
+                    val coverTracks = tracks.take(4)
+                    Box(
+                        modifier = Modifier
+                            .size(140.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF282828))
+                            .clickable { launcher.launch("image/*") }
+                    ) {
+                        if (coverTracks.size >= 4) {
+                            Column(Modifier.fillMaxSize()) {
+                                Row(Modifier.weight(1f)) {
+                                    AsyncImage(model = coverTracks[0].albumImageUrl, contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                                    AsyncImage(model = coverTracks[1].albumImageUrl, contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                                }
+                                Row(Modifier.weight(1f)) {
+                                    AsyncImage(model = coverTracks[2].albumImageUrl, contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                                    AsyncImage(model = coverTracks[3].albumImageUrl, contentDescription = null, modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                                }
+                            }
+                        } else {
+                            AsyncImage(model = coverTracks[0].albumImageUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(140.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF282828))
+                            .clickable { launcher.launch("image/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.QueueMusic,
+                            contentDescription = "Playlist",
+                            tint = Color.White,
+                            modifier = Modifier.size(64.dp)
+                        )
+                    }
                 }
                 Spacer(Modifier.height(16.dp))
                 Row(
@@ -195,7 +254,50 @@ fun PlaylistScreen(
                 contentPadding = PaddingValues(bottom = 120.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(tracks, key = { it.id }) { track ->
+                // Error / Loading states for tracks
+                if (errorMessage != null) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = null,
+                                tint = VibeOnSurfaceVariant,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = errorMessage!!,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = VibeOnSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = { viewModel.retry() },
+                                colors = ButtonDefaults.buttonColors(containerColor = VibePrimary)
+                            ) {
+                                Text("Retry", color = Color.Black)
+                            }
+                        }
+                    }
+                } else if (isLoading && tracks.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = VibePrimary)
+                        }
+                    }
+                }
+                itemsIndexed(tracks, key = { _, track -> track.id }) { index, track ->
                     var showTrackMenu by remember { mutableStateOf(false) }
 
                     Row(
@@ -230,7 +332,8 @@ fun PlaylistScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = VibeOnSurfaceVariant,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clickable { onArtistClick(track.artist) }
                             )
                         }
                         Box {
@@ -242,11 +345,43 @@ fun PlaylistScreen(
                                 onDismissRequest = { showTrackMenu = false },
                                 modifier = Modifier.background(Color(0xFF282828))
                             ) {
+                                if (index > 0) {
+                                    DropdownMenuItem(
+                                        text = { Text("Move Up", color = Color.White) },
+                                        onClick = {
+                                            showTrackMenu = false
+                                            viewModel.moveTrack(index, index - 1)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Move to Top", color = Color.White) },
+                                        onClick = {
+                                            showTrackMenu = false
+                                            viewModel.moveTrack(index, 0)
+                                        }
+                                    )
+                                }
+                                if (index < tracks.size - 1) {
+                                    DropdownMenuItem(
+                                        text = { Text("Move Down", color = Color.White) },
+                                        onClick = {
+                                            showTrackMenu = false
+                                            viewModel.moveTrack(index, index + 1)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Move to Bottom", color = Color.White) },
+                                        onClick = {
+                                            showTrackMenu = false
+                                            viewModel.moveTrack(index, tracks.size - 1)
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Remove from playlist", color = Color.White) },
                                     onClick = {
                                         showTrackMenu = false
-                                        viewModel.removeTrack(track.id)
+                                        viewModel.removeTrackFromPlaylist(track.id)
                                     }
                                 )
                             }

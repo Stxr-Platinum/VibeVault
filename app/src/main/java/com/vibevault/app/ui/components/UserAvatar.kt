@@ -20,10 +20,11 @@ import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.vibevault.app.ui.theme.VibePrimary
 import com.vibevault.app.ui.theme.VibeSurfaceHigh
+import java.io.File
 
 /**
  * UserAvatar — Premium circular avatar with fallback to initial.
- * Matches the design seen in the Library header.
+ * Supports HTTP URLs and local file paths (starting with /).
  */
 @Composable
 fun UserAvatar(
@@ -34,7 +35,11 @@ fun UserAvatar(
 ) {
     val initial = displayName?.firstOrNull()?.uppercase() ?: "V"
     val fallbackUrl = "https://ui-avatars.com/api/?name=${displayName ?: "V"}&background=1DB954&color=fff&size=200"
-    val model = avatarUrl.takeIf { !it.isNullOrBlank() } ?: fallbackUrl
+    val model: Any = when {
+        avatarUrl.isNullOrBlank() -> fallbackUrl
+        avatarUrl.startsWith("/") -> File(avatarUrl) // Local file path
+        else -> avatarUrl                             // URL
+    }
     
     Box(
         modifier = modifier
