@@ -34,7 +34,6 @@ class MainViewModel @Inject constructor(
                 Log.d("VibeVault", "Session Change: LoggedIn=$loggedIn, Spotify=$spotifyConnected")
                 when {
                     !loggedIn -> Screen.Login.route
-                    !spotifyConnected -> Screen.SpotifyLogin.route
                     else -> Screen.Home.route
                 }
             }.collect { route ->

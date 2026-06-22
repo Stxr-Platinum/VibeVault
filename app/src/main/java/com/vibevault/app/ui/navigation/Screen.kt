@@ -38,6 +38,6 @@ sealed class Screen(
     data object EditProfile : Screen("edit_profile", "Edit Profile")
 
     companion object {
-        val bottomNavItems = listOf(Home, Search, Library)
+        val bottomNavItems get() = listOf(Home, Search, Library)
     }
 }

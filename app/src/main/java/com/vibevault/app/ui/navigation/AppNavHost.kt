@@ -35,17 +35,8 @@ fun AppNavHost(
         composable(Screen.Login.route) {
             LoginScreen(
                 onLoginSuccess = {
-                    navController.navigate(Screen.SpotifyLogin.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
-                    }
-                }
-            )
-        }
-        composable(Screen.SpotifyLogin.route) {
-            com.vibevault.app.ui.screens.login.SpotifyLoginScreen(
-                onSuccess = {
                     navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.SpotifyLogin.route) { inclusive = true }
+                        popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 }
             )

@@ -98,7 +98,7 @@ fun LibraryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0A0A))
+            .background(VibeBg)
     ) {
         // ── Header ──────────────────────────────────────────
         Row(

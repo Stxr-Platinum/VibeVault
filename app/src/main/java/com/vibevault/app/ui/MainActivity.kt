@@ -29,7 +29,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,33 +136,51 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 } else {
-                    Scaffold(
-                        modifier = Modifier.fillMaxSize(),
-                        bottomBar = {
-                            if (currentRoute != Screen.Player.route && currentRoute != Screen.Login.route) {
-                                Column(modifier = Modifier.navigationBarsPadding()) {
-                                    // MiniPlayer sits above the bottom nav
-                                    if (currentTrack != null) {
-                                        MiniPlayer(
-                                            playerViewModel = playerViewModel,
-                                            onExpand = { trackId ->
-                                                navController.navigate(Screen.Player.createRoute(trackId))
-                                            }
-                                        )
-                                    }
+                    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF050505))) {
+                        if (currentTrack != null) {
+                            coil.compose.AsyncImage(
+                                model = currentTrack!!.albumImageUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .scale(1.2f)
+                                    .alpha(0.85f)
+                                    .blur(22.dp)
+                            )
+                        }
+                        // Deep dark overlay to keep text readable
+                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+                        
+                        Scaffold(
+                            modifier = Modifier.fillMaxSize(),
+                            containerColor = Color.Transparent,
+                            bottomBar = {
+                                if (currentRoute != Screen.Player.route && currentRoute != Screen.Login.route) {
+                                    Column(modifier = Modifier) {
+                                        // MiniPlayer sits above the bottom nav
+                                        if (currentTrack != null) {
+                                            MiniPlayer(
+                                                playerViewModel = playerViewModel,
+                                                onExpand = { trackId ->
+                                                    navController.navigate(Screen.Player.createRoute(trackId))
+                                                }
+                                            )
+                                        }
 
-                                    // Bottom nav always visible below
-                                    VibeBottomBar(navController = navController)
+                                        // Bottom nav always visible below
+                                        VibeBottomBar(navController = navController)
+                                    }
                                 }
                             }
+                        ) { innerPadding ->
+                            AppNavHost(
+                                navController = navController,
+                                innerPadding = innerPadding,
+                                playerViewModel = playerViewModel,
+                                startDestination = startDestination!!
+                            )
                         }
-                    ) { innerPadding ->
-                        AppNavHost(
-                            navController = navController,
-                            innerPadding = innerPadding,
-                            playerViewModel = playerViewModel,
-                            startDestination = startDestination!!
-                        )
                     }
                 }
 

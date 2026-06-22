@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,7 @@ import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.data.local.entity.PlaylistEntity
 import com.vibevault.app.data.remote.dto.SpotifySearchResponse
+import com.vibevault.app.ui.components.UserAvatar
 import com.vibevault.app.ui.theme.*
 import com.vibevault.app.ui.viewmodel.HomeViewModel
 
@@ -44,17 +46,13 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
-    val likedSongs by viewModel.likedSongs.collectAsStateWithLifecycle()
-    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val quickPicks by viewModel.quickPicks.collectAsStateWithLifecycle()
+    val trendingTracks by viewModel.trendingTracks.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
-    val discoveryTracks by viewModel.discoveryTracks.collectAsStateWithLifecycle()
-    val featuredPlaylists by viewModel.featuredPlaylists.collectAsStateWithLifecycle()
-    val newReleases by viewModel.newReleases.collectAsStateWithLifecycle()
-    val topArtists by viewModel.topArtists.collectAsStateWithLifecycle()
-    val top50Tracks by viewModel.top50Tracks.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val userAvatarUrl by viewModel.userAvatarUrl.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -68,16 +66,12 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(VibePrimary, VibePrimaryLight)))
-                    .clickable { onProfileClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("D", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
-            }
+            UserAvatar(
+                avatarUrl = userAvatarUrl,
+                displayName = "D",
+                size = 38.dp,
+                modifier = Modifier.clickable { onProfileClick() }
+            )
             Spacer(Modifier.width(12.dp))
             ChipFilter("All", true)
             Spacer(Modifier.width(8.dp))
@@ -101,36 +95,15 @@ fun HomeScreen(
                 SearchResults(searchResults, onTrackClick = { viewModel.playTrack(it); onTrackClick(it) })
             }
         } else {
-            // Home Feed Logic
             if (isLoading) {
                 Box(Modifier.fillMaxSize()) {
                     SkeletonFeed()
-                    
-                    // Center Refresh Button if empty for too long
-                    Column(
-                        Modifier.align(Alignment.Center).padding(bottom = 100.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Looking for music...", color = VibeOnSurfaceMedium)
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = { viewModel.refresh() },
-                            colors = ButtonDefaults.buttonColors(containerColor = VibePrimary)
-                        ) {
-                            Text("Refresh Now", color = Color.Black)
-                        }
-                    }
                 }
             } else {
                 HomeFeed(
+                    quickPicks = quickPicks,
                     recentlyPlayed = recentlyPlayed,
-                    likedSongs = likedSongs,
-                    discoveryTracks = discoveryTracks,
-                    featuredPlaylists = featuredPlaylists,
-                    newReleases = newReleases,
-                    topArtists = topArtists,
-                    playlists = playlists,
-                    top50Tracks = top50Tracks,
+                    trendingTracks = trendingTracks,
                     onTrackClick = { viewModel.playTrack(it); onTrackClick(it) },
                     onPlaylistClick = onPlaylistClick,
                     onSearchClick = { /* Scroll to top or focus search */ },
@@ -144,33 +117,77 @@ fun HomeScreen(
 @Composable
 fun SkeletonFeed() {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 120.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+        contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
     ) {
+        // Greeting Skeleton
         item {
-            Column(modifier = Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                repeat(2) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ShimmerBox(0.dp, 58.dp, 10.dp, Modifier.weight(1f))
-                        ShimmerBox(0.dp, 58.dp, 10.dp, Modifier.weight(1f))
+            ShimmerBox(192.dp, 36.dp, 6.dp)
+            Spacer(Modifier.height(24.dp))
+        }
+        
+        // Quick Picks Skeleton
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(3) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.weight(1f).height(64.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.1f))) {
+                            ShimmerBox(64.dp, 64.dp, 0.dp)
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f).align(Alignment.CenterVertically).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ShimmerBox(0.dp, 12.dp, 4.dp, Modifier.fillMaxWidth(0.8f))
+                                ShimmerBox(0.dp, 10.dp, 4.dp, Modifier.fillMaxWidth(0.5f))
+                            }
+                        }
+                        Row(Modifier.weight(1f).height(64.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.1f))) {
+                            ShimmerBox(64.dp, 64.dp, 0.dp)
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f).align(Alignment.CenterVertically).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ShimmerBox(0.dp, 12.dp, 4.dp, Modifier.fillMaxWidth(0.8f))
+                                ShimmerBox(0.dp, 10.dp, 4.dp, Modifier.fillMaxWidth(0.5f))
+                            }
+                        }
                     }
                 }
             }
+            Spacer(Modifier.height(32.dp))
+        }
+
+        // Recently Played Skeleton
+        item {
+            ShimmerBox(160.dp, 28.dp, 6.dp)
+            Spacer(Modifier.height(16.dp))
         }
         item {
-            Column(modifier = Modifier.padding(top = 36.dp)) {
-                ShimmerBox(120.dp, 24.dp, 4.dp, Modifier.padding(horizontal = 20.dp))
-                Spacer(Modifier.height(14.dp))
-                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    repeat(4) {
-                        item {
-                            Column(Modifier.width(148.dp)) {
-                                ShimmerBox(148.dp, 148.dp, 12.dp)
-                                Spacer(Modifier.height(10.dp))
-                                ShimmerBox(100.dp, 16.dp, 4.dp)
-                                Spacer(Modifier.height(6.dp))
-                                ShimmerBox(60.dp, 12.dp, 4.dp)
-                            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                repeat(5) {
+                    item {
+                        Column(Modifier.width(140.dp).background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(16.dp)) {
+                            ShimmerBox(108.dp, 108.dp, 6.dp)
+                            Spacer(Modifier.height(16.dp))
+                            ShimmerBox(80.dp, 16.dp, 4.dp)
+                            Spacer(Modifier.height(8.dp))
+                            ShimmerBox(50.dp, 12.dp, 4.dp)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(32.dp))
+        }
+
+        // Trending Skeleton
+        item {
+            ShimmerBox(160.dp, 28.dp, 6.dp)
+            Spacer(Modifier.height(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(5) {
+                    Row(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.1f)).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ShimmerBox(40.dp, 40.dp, 4.dp)
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            ShimmerBox(100.dp, 16.dp, 4.dp)
+                            Spacer(Modifier.height(8.dp))
+                            ShimmerBox(60.dp, 12.dp, 4.dp)
                         }
                     }
                 }
@@ -203,14 +220,9 @@ fun ShimmerBox(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.u
 
 @Composable
 fun HomeFeed(
+    quickPicks: List<com.vibevault.app.ui.viewmodel.QuickPickItem>,
     recentlyPlayed: List<Track>,
-    likedSongs: List<Track>,
-    discoveryTracks: List<Track>,
-    featuredPlaylists: List<com.vibevault.app.domain.model.Playlist>,
-    newReleases: List<Track>,
-    topArtists: List<com.vibevault.app.domain.model.Artist>,
-    playlists: List<PlaylistEntity>,
-    top50Tracks: List<Track> = emptyList(),
+    trendingTracks: List<Track>,
     onTrackClick: (Track) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onSearchClick: () -> Unit,
@@ -218,106 +230,84 @@ fun HomeFeed(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 120.dp)
+        contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
     ) {
-        // Quick Picks grid (using Liked Songs)
-        if (likedSongs.isNotEmpty()) {
+        // Greeting
+        item {
+            Text(
+                text = "Good afternoon",
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                color = VibeOnSurface,
+                modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)
+            )
+        }
+
+        // Quick Picks grid
+        if (quickPicks.isNotEmpty()) {
             item {
                 Column(
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val picks = likedSongs.take(6)
+                    val picks = quickPicks.take(8)
                     for (i in 0 until (picks.size + 1) / 2) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             val l = i * 2; val r = i * 2 + 1
-                            if (l < picks.size) QuickPickItem(picks[l], { onTrackClick(picks[l]) }, Modifier.weight(1f))
-                            if (r < picks.size) QuickPickItem(picks[r], { onTrackClick(picks[r]) }, Modifier.weight(1f))
-                            else if (picks.size > 1) Spacer(Modifier.weight(1f))
+                            if (l < picks.size) {
+                                QuickPickItemCard(picks[l], onClick = {
+                                    if (picks[l].type == "playlist") onPlaylistClick(picks[l].id)
+                                    else picks[l].track?.let { onTrackClick(it) }
+                                }, Modifier.weight(1f))
+                            }
+                            if (r < picks.size) {
+                                QuickPickItemCard(picks[r], onClick = {
+                                    if (picks[r].type == "playlist") onPlaylistClick(picks[r].id)
+                                    else picks[r].track?.let { onTrackClick(it) }
+                                }, Modifier.weight(1f))
+                            } else if (picks.size > 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
+                Spacer(Modifier.height(32.dp))
             }
         }
 
-        // Discovery Section (Spotify Data)
-        if (discoveryTracks.isNotEmpty()) {
-            item {
-                SectionHeader("Made For You", Modifier.padding(top = 36.dp))
-                HorizontalCarousel(discoveryTracks, onTrackClick)
-            }
-        }
-
-        // Global Top 50
-        if (top50Tracks.isNotEmpty()) {
-            item {
-                SectionHeader("Global Top 50", Modifier.padding(top = 36.dp))
-                HorizontalCarousel(top50Tracks, onTrackClick)
-            }
-        }
-
-        // New Releases
-        if (newReleases.isNotEmpty()) {
-            item {
-                SectionHeader("New Releases", Modifier.padding(top = 36.dp))
-                HorizontalCarousel(newReleases, onTrackClick)
-            }
-        }
-
-        // Top Artists
-        if (topArtists.isNotEmpty()) {
-            item {
-                SectionHeader("Top Artists", Modifier.padding(top = 36.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    items(topArtists) { artist ->
-                        ArtistCard(artist, onClick = { /* Navigate to Artist */ })
-                    }
-                }
-            }
-        }
-
-        // Jump back in (Recently Played)
+        // Recently Played
         if (recentlyPlayed.isNotEmpty()) {
             item {
-                SectionHeader("Jump back in", Modifier.padding(top = 36.dp))
-                HorizontalCarousel(recentlyPlayed, onTrackClick)
+                SectionHeader("Recently Played", Modifier.padding(horizontal = 4.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(recentlyPlayed) { track ->
+                        PlaylistCardTrack(track, onClick = { onTrackClick(track) })
+                    }
+                }
+                Spacer(Modifier.height(32.dp))
             }
         }
 
-        // Featured Playlists
-        if (featuredPlaylists.isNotEmpty()) {
+        // Trending Now
+        if (trendingTracks.isNotEmpty()) {
             item {
-                SectionHeader("Featured Playlists", Modifier.padding(top = 32.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                SectionHeader("Trending Now", Modifier.padding(horizontal = 4.dp))
+            }
+            item {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .padding(vertical = 8.dp)
                 ) {
-                    items(featuredPlaylists) { playlist ->
-                        PlaylistCardDomain(playlist, onClick = { onPlaylistClick(playlist.id) })
+                    trendingTracks.forEachIndexed { index, track ->
+                        TrendingTrackRow(track, index + 1, onClick = { onTrackClick(track) })
                     }
                 }
             }
+            item { Spacer(Modifier.height(24.dp)) }
         }
-
-        // Your Playlists
-        if (playlists.isNotEmpty()) {
-            item {
-                SectionHeader("Your Playlists", Modifier.padding(top = 32.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    items(playlists) { playlist ->
-                        PlaylistCard(playlist, onClick = { onPlaylistClick(playlist.id) })
-                    }
-                }
-            }
-        }
-        
-        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -353,31 +343,41 @@ fun ChipFilter(text: String, isSelected: Boolean) {
 }
 
 @Composable
-fun QuickPickItem(track: Track, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun QuickPickItemCard(item: com.vibevault.app.ui.viewmodel.QuickPickItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier
-            .height(58.dp)
+            .height(64.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        color = VibeSurfaceElevated
+        shape = RoundedCornerShape(6.dp),
+        color = Color.White.copy(alpha = 0.1f)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = track.albumImageUrl,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
-                    .size(58.dp)
-                    .clip(RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
-            )
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp))
+                    .background(VibePrimary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (item.coverUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = item.coverUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(Icons.Filled.LibraryMusic, null, tint = VibePrimary)
+                }
+            }
             Text(
-                text = track.title,
+                text = item.title,
                 color = VibeOnSurface,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .padding(horizontal = 10.dp)
+                    .padding(horizontal = 16.dp)
                     .weight(1f)
             )
         }
@@ -385,114 +385,34 @@ fun QuickPickItem(track: Track, onClick: () -> Unit, modifier: Modifier = Modifi
 }
 
 @Composable
-fun HorizontalCarousel(
-    tracks: List<Track>,
-    onTrackClick: (Track) -> Unit
-) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        items(tracks) { track ->
-            Column(
-                modifier = Modifier
-                    .width(148.dp)
-                    .clickable { onTrackClick(track) }
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = VibeSurfaceElevated,
-                    modifier = Modifier.size(148.dp)
-                ) {
-                    AsyncImage(
-                        model = track.albumImageUrl,
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = track.title,
-                    color = VibeOnSurface,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = track.artist,
-                    color = VibeOnSurfaceDim,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun PlaylistCard(playlist: PlaylistEntity, onClick: () -> Unit) {
+fun PlaylistCardTrack(track: Track, onClick: () -> Unit) {
     Column(
         modifier = Modifier
-            .width(148.dp)
+            .width(140.dp)
+            .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(148.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(VibeSurfaceElevated),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Filled.LibraryMusic,
-                contentDescription = null,
-                tint = VibePrimary,
-                modifier = Modifier.size(48.dp)
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = playlist.title,
-            color = VibeOnSurface,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = "Playlist",
-            color = VibeOnSurfaceDim,
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
-}
-
-@Composable
-fun PlaylistCardDomain(playlist: com.vibevault.app.domain.model.Playlist, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .width(148.dp)
-            .clickable(onClick = onClick)
+            .padding(16.dp)
     ) {
         AsyncImage(
-            model = playlist.coverUrl,
-            contentDescription = playlist.title,
+            model = track.albumImageUrl,
+            contentDescription = track.title,
             modifier = Modifier
-                .size(148.dp)
-                .clip(RoundedCornerShape(12.dp)),
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(6.dp)),
             contentScale = ContentScale.Crop
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(16.dp))
         Text(
-            text = playlist.title,
+            text = track.title,
             color = VibeOnSurface,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        Spacer(Modifier.height(4.dp))
         Text(
-            text = "Playlist • ${playlist.ownerName}",
+            text = track.artist,
             color = VibeOnSurfaceDim,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -502,35 +422,49 @@ fun PlaylistCardDomain(playlist: com.vibevault.app.domain.model.Playlist, onClic
 }
 
 @Composable
-fun ArtistCard(artist: com.vibevault.app.domain.model.Artist, onClick: () -> Unit) {
-    Column(
+fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
-            .width(148.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        Text(
+            text = index.toString(),
+            color = VibeOnSurfaceDim,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.width(24.dp),
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.width(16.dp))
         AsyncImage(
-            model = artist.imageUrl,
-            contentDescription = artist.name,
+            model = track.albumImageUrl,
+            contentDescription = track.album,
             modifier = Modifier
-                .size(148.dp)
-                .clip(CircleShape),
+                .size(40.dp)
+                .clip(RoundedCornerShape(4.dp)),
             contentScale = ContentScale.Crop
         )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = artist.name,
-            color = VibeOnSurface,
-            style = MaterialTheme.typography.titleSmall,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = "Artist",
-            color = VibeOnSurfaceDim,
-            style = MaterialTheme.typography.bodySmall
-        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = VibeOnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = track.artist,
+                style = MaterialTheme.typography.bodySmall,
+                color = VibeOnSurfaceDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = VibeOnSurfaceDim, modifier = Modifier.size(20.dp))
     }
 }
 

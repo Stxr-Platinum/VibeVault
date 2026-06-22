@@ -117,6 +117,7 @@ dependencies {
 
     // ── Coroutines ─────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.guava)
 
     // ── Google Auth ─────────────────────────────────────────
     implementation(libs.google.play.services.auth)

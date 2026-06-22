@@ -14,6 +14,7 @@ data class HistoryEntity(
     val trackId: String,
     val title: String,
     val artist: String,
+    val album: String = "",
     val albumImageUrl: String,
     val playedAt: Long = System.currentTimeMillis()
 )

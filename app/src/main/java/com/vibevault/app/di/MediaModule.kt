@@ -53,11 +53,4 @@ object MediaModule {
         .setHandleAudioBecomingNoisy(true)   // Pause on headphone disconnect
         .build()
 
-    @Provides
-    @Singleton
-    fun provideMediaSession(
-        @ApplicationContext context: Context,
-        player: ExoPlayer
-    ): MediaSession = MediaSession.Builder(context, player)
-        .build()
 }

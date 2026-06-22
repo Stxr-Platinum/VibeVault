@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.vibevault.app.ui.theme.VibeBg
 import com.vibevault.app.ui.theme.VibeOnSurfaceVariant
 import com.vibevault.app.ui.theme.VibePrimary
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
@@ -88,7 +89,7 @@ fun PlayerScreen(
     }
 
     if (currentTrack == null) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0A)), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxSize().background(VibeBg), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = VibePrimary)
         }
         return
@@ -99,7 +100,8 @@ fun PlayerScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0A0A))
+            .background(VibeBg)
+            .statusBarsPadding()
             .padding(16.dp)
     ) {
         // Top Bar

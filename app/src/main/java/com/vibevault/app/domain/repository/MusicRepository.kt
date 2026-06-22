@@ -24,6 +24,9 @@ interface MusicRepository {
     /** Observe discovery/recommended tracks. */
     fun getDiscoveryTracks(): Flow<List<Track>>
 
+    /** Get similar tracks (Infinite Radio mode). */
+    suspend fun getSimilarTracks(trackId: String): Result<List<Track>>
+
     /** Get tracks by artist name. */
     fun getTracksByArtist(artistName: String): Flow<List<Track>>
 

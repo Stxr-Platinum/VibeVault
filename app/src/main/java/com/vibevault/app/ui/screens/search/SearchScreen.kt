@@ -17,6 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +47,7 @@ fun SearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0A0A))
+            .background(VibeBg)
     ) {
         // ── Header ──────────────────────────────────────────
         Text(
@@ -173,23 +175,24 @@ fun SearchScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
+            data class CategoryItem(val name: String, val color: Color, val imageUrl: String)
             val categories = listOf(
-                Pair("Podcasts", Color(0xFF006450)),
-                Pair("Live Events", Color(0xFF8400E7)),
-                Pair("Made For You", Color(0xFF1E3264)),
-                Pair("New Releases", Color(0xFFE8115B)),
-                Pair("Hindi", Color(0xFF148A08)),
-                Pair("Punjabi", Color(0xFFE13300)),
-                Pair("Tamil", Color(0xFF537AA1)),
-                Pair("Telugu", Color(0xFFDC148C)),
-                Pair("Pop", Color(0xFFB02897)),
-                Pair("K-Pop", Color(0xFF509BF5)),
-                Pair("Hip-Hop", Color(0xFFBA5D07)),
-                Pair("Charts", Color(0xFF477D95)),
-                Pair("Chill", Color(0xFF477D95)),
-                Pair("Indie", Color(0xFF608108)),
-                Pair("Discover", Color(0xFF9B6ADE)),
-                Pair("Workout", Color(0xFF1E3264))
+                CategoryItem("Podcasts", Color(0xFF006450), "https://images.unsplash.com/photo-1593697821252-0c9137d9fc45?w=200&h=200&fit=crop"),
+                CategoryItem("Live Events", Color(0xFF8400E7), "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&h=200&fit=crop"),
+                CategoryItem("Made For You", Color(0xFF1E3264), "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=200&h=200&fit=crop"),
+                CategoryItem("New Releases", Color(0xFFE8115B), "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=200&h=200&fit=crop"),
+                CategoryItem("Hindi", Color(0xFF148A08), "https://images.unsplash.com/photo-1582560475093-ba66cef36eb4?w=200&h=200&fit=crop"),
+                CategoryItem("Punjabi", Color(0xFFE13300), "https://images.unsplash.com/photo-1533558701576-23c65e0272fb?w=200&h=200&fit=crop"),
+                CategoryItem("Tamil", Color(0xFF537AA1), "https://images.unsplash.com/photo-1583391265517-355bfadbb4cb?w=200&h=200&fit=crop"),
+                CategoryItem("Telugu", Color(0xFFDC148C), "https://images.unsplash.com/photo-1516280440503-66f81df96cb8?w=200&h=200&fit=crop"),
+                CategoryItem("Pop", Color(0xFFB02897), "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=200&h=200&fit=crop"),
+                CategoryItem("K-Pop", Color(0xFF509BF5), "https://images.unsplash.com/photo-1627843563095-f6e94676fc06?w=200&h=200&fit=crop"),
+                CategoryItem("Hip-Hop", Color(0xFFBA5D07), "https://images.unsplash.com/photo-1603569283847-aa295f0d016a?w=200&h=200&fit=crop"),
+                CategoryItem("Charts", Color(0xFF477D95), "https://images.unsplash.com/photo-1619983081563-430f63602796?w=200&h=200&fit=crop"),
+                CategoryItem("Chill", Color(0xFF477D95), "https://images.unsplash.com/photo-1499810631641-541e76d678a2?w=200&h=200&fit=crop"),
+                CategoryItem("Indie", Color(0xFF608108), "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&h=200&fit=crop"),
+                CategoryItem("Discover", Color(0xFF9B6ADE), "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=200&h=200&fit=crop"),
+                CategoryItem("Workout", Color(0xFF1E3264), "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=200&h=200&fit=crop")
             )
 
             LazyVerticalGrid(
@@ -197,26 +200,38 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 120.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
             ) {
-                items(categories) { (name, color) ->
+                items(categories) { category ->
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(100.dp)
+                            .height(110.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(color)
-                            .clickable { viewModel.onQueryChange(name) }
-                            .padding(12.dp)
+                            .background(category.color)
+                            .clickable { viewModel.onQueryChange(category.name) }
                     ) {
                         Text(
-                            text = name,
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold
+                            text = category.name,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             ),
-                            color = Color.White
+                            modifier = Modifier.padding(top = 12.dp, start = 12.dp)
+                        )
+                        
+                        AsyncImage(
+                            model = category.imageUrl,
+                            contentDescription = category.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(70.dp)
+                                .offset(x = 18.dp, y = 6.dp)
+                                .rotate(25f)
+                                .clip(RoundedCornerShape(8.dp))
                         )
                     }
                 }

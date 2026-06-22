@@ -10,15 +10,15 @@ import androidx.compose.ui.graphics.Color
  */
 
 // ── Surface Hierarchy (deep charcoal → highlight) ──────────
-val VibeBg                    = Color(0xFF0E150E)
-val VibeSurfaceDim            = Color(0xFF0E150E)
-val VibeSurfaceContainerLowest = Color(0xFF091009)
-val VibeSurfaceContainerLow   = Color(0xFF161D16)
-val VibeSurface               = Color(0xFF1A211A)   // surface_container
-val VibeSurfaceHigh           = Color(0xFF242C24)   // surface_container_high
-val VibeSurfaceHighest        = Color(0xFF2F372E)   // surface_container_highest
-val VibeSurfaceBright         = Color(0xFF333B33)
-val VibeSurfaceVariant        = Color(0xFF2F372E)
+val VibeBg                    = Color.Transparent
+val VibeSurfaceDim            = Color.Transparent
+val VibeSurfaceContainerLowest = Color(0x00000000)
+val VibeSurfaceContainerLow   = Color(0x0AFFFFFF)
+val VibeSurface               = Color(0x1AFFFFFF)   // surface_container
+val VibeSurfaceHigh           = Color(0x26FFFFFF)   // surface_container_high
+val VibeSurfaceHighest        = Color(0x33FFFFFF)   // surface_container_highest
+val VibeSurfaceBright         = Color(0x33FFFFFF)
+val VibeSurfaceVariant        = Color(0x26FFFFFF)
 
 // ── Primary (Spotify Green) ────────────────────────────────
 val VibePrimary               = Color(0xFF53E076)
@@ -67,6 +67,6 @@ val VibeCardBackground        = Color(0xFF282828)   // Stitch media card spec
 
 // ── Additional UI tokens for Premium Design ────────────────
 val VibePrimaryLight          = Color(0xFF90F2A8)
-val VibeSurfaceElevated       = Color(0xFF1E261E)
+val VibeSurfaceElevated       = Color(0x1AFFFFFF)
 val VibeOnSurfaceMedium       = Color(0x99DDE5D9)
 val VibeOnSurfaceDim          = Color(0x66DDE5D9)

@@ -27,7 +27,7 @@ fun VibeBottomBar(
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        modifier = modifier.height(64.dp),
+        modifier = modifier,
         containerColor = Color(0xFF121212),
         contentColor = Color.White
     ) {

@@ -3,22 +3,31 @@ package com.vibevault.app.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vibevault.app.data.remote.dto.SpotifySearchResponse
 import com.vibevault.app.data.remote.api.SpotifyApiService
+import com.vibevault.app.data.remote.dto.SpotifySearchResponse
 import com.vibevault.app.domain.model.*
 import com.vibevault.app.domain.repository.MusicRepository
 import com.vibevault.app.data.local.entity.PlaylistEntity
+import com.vibevault.app.core.session.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class QuickPickItem(
+    val id: String,
+    val title: String,
+    val coverUrl: String,
+    val type: String,
+    val track: Track? = null
+)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
     private val spotifyApi: SpotifyApiService,
-    private val sessionManager: com.vibevault.app.core.session.SessionManager
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     // 1. State Properties (Initialized first)
@@ -46,25 +55,29 @@ class HomeViewModel @Inject constructor(
         .onEach { Log.d("SpotifyDebug", "HomeVM: Playlists flow emitted ${it.size} entities") }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // Featured Playlists
-    private val _featuredPlaylists = MutableStateFlow<List<com.vibevault.app.domain.model.Playlist>>(emptyList())
-    val featuredPlaylists: StateFlow<List<com.vibevault.app.domain.model.Playlist>> = _featuredPlaylists.asStateFlow()
+    // Quick Picks
+    val quickPicks: StateFlow<List<QuickPickItem>> = combine(
+        musicRepository.getRecentlyPlayed(50),
+        musicRepository.getPlaylists()
+    ) { recent, playlists ->
+        val items = mutableListOf<QuickPickItem>()
+        recent.forEach { track ->
+            val albumId = "album:${track.album}"
+            if (track.album.isNotEmpty() && items.none { it.id == albumId }) {
+                items.add(QuickPickItem(albumId, track.album, track.albumImageUrl, "album", track))
+            }
+        }
+        playlists.forEach { playlist ->
+            if (items.none { it.id == playlist.id }) {
+                items.add(QuickPickItem(playlist.id, playlist.title, playlist.coverUrl ?: "", "playlist", null))
+            }
+        }
+        items.take(8)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // New Releases
-    private val _newReleases = MutableStateFlow<List<Track>>(emptyList())
-    val newReleases: StateFlow<List<Track>> = _newReleases.asStateFlow()
-
-    // Top Artists
-    private val _topArtists = MutableStateFlow<List<Artist>>(emptyList())
-    val topArtists: StateFlow<List<Artist>> = _topArtists.asStateFlow()
-
-    // Browse Categories
-    private val _categories = MutableStateFlow<List<Category>>(emptyList())
-    val categories: StateFlow<List<Category>> = _categories.asStateFlow()
-
-    // Global Top 50
-    private val _top50Tracks = MutableStateFlow<List<Track>>(emptyList())
-    val top50Tracks: StateFlow<List<Track>> = _top50Tracks.asStateFlow()
+    // Trending Tracks
+    private val _trendingTracks = MutableStateFlow<List<Track>>(emptyList())
+    val trendingTracks: StateFlow<List<Track>> = _trendingTracks.asStateFlow()
 
     // Search
     private val _searchQuery = MutableStateFlow("")
@@ -76,17 +89,16 @@ class HomeViewModel @Inject constructor(
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
+    // User Avatar
+    val userAvatarUrl: StateFlow<String?> = sessionManager.userAvatarUrlFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), sessionManager.userAvatarUrl)
+
     // 2. Initialization Block (Runs after properties are initialized)
 
     init {
         Log.d("SpotifyDebug", "HomeVM: Initialized")
-        // RE-NAVIGATE and FETCH: If token is null, wait for it.
         viewModelScope.launch {
-            while (sessionManager.spotifyAccessToken == null) {
-                Log.d("SpotifyDebug", "HomeVM: Waiting for Spotify token...")
-                delay(1000)
-            }
-            Log.d("SpotifyDebug", "HomeVM: Token detected! Triggering auto-refresh.")
+            Log.d("SpotifyDebug", "HomeVM: Triggering auto-refresh.")
             refresh()
         }
     }
@@ -95,64 +107,48 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         Log.d("SpotifyDebug", "HomeVM: refresh() triggered")
-        val token = sessionManager.spotifyAccessToken
-        if (token == null) {
-            Log.w("SpotifyDebug", "HomeVM: Spotify token null, skipping refresh")
-            return
-        }
         
         viewModelScope.launch {
             Log.d("SpotifyDebug", "HomeVM: Starting sync sequence...")
             
-            // 1. Fetch Discovery from Spotify immediately
-            refreshDiscovery()
+            // 1. Sync recent history so personalized trending has data
+            musicRepository.syncRecentlyPlayed()
             
-            // 2. Fetch Home Sections
-            refreshHomeSections()
+            // 2. Fetch Trending
+            fetchTrending()
             
             // 3. Sync from Supabase (cloud backup)
             musicRepository.syncFromRemote()
-            
-            // 4. Sync recent history
-            musicRepository.syncRecentlyPlayed()
-            
-            // 4. Fallback: If still empty after 2s, seed trending tracks
-            delay(2000)
-            if (discoveryTracks.value.isEmpty() && recentlyPlayed.value.isEmpty()) {
-                Log.w("SpotifyDebug", "HomeVM: Content empty, seeding trending tracks...")
-                musicRepository.seedMockData()
-            }
             
             _isLoading.value = false
         }
     }
 
-    fun refreshDiscovery() {
-        Log.d("SpotifyDebug", "HomeVM: refreshDiscovery() called")
-        viewModelScope.launch {
-            musicRepository.getDiscoveryTracks().collect { tracks ->
-                Log.d("SpotifyDebug", "HomeVM: Discovery flow collected ${tracks.size} tracks")
-                _discoveryTracks.value = tracks
+    private suspend fun fetchTrending() {
+        Log.d("SpotifyDebug", "HomeVM: fetchTrending() called")
+        val recent = musicRepository.getRecentlyPlayed(3).firstOrNull() ?: emptyList()
+        if (recent.isNotEmpty()) {
+            val combined = mutableListOf<Track>()
+            recent.forEach { track ->
+                val similar = musicRepository.getSimilarTracks(track.id).getOrNull()
+                if (!similar.isNullOrEmpty()) {
+                    combined.addAll(similar)
+                } else if (track.artist.isNotBlank() && track.artist != "Unknown Artist" && track.artist != "Unknown") {
+                    val artistSearch = musicRepository.searchSpotifyAll(track.artist).getOrNull()
+                    if (artistSearch != null && artistSearch.tracks.isNotEmpty()) {
+                        combined.addAll(artistSearch.tracks.take(10))
+                    }
+                }
+            }
+            if (combined.isNotEmpty()) {
+                _trendingTracks.value = combined.distinctBy { it.title }.take(20)
+                return
             }
         }
-    }
-
-    fun refreshHomeSections() {
-        Log.d("SpotifyDebug", "HomeVM: refreshHomeSections() called")
-        viewModelScope.launch {
-            musicRepository.getFeaturedPlaylists().collect { _featuredPlaylists.value = it }
-        }
-        viewModelScope.launch {
-            musicRepository.getNewReleases().collect { _newReleases.value = it }
-        }
-        viewModelScope.launch {
-            musicRepository.getTopArtists().collect { _topArtists.value = it }
-        }
-        viewModelScope.launch {
-            musicRepository.getBrowseCategories().collect { _categories.value = it }
-        }
-        viewModelScope.launch {
-            musicRepository.getGlobalTop50().collect { _top50Tracks.value = it }
+        // Fallback to top hits
+        val top = musicRepository.getGlobalTop50().firstOrNull()
+        if (top != null) {
+            _trendingTracks.value = top.take(20)
         }
     }
 
@@ -167,11 +163,6 @@ class HomeViewModel @Inject constructor(
 
     private fun performSearch(query: String) {
         Log.d("SpotifyDebug", "HomeVM: performSearch called for '$query'")
-        val token = sessionManager.spotifyAccessToken
-        if (token == null) {
-            Log.e("SpotifyDebug", "HomeVM: Search aborted - No token")
-            return
-        }
         
         viewModelScope.launch {
             _isSearching.value = true

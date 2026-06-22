@@ -6,6 +6,8 @@ import com.vibevault.app.domain.model.Track
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,6 +22,9 @@ class QueueManager @Inject constructor() {
 
     private val _currentTrack = MutableStateFlow<Track?>(null)
     val currentTrack: StateFlow<Track?> = _currentTrack.asStateFlow()
+
+    private val _queueEnded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val queueEnded = _queueEnded.asSharedFlow()
 
     private val _queueState = MutableStateFlow<List<Track>>(emptyList())
     val queueState: StateFlow<List<Track>> = _queueState.asStateFlow()
@@ -72,7 +77,8 @@ class QueueManager @Inject constructor() {
             when (_repeatMode.value) {
                 Player.REPEAT_MODE_ALL -> _currentIndex.value = 0
                 else -> {
-                    // Queue ended, don't loop
+                    // Queue ended, don't loop, trigger infinite radio
+                    _queueEnded.tryEmit(Unit)
                     return
                 }
             }
@@ -167,5 +173,20 @@ class QueueManager @Inject constructor() {
             _currentTrack.value = track
         }
         debugLog()
+    }
+
+    fun appendTracks(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        val wasAtEnd = _currentIndex.value == currentQueue.size - 1
+
+        originalQueue.addAll(tracks)
+        currentQueue.addAll(tracks)
+        _queueState.value = currentQueue.toList()
+        debugLog()
+
+        // If we were at the very end of the queue, advance now
+        if (wasAtEnd) {
+            next()
+        }
     }
 }

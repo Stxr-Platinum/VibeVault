@@ -25,6 +25,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
+import com.vibevault.app.ui.theme.VibeBg
 import com.vibevault.app.ui.theme.VibeOnSurfaceVariant
 import com.vibevault.app.ui.theme.VibePrimary
 
@@ -86,7 +87,7 @@ fun PlaylistScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0A0A))
+            .background(VibeBg)
     ) {
         // Top Bar
         Row(

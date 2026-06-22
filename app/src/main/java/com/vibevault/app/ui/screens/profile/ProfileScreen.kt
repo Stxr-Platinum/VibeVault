@@ -260,14 +260,20 @@ fun ProfileScreen(
 
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier = Modifier.padding(top = 16.dp)) {
+    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
         Text(
             title,
             style = MaterialTheme.typography.labelLarge,
             color = VibeOnSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
         )
-        content()
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f))
+        ) {
+            content()
+        }
     }
 }
 
@@ -282,7 +288,7 @@ private fun SettingsItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
