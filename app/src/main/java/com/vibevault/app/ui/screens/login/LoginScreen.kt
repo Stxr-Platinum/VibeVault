@@ -138,7 +138,11 @@ fun LoginScreen(
 
             // ── Social Auth Buttons ────────────────────────
             OutlinedButton(
-                onClick = { launcher.launch(googleSignInClient.signInIntent) },
+                onClick = { 
+                    googleSignInClient.signOut().addOnCompleteListener {
+                        launcher.launch(googleSignInClient.signInIntent)
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),

@@ -33,7 +33,7 @@ data class SpotifyAlbumsResponse(
 
 @Serializable
 data class SpotifyTrackDto(
-    val id: String,
+    val id: String? = null,
     val name: String,
     val artists: List<SpotifyArtistDto> = emptyList(),
     val album: SpotifyAlbumDto? = null,
@@ -158,4 +158,17 @@ data class SpotifyCategoryDto(
     val id: String,
     val name: String,
     val icons: List<SpotifyImageDto> = emptyList()
+)
+
+@Serializable
+data class SpotifyPlaylistItemsResponse(
+    val items: List<SpotifyPlaylistItemDto> = emptyList(),
+    val next: String? = null
+)
+
+@Serializable
+data class SpotifyPlaylistItemDto(
+    @SerialName("added_at") val addedAt: String? = null,
+    val track: SpotifyTrackDto? = null,
+    val item: SpotifyTrackDto? = null
 )

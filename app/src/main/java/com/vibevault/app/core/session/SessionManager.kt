@@ -70,7 +70,7 @@ class SessionManager @Inject constructor(
     init {
         _userDisplayName.value = prefs.getString(KEY_USER_DISPLAY_NAME, null)
         _userAvatarUrl.value = prefs.getString(KEY_USER_AVATAR_URL, null)
-        _isLoggedInFlow.value = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
+        _isLoggedInFlow.value = prefs.getString(KEY_ACCESS_TOKEN, null) != null
         _spotifyAccessTokenFlow.value = prefs.getString(KEY_SPOTIFY_ACCESS_TOKEN, null)
         
         // The user is "connected" to Spotify if they have an active token OR a refresh token
@@ -117,6 +117,7 @@ class SessionManager @Inject constructor(
             displayName?.let { putString(KEY_USER_DISPLAY_NAME, it) }
             avatarUrl?.let { putString(KEY_USER_AVATAR_URL, it) }
             putLong(KEY_SESSION_EXPIRY, expiresAtEpochMs)
+            putBoolean(KEY_IS_LOGGED_IN, true)
             apply()
         }
         _isLoggedInFlow.value = true
@@ -177,9 +178,8 @@ class SessionManager @Inject constructor(
             prefs.edit().putString(KEY_LAST_PLAYED_TRACK_ID, value).apply()
         }
 
-    // ── Read Accessors ─────────────────────────────────────────
 
-    val isLoggedIn: Boolean get() = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
+    val isLoggedIn: Boolean get() = prefs.getString(KEY_ACCESS_TOKEN, null) != null
     val accessToken: String? get() = prefs.getString(KEY_ACCESS_TOKEN, null)
     val refreshToken: String? get() = prefs.getString(KEY_REFRESH_TOKEN, null)
     val userId: String? get() = prefs.getString(KEY_USER_ID, null)

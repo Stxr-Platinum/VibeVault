@@ -36,4 +36,10 @@ class LibraryViewModel @Inject constructor(
             musicRepository.createPlaylist(title)
         }
     }
+    
+    init {
+        viewModelScope.launch {
+            musicRepository.backgroundSyncSpotifyPlaylists()
+        }
+    }
 }

@@ -31,9 +31,17 @@ class SearchViewModel @Inject constructor(
             } else {
                 _isSearching.value = true
                 flow {
-                    val result = musicRepository.searchSpotifyAll(q).getOrNull()
+                    val result = musicRepository.searchSpotify(q)
+                    val searchResult = result.getOrNull()?.let { tracks ->
+                        SpotifySearchResult(
+                            tracks = tracks,
+                            albums = emptyList(),
+                            artists = emptyList(),
+                            playlists = emptyList()
+                        )
+                    }
                     _isSearching.value = false
-                    emit(result)
+                    emit(searchResult)
                 }
             }
         }

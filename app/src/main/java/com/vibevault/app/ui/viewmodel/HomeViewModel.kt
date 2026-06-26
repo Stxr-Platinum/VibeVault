@@ -38,9 +38,8 @@ class HomeViewModel @Inject constructor(
     // 1. State Properties (Initialized first)
 
     // Recently Played
-    val recentlyPlayed: StateFlow<List<Track>> = musicRepository.getRecentlyPlayed(10)
-        .onEach { Log.d("SpotifyDebug", "HomeVM: RecentlyPlayed flow emitted ${it.size} tracks") }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _recentlyPlayed = MutableStateFlow<List<Track>>(emptyList())
+    val recentlyPlayed: StateFlow<List<Track>> = _recentlyPlayed.asStateFlow()
 
     // Liked Songs
     val likedSongs: StateFlow<List<Track>> = musicRepository.getLikedTracks()
@@ -61,24 +60,8 @@ class HomeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // Quick Picks
-    val quickPicks: StateFlow<List<QuickPickItem>> = combine(
-        musicRepository.getRecentlyPlayed(50),
-        musicRepository.getPlaylists()
-    ) { recent, playlists ->
-        val items = mutableListOf<QuickPickItem>()
-        recent.forEach { track ->
-            val albumId = "album:${track.album}"
-            if (track.album.isNotEmpty() && items.none { it.id == albumId }) {
-                items.add(QuickPickItem(albumId, track.album, track.albumImageUrl, "album", track))
-            }
-        }
-        playlists.forEach { playlist ->
-            if (playlist.title.length > 1 && items.none { it.id == playlist.id }) {
-                items.add(QuickPickItem(playlist.id, playlist.title, playlist.coverUrl ?: "", "playlist", null))
-            }
-        }
-        items.take(8)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _quickPicks = MutableStateFlow<List<QuickPickItem>>(emptyList())
+    val quickPicks: StateFlow<List<QuickPickItem>> = _quickPicks.asStateFlow()
 
     // Trending Tracks
     private val _trendingTracks = MutableStateFlow<List<Track>>(emptyList())
@@ -101,6 +84,9 @@ class HomeViewModel @Inject constructor(
     val userDisplayName: StateFlow<String?> = sessionManager.userDisplayNameFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), sessionManager.userDisplayName)
 
+    val isSpotifyConnected: StateFlow<Boolean> = sessionManager.isSpotifyConnected
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), sessionManager.isSpotifyConnected.value)
+
     // 2. Initialization Block (Runs after properties are initialized)
 
     init {
@@ -113,15 +99,19 @@ class HomeViewModel @Inject constructor(
 
     // 3. Methods
 
+    fun disconnectSpotify() {
+        sessionManager.clearSpotifySession()
+    }
+
     fun refresh() {
         Log.d("SpotifyDebug", "HomeVM: refresh() triggered")
         
-        // 1. Load cached trending tracks to show UI immediately
-        val cachedJson = prefs.getString("trending_tracks", null)
-        if (cachedJson != null) {
+        // 1. Load cached tracks to show UI immediately
+        val cachedTrendingJson = prefs.getString("trending_tracks", null)
+        if (cachedTrendingJson != null) {
             try {
                 val type = object : com.google.gson.reflect.TypeToken<List<Track>>() {}.type
-                val cachedTracks: List<Track> = gson.fromJson(cachedJson, type)
+                val cachedTracks: List<Track> = gson.fromJson(cachedTrendingJson, type)
                 if (cachedTracks.isNotEmpty()) {
                     _trendingTracks.value = cachedTracks
                 }
@@ -132,6 +122,40 @@ class HomeViewModel @Inject constructor(
         
         // Unblock UI immediately
         _isLoading.value = false
+        
+        // Keep flows updated in background
+        viewModelScope.launch {
+            musicRepository.getRecentlyPlayed(10).collect { tracks ->
+                if (tracks.isNotEmpty()) {
+                    _recentlyPlayed.value = tracks
+                }
+            }
+        }
+        
+        viewModelScope.launch {
+            combine(
+                musicRepository.getRecentlyPlayed(50),
+                musicRepository.getPlaylists()
+            ) { recent, playlists ->
+                val items = mutableListOf<QuickPickItem>()
+                recent.forEach { track ->
+                    val albumId = "album:${track.album}"
+                    if (track.album.isNotEmpty() && items.none { it.id == albumId }) {
+                        items.add(QuickPickItem(albumId, track.album, track.albumImageUrl, "album", track))
+                    }
+                }
+                playlists.forEach { playlist ->
+                    if (playlist.title.length > 1 && items.none { it.id == playlist.id }) {
+                        items.add(QuickPickItem(playlist.id, playlist.title, playlist.coverUrl ?: "", "playlist", null))
+                    }
+                }
+                items.take(8)
+            }.collect { items ->
+                if (items.isNotEmpty()) {
+                    _quickPicks.value = items
+                }
+            }
+        }
         
         viewModelScope.launch {
             Log.d("SpotifyDebug", "HomeVM: Starting sync sequence...")

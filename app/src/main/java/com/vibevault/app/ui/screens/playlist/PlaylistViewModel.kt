@@ -49,7 +49,16 @@ class PlaylistViewModel @Inject constructor(
                         trackCount = sp.trackCount,
                         coverUrl = sp.coverUrl
                     )
+                    
+                    // Immediately show whatever we have in Supabase
                     _tracks.value = musicRepository.getSpotifyPlaylistTracks(playlistId)
+                    
+                    // Background sync with Spotify API
+                    viewModelScope.launch {
+                        musicRepository.backgroundSyncSpotifyPlaylistTracks(playlistId)
+                        // Reload tracks after sync finishes
+                        _tracks.value = musicRepository.getSpotifyPlaylistTracks(playlistId)
+                    }
                 }
             }
         }

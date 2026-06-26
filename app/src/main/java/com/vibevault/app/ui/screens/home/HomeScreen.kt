@@ -59,6 +59,8 @@ fun HomeScreen(
     val userAvatarUrl by viewModel.userAvatarUrl.collectAsStateWithLifecycle()
     val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
 
+    val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -82,19 +84,44 @@ fun HomeScreen(
             Spacer(Modifier.width(8.dp))
             ChipFilter("Music", false)
             Spacer(Modifier.weight(1f))
+            
             // Connect to Spotify Button
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF1DB954))
-                    .clickable { uriHandler.openUri(authViewModel.getSpotifyAuthUrl()) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = "Connect",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.Black
-                )
+            if (!isSpotifyConnected) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF1DB954))
+                        .clickable { uriHandler.openUri(authViewModel.getSpotifyAuthUrl()) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "Connect to Spotify",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.Black
+                    )
+                }
+            } else {
+                // Connected indicator (Click to disconnect)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .clickable { viewModel.disconnectSpotify() }
+                        .padding(4.dp) // extra touch target
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.CheckCircle,
+                        contentDescription = "Spotify Connected",
+                        tint = Color(0xFF1DB954),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Spotify Connected",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF1DB954)
+                    )
+                }
             }
         }
 
@@ -562,9 +589,9 @@ private fun SearchResults(viewModel: HomeViewModel, searchResponse: SpotifySearc
     LazyColumn(contentPadding = PaddingValues(bottom = 120.dp)) {
         searchResponse?.tracks?.items?.let { tracks ->
             item { SectionHeader("Tracks") }
-            items(tracks) { dto ->
+            items(tracks.filter { it.id != null }) { dto ->
                 val track = Track(
-                    id = dto.id,
+                    id = dto.id!!,
                     title = dto.name,
                     artist = dto.artists.firstOrNull()?.name ?: "Unknown",
                     album = dto.album?.name ?: "Unknown",

@@ -74,9 +74,10 @@ class MusicRepositoryImpl @Inject constructor(
         if (query.length >= 2) {
             spotifyApi.searchTracks(query).onSuccess { response ->
                 val likedIds = likedSongDao.getLikedSongIds().toSet()
-                val remoteTracks = response.tracks?.items?.map { dto ->
+                val remoteTracks = response.tracks?.items?.mapNotNull { dto ->
+                    val id = dto.id ?: return@mapNotNull null
                     Track(
-                        id = dto.id,
+                        id = id,
                         title = dto.name,
                         artist = dto.artists.firstOrNull()?.name ?: "Unknown",
                         album = dto.album?.name ?: "Unknown",
@@ -109,9 +110,10 @@ class MusicRepositoryImpl @Inject constructor(
             Log.d("SpotifyDebug", "MusicRepo: Spotify API search SUCCESS. Track count = ${response?.tracks?.items?.size}")
             val likedIds = likedSongDao.getLikedSongIds().toSet()
             
-            val tracks = response?.tracks?.items?.map { dto ->
+            val tracks = response?.tracks?.items?.mapNotNull { dto ->
+                val id = dto.id ?: return@mapNotNull null
                 Track(
-                    id = dto.id,
+                    id = id,
                     title = dto.name,
                     artist = dto.artists.firstOrNull()?.name ?: "Unknown",
                     album = dto.album?.name ?: "Unknown",
@@ -140,9 +142,10 @@ class MusicRepositoryImpl @Inject constructor(
         spotifyApi.getRecommendations(seedId).onSuccess { dtos ->
             Log.d("SpotifyDebug", "MusicRepo: Recommendations Success - count = ${dtos.size}")
             val likedIds = likedSongDao.getLikedSongIds().toSet()
-            val tracks = dtos.map { dto ->
+            val tracks = dtos.mapNotNull { dto ->
+                val id = dto.id ?: return@mapNotNull null
                 Track(
-                    id = dto.id,
+                    id = id,
                     title = dto.name,
                     artist = dto.artists.firstOrNull()?.name ?: "Unknown",
                     album = dto.album?.name ?: "Unknown",
@@ -241,13 +244,16 @@ class MusicRepositoryImpl @Inject constructor(
             if (numericId != null) {
                 try {
                     Log.d("MusicRepo", "Falling back to Tidal recommendations for id=$numericId")
-                    val API_INSTANCES = listOf(
+                    val baseInstances = listOf(
                         "https://us-west.monochrome.tf",
                         "https://eu-central.monochrome.tf",
                         "https://api.monochrome.tf",
                         "https://monochrome-api.samidy.com",
                         "https://hifi-two.spotisaver.net"
                     )
+
+                    val active = activeSearchInstance
+                    val API_INSTANCES = listOf(active) + baseInstances.filter { it != active }
 
                     for (instance in API_INSTANCES) {
                         try {
@@ -293,6 +299,7 @@ class MusicRepositoryImpl @Inject constructor(
                                     ))
                                 }
                                 if (tracks.isNotEmpty()) {
+                                    activeSearchInstance = instance
                                     return@withContext Result.success(tracks)
                                 }
                             }
@@ -358,8 +365,9 @@ class MusicRepositoryImpl @Inject constructor(
             } else {
                 // Last resort: fetch from Spotify
                 spotifyApi.getTrack(trackId).onSuccess { dto ->
+                    val id = dto.id ?: return@onSuccess
                     val entity = LikedSongEntity(
-                        id = dto.id,
+                        id = id,
                         title = dto.name,
                         artist = dto.artists.firstOrNull()?.name ?: "Unknown",
                         album = dto.album?.name ?: "Unknown",
@@ -640,7 +648,12 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun getTopArtists(): Flow<List<Artist>> = flow { emit(emptyList()) }
 
-    override fun getUserSpotifyPlaylists(): Flow<List<Playlist>> = flow {
+    private val _spotifyPlaylistsTrigger = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(
+        replay = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    ).apply { tryEmit(Unit) }
+
+    override fun getUserSpotifyPlaylists(): Flow<List<Playlist>> = _spotifyPlaylistsTrigger.map {
         try {
             val userId = sessionManager.userId
             if (userId != null) {
@@ -650,7 +663,7 @@ class MusicRepositoryImpl @Inject constructor(
                     }
                     .decodeList<com.vibevault.app.data.remote.dto.SupabaseSpotifyPlaylistDto>()
                 
-                val playlists = dtos.map { dto ->
+                dtos.map { dto ->
                     Playlist(
                         id = dto.playlistId,
                         title = dto.name,
@@ -660,12 +673,12 @@ class MusicRepositoryImpl @Inject constructor(
                         trackCount = dto.trackCount
                     )
                 }
-                emit(playlists)
             } else {
-                emit(emptyList())
+                emptyList()
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            emptyList()
         }
     }
 
@@ -703,17 +716,25 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun getBrowseCategories(): Flow<List<Category>> = flow { emit(emptyList()) }
 
+    companion object {
+        @Volatile
+        var activeSearchInstance = "https://us-west.monochrome.tf"
+    }
+
     override suspend fun searchSpotifyAll(query: String): Result<SpotifySearchResult> {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 var searchQuery = query
-                val API_INSTANCES = listOf(
+                val baseInstances = listOf(
                     "https://us-west.monochrome.tf",
                     "https://eu-central.monochrome.tf",
                     "https://api.monochrome.tf",
                     "https://monochrome-api.samidy.com",
                     "https://hifi-two.spotisaver.net"
                 )
+                
+                val active = activeSearchInstance
+                val API_INSTANCES = listOf(active) + baseInstances.filter { it != active }
 
                 for (instance in API_INSTANCES) {
                     try {
@@ -763,6 +784,7 @@ class MusicRepositoryImpl @Inject constructor(
                                     source = "tidal"
                                 ))
                             }
+                            activeSearchInstance = instance
                             return@withContext Result.success(SpotifySearchResult(tracks, emptyList(), emptyList(), emptyList()))
                         }
                     } catch (e: Exception) {
@@ -782,6 +804,145 @@ class MusicRepositoryImpl @Inject constructor(
             emit(result.tracks)
         }.onFailure { 
             emit(emptyList())
+        }
+    }
+
+    override suspend fun backgroundSyncSpotifyPlaylists() {
+        val userId = sessionManager.userId ?: return
+        try {
+            val result = spotifyApi.getUserPlaylists()
+            if (result.isSuccess) {
+                val playlists = result.getOrNull() ?: emptyList()
+                val dtos = playlists.map {
+                    SupabaseSpotifyPlaylistDto(
+                        userId = userId,
+                        playlistId = it.id,
+                        name = it.name,
+                        description = it.description,
+                        image = it.images.firstOrNull()?.url,
+                        ownerName = it.owner?.displayName,
+                        trackCount = 0 // Stub, wait, do we have track count?
+                    )
+                }
+                
+                // Diff and sync logic
+                val existingPlaylists = postgrest.from("spotify_playlists")
+                    .select { filter { eq("user_id", userId) } }
+                    .decodeList<SupabaseSpotifyPlaylistDto>()
+                    
+                val newIds = dtos.map { it.playlistId }.toSet()
+                val idsToDelete = existingPlaylists.map { it.playlistId }.filter { !newIds.contains(it) }
+                
+                if (idsToDelete.isNotEmpty()) {
+                    for (chunk in idsToDelete.chunked(50)) {
+                        postgrest.from("spotify_playlists").delete {
+                            filter { 
+                                eq("user_id", userId)
+                                isIn("playlist_id", chunk)
+                            }
+                        }
+                    }
+                }
+                
+                if (dtos.isNotEmpty()) {
+                    for (chunk in dtos.chunked(50)) {
+                        postgrest.from("spotify_playlists").upsert(chunk) {
+                            onConflict = "user_id, playlist_id"
+                        }
+                    }
+                }
+                
+                // Trigger observers to reload playlists
+                _spotifyPlaylistsTrigger.tryEmit(Unit)
+            }
+        } catch (e: Exception) {
+            Log.e("SpotifySync", "Error syncing playlists", e)
+        }
+    }
+    
+    override suspend fun backgroundSyncSpotifyPlaylistTracks(playlistId: String) {
+        val userId = sessionManager.userId ?: return
+        try {
+            val result = spotifyApi.getPlaylistTracks(playlistId)
+            if (result.isSuccess) {
+                val items = result.getOrNull() ?: emptyList()
+                Log.d("SpotifySync", "API returned ${items.size} items for playlist $playlistId")
+                
+                val parsed = items.mapNotNull { item ->
+                    if (item.track == null && item.item == null) {
+                        Log.d("SpotifySync", "Item track and item are both null!")
+                        return@mapNotNull null
+                    }
+                    val t = item.track ?: item.item ?: return@mapNotNull null
+                    if (t.id == null) {
+                        Log.d("SpotifySync", "Track ${t.name} has no ID (likely local), skipping.")
+                        return@mapNotNull null
+                    }
+                    t
+                }.distinctBy { it.id!! }
+                
+                // Removed early return. If a playlist is legitimately empty on Spotify, we should sync that empty state.
+
+                val existingTracks = postgrest.from("spotify_playlist_tracks")
+                    .select {
+                        filter {
+                            eq("user_id", userId)
+                            eq("playlist_id", playlistId)
+                        }
+                    }
+                    .decodeList<SupabaseSpotifyPlaylistTrackDto>()
+                    
+                val existingMap = existingTracks.associateBy({ it.spotifyTrackId }, { it.position })
+                
+                val newIdsSet = mutableSetOf<String>()
+                val rowsToUpsert = mutableListOf<SupabaseSpotifyPlaylistTrackDto>()
+                
+                for ((i, t) in parsed.withIndex()) {
+                    val trackId = t.id!!
+                    newIdsSet.add(trackId)
+                    
+                    val existingPos = existingMap[trackId]
+                    if (existingPos == null || existingPos != i) {
+                        rowsToUpsert.add(
+                            SupabaseSpotifyPlaylistTrackDto(
+                                userId = userId,
+                                playlistId = playlistId,
+                                spotifyTrackId = trackId,
+                                title = t.name,
+                                artist = t.artists.firstOrNull()?.name ?: "Unknown",
+                                album = t.album?.name ?: "Unknown",
+                                coverUrl = t.album?.images?.firstOrNull()?.url ?: "",
+                                durationMs = t.durationMs,
+                                position = i
+                            )
+                        )
+                    }
+                }
+                
+                val idsToDelete = existingMap.keys.filter { !newIdsSet.contains(it) }
+                
+                if (idsToDelete.isNotEmpty()) {
+                    for (chunk in idsToDelete.chunked(50)) {
+                        postgrest.from("spotify_playlist_tracks").delete {
+                            filter {
+                                eq("user_id", userId)
+                                eq("playlist_id", playlistId)
+                                isIn("spotify_track_id", chunk)
+                            }
+                        }
+                    }
+                }
+                
+                if (rowsToUpsert.isNotEmpty()) {
+                    for (chunk in rowsToUpsert.chunked(50)) {
+                        postgrest.from("spotify_playlist_tracks").upsert(chunk) {
+                            onConflict = "user_id, playlist_id, spotify_track_id"
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SpotifySync", "Error syncing tracks for $playlistId", e)
         }
     }
 }

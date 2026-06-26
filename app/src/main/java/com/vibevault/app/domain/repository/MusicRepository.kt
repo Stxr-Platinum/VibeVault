@@ -77,6 +77,13 @@ interface MusicRepository {
     fun getTopArtists(): Flow<List<com.vibevault.app.domain.model.Artist>>
     fun getUserSpotifyPlaylists(): Flow<List<com.vibevault.app.domain.model.Playlist>>
     suspend fun getSpotifyPlaylistTracks(playlistId: String): List<Track>
+    
+    /** Sync Spotify playlists from Spotify API to Supabase. */
+    suspend fun backgroundSyncSpotifyPlaylists()
+    
+    /** Sync tracks of a specific Spotify playlist from Spotify API to Supabase. */
+    suspend fun backgroundSyncSpotifyPlaylistTracks(playlistId: String)
+    
     fun getBrowseCategories(): Flow<List<com.vibevault.app.domain.model.Category>>
     suspend fun searchSpotifyAll(query: String): Result<com.vibevault.app.domain.model.SpotifySearchResult>
     fun getGlobalTop50(): Flow<List<Track>>
