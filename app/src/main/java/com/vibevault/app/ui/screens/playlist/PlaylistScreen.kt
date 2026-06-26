@@ -5,12 +5,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +25,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -129,19 +134,21 @@ fun PlaylistScreen(
 
         if (playlist != null) {
             LazyColumn(
-                contentPadding = PaddingValues(bottom = 120.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 item {
-                    // Header
-                    Column(
+                    // Header Block
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 16.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.White.copy(alpha = 0.1f))
+                            .padding(24.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(140.dp)
+                                .size(120.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0xFF282828)),
                             contentAlignment = Alignment.Center
@@ -158,106 +165,168 @@ fun PlaylistScreen(
                                     Icons.Default.QueueMusic,
                                     contentDescription = "Playlist",
                                     tint = Color.White,
-                                    modifier = Modifier.size(64.dp)
+                                    modifier = Modifier.size(48.dp)
                                 )
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = playlist!!.title,
-                                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = "Playlist • ${tracks.size} songs",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = VibeOnSurfaceVariant
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(androidx.compose.foundation.shape.CircleShape)
-                                    .background(VibePrimary)
-                                    .clickable {
-                                        if (tracks.isNotEmpty()) {
-                                            onTrackClick(tracks.first().id, tracks)
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = "Play Playlist",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
+                        Spacer(Modifier.width(20.dp))
+                        Column(verticalArrangement = Arrangement.Center) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "PLAYLIST",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
+                                color = Color.White
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = playlist!!.title,
+                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black),
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "V • ${tracks.size} songs",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
                         }
                     }
                     Spacer(Modifier.height(16.dp))
                 }
-                items(tracks, key = { it.id }) { track ->
-                    var showTrackMenu by remember { mutableStateOf(false) }
 
+                item {
+                    // Controls Block
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onTrackClick(track.id, tracks) }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.White.copy(alpha = 0.1f))
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(
-                            model = track.albumImageUrl,
-                            contentDescription = track.album,
+                        Box(
                             modifier = Modifier
                                 .size(56.dp)
-                                .clip(RoundedCornerShape(6.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                track.title,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                track.artist,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = VibeOnSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(Color(0xFF1DB954)) // Spotify Green
+                                .clickable {
+                                    if (tracks.isNotEmpty()) {
+                                        onTrackClick(tracks.first().id, tracks)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "Play Playlist",
+                                tint = Color.Black,
+                                modifier = Modifier.size(32.dp)
                             )
                         }
-                        Box {
-                            IconButton(onClick = { showTrackMenu = true }) {
-                                Icon(Icons.Default.MoreVert, "Track Options", tint = VibeOnSurfaceVariant)
-                            }
-                            DropdownMenu(
-                                expanded = showTrackMenu,
-                                onDismissRequest = { showTrackMenu = false },
-                                modifier = Modifier.background(Color(0xFF282828))
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Remove from playlist", color = Color.White) },
-                                    onClick = {
-                                        showTrackMenu = false
-                                        viewModel.removeTrack(track.id)
-                                    }
+                        Spacer(Modifier.width(24.dp))
+                        Icon(
+                            imageVector = Icons.Default.Refresh, // Placeholder for loop
+                            contentDescription = "Loop",
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(24.dp))
+                        Icon(
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = "More",
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(28.dp).clickable { showMenu = true }
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                if (tracks.isNotEmpty()) {
+                    item {
+                        // Track List Header
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                                .background(Color.White.copy(alpha = 0.1f))
+                                .padding(horizontal = 24.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("#", color = Color.White.copy(alpha = 0.5f), modifier = Modifier.width(32.dp))
+                            Text("Title", color = Color.White.copy(alpha = 0.5f), modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.AccessTime, contentDescription = "Time", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                        }
+                        // Divider
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
+                    }
+
+                    itemsIndexed(tracks, key = { _, it -> it.id }) { index, track ->
+                        var showTrackMenu by remember { mutableStateOf(false) }
+                        
+                        val shape = if (index == tracks.lastIndex) RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp) else RoundedCornerShape(0.dp)
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(shape)
+                                .background(Color.White.copy(alpha = 0.1f))
+                                .clickable { onTrackClick(track.id, tracks) }
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = (index + 1).toString(),
+                                color = Color.White.copy(alpha = 0.5f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.width(32.dp)
+                            )
+                            AsyncImage(
+                                model = track.albumImageUrl,
+                                contentDescription = track.album,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(6.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    track.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    track.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Box {
+                                IconButton(onClick = { showTrackMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, "Track Options", tint = Color.White.copy(alpha = 0.5f))
+                                }
+                                DropdownMenu(
+                                    expanded = showTrackMenu,
+                                    onDismissRequest = { showTrackMenu = false },
+                                    modifier = Modifier.background(Color(0xFF282828))
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Remove from playlist", color = Color.White) },
+                                        onClick = {
+                                            showTrackMenu = false
+                                            viewModel.removeTrack(track.id)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
