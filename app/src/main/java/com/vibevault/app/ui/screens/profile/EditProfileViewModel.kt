@@ -2,6 +2,13 @@ package com.vibevault.app.ui.screens.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.ByteArrayOutputStream
 import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.domain.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +29,7 @@ data class EditProfileUiState(
 
 @HiltViewModel
 class EditProfileViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val sessionManager: SessionManager,
     private val authRepository: AuthRepository
 ) : ViewModel() {
@@ -43,7 +51,31 @@ class EditProfileViewModel @Inject constructor(
     }
 
     fun onAvatarUrlChange(url: String) {
-        _uiState.update { it.copy(avatarUrl = url, error = null) }
+        if (url.startsWith("content://")) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val uri = Uri.parse(url)
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    
+                    if (bitmap != null) {
+                        val outputStream = ByteArrayOutputStream()
+                        // Compress to a small JPEG to save DB space
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+                        val byteArray = outputStream.toByteArray()
+                        val base64 = Base64.encodeToString(byteArray, Base64.NO_WRAP)
+                        val dataUrl = "data:image/jpeg;base64,$base64"
+                        
+                        _uiState.update { it.copy(avatarUrl = dataUrl, error = null) }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            _uiState.update { it.copy(avatarUrl = url, error = null) }
+        }
     }
 
     fun saveProfile() {

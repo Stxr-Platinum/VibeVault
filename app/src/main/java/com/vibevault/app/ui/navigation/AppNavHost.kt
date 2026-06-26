@@ -51,6 +51,9 @@ fun AppNavHost(
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                 },
+                onSwipeToQueue = { track ->
+                    playerViewModel.addToQueue(track)
+                },
                 onProfileClick = {
                     navController.navigate(Screen.Profile.route)
                 }
@@ -121,7 +124,8 @@ fun AppNavHost(
             val trackId = backStackEntry.arguments?.getString("trackId")
             PlayerScreen(
                 trackId = trackId,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
+                viewModel = playerViewModel
             )
         }
         composable(Screen.Artist.route) { backStackEntry ->

@@ -128,74 +128,82 @@ fun PlaylistScreen(
         }
 
         if (playlist != null) {
-            // Header
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(140.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF282828)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.QueueMusic,
-                        contentDescription = "Playlist",
-                        tint = Color.White,
-                        modifier = Modifier.size(64.dp)
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = playlist!!.title,
-                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Playlist • ${tracks.size} songs",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = VibeOnSurfaceVariant
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(androidx.compose.foundation.shape.CircleShape)
-                            .background(VibePrimary)
-                            .clickable {
-                                if (tracks.isNotEmpty()) {
-                                    onTrackClick(tracks.first().id, tracks)
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            contentDescription = "Play Playlist",
-                            tint = Color.Black,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // Track List
             LazyColumn(
                 contentPadding = PaddingValues(bottom = 120.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                item {
+                    // Header
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(140.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF282828)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (playlist!!.coverUrl != null) {
+                                AsyncImage(
+                                    model = playlist!!.coverUrl,
+                                    contentDescription = "Playlist Cover",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.QueueMusic,
+                                    contentDescription = "Playlist",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(64.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = playlist!!.title,
+                                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = "Playlist • ${tracks.size} songs",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = VibeOnSurfaceVariant
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(VibePrimary)
+                                    .clickable {
+                                        if (tracks.isNotEmpty()) {
+                                            onTrackClick(tracks.first().id, tracks)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = "Play Playlist",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
                 items(tracks, key = { it.id }) { track ->
                     var showTrackMenu by remember { mutableStateOf(false) }
 

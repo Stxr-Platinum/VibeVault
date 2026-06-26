@@ -115,7 +115,7 @@ fun SearchScreen(
                                     title = track.title,
                                     subtitle = "${track.artist} • ${track.album}",
                                     imageUrl = track.albumImageUrl,
-                                    onClick = { onTrackClick(track.id, result.tracks) }
+                                    onClick = { onTrackClick(track.id, listOf(track)) }
                                 )
                             }
                         }

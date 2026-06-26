@@ -173,8 +173,12 @@ class MusicRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getSimilarTracks(trackId: String): Result<List<Track>> {
+    override suspend fun getSimilarTracks(track: Track): Result<List<Track>> {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val trackId = track.id
+            val likedIds = likedSongDao.getLikedSongIds().toSet()
+            
+            // 1. Try JioSaavn
             try {
                 Log.d("MusicRepo", "Fetching JioSaavn suggestions for $trackId")
                 val url = java.net.URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/songs/${java.net.URLEncoder.encode(trackId, "UTF-8")}/suggestions")
@@ -189,7 +193,6 @@ class MusicRepositoryImpl @Inject constructor(
                     val data = json.optJSONArray("data")
                     
                     val tracks = mutableListOf<Track>()
-                    val likedIds = likedSongDao.getLikedSongIds().toSet()
                     
                     if (data != null) {
                         for (i in 0 until data.length()) {
@@ -225,14 +228,101 @@ class MusicRepositoryImpl @Inject constructor(
                             }
                         }
                     }
-                    Result.success(tracks)
-                } else {
-                    Result.failure(Exception("HTTP Error: ${connection.responseCode}"))
+                    if (tracks.isNotEmpty()) {
+                        return@withContext Result.success(tracks)
+                    }
                 }
             } catch (e: Exception) {
-                Log.e("MusicRepo", "getSimilarTracks failed", e)
-                Result.failure(e)
+                Log.e("MusicRepo", "JioSaavn suggestions failed, falling back to Tidal", e)
             }
+
+            // 2. Try Tidal Fallback
+            val numericId = trackId.toLongOrNull()
+            if (numericId != null) {
+                try {
+                    Log.d("MusicRepo", "Falling back to Tidal recommendations for id=$numericId")
+                    val API_INSTANCES = listOf(
+                        "https://us-west.monochrome.tf",
+                        "https://eu-central.monochrome.tf",
+                        "https://api.monochrome.tf",
+                        "https://monochrome-api.samidy.com",
+                        "https://hifi-two.spotisaver.net"
+                    )
+
+                    for (instance in API_INSTANCES) {
+                        try {
+                            val url = java.net.URL("$instance/recommendations/?id=$numericId")
+                            val connection = url.openConnection() as java.net.HttpURLConnection
+                            connection.requestMethod = "GET"
+                            connection.connectTimeout = 5000
+                            connection.readTimeout = 5000
+
+                            if (connection.responseCode == 200) {
+                                val response = connection.inputStream.bufferedReader().readText()
+                                val json = org.json.JSONObject(response)
+                                val items = json.optJSONArray("items") ?: org.json.JSONArray()
+                                val tracks = mutableListOf<Track>()
+
+                                for (i in 0 until items.length()) {
+                                    val itemObj = items.optJSONObject(i) ?: continue
+                                    val trackObj = itemObj.optJSONObject("track") ?: continue
+                                    val tidalId = trackObj.optString("id")
+                                    if (tidalId.isNullOrEmpty()) continue
+                                    
+                                    val title = trackObj.optString("title", "Unknown")
+                                    val durationSec = trackObj.optInt("duration", 0)
+                                    val artistObj = trackObj.optJSONObject("artist")
+                                    val artistName = artistObj?.optString("name", "Unknown") ?: "Unknown"
+                                    val albumObj = trackObj.optJSONObject("album")
+                                    val albumName = albumObj?.optString("title", "Unknown") ?: "Unknown"
+                                    
+                                    val coverUuid = albumObj?.optString("cover", "") ?: ""
+                                    val coverUrl = if (coverUuid.isNotEmpty()) {
+                                        "https://resources.tidal.com/images/${coverUuid.replace("-", "/")}/640x640.jpg"
+                                    } else ""
+                                    
+                                    tracks.add(Track(
+                                        id = tidalId,
+                                        title = title,
+                                        artist = artistName,
+                                        album = albumName,
+                                        albumImageUrl = coverUrl,
+                                        durationMs = durationSec * 1000L,
+                                        isLiked = likedIds.contains(tidalId),
+                                        source = "tidal"
+                                    ))
+                                }
+                                if (tracks.isNotEmpty()) {
+                                    return@withContext Result.success(tracks)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w("MusicRepo", "Tidal fallback failed via $instance", e)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MusicRepo", "Tidal fallback failed entirely", e)
+                }
+            }
+
+            // 3. Fallback: Search Tidal by Artist (good for Spotify tracks)
+            try {
+                Log.d("MusicRepo", "Falling back to Tidal search by artist: ${track.artist}")
+                val searchRes = searchSpotifyAll(track.artist)
+                if (searchRes.isSuccess) {
+                    val searchTracks = searchRes.getOrNull()?.tracks
+                    if (!searchTracks.isNullOrEmpty()) {
+                        val similar = searchTracks.filter { it.id != track.id }.shuffled().take(15)
+                        if (similar.isNotEmpty()) {
+                            return@withContext Result.success(similar)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "Tidal search fallback failed", e)
+            }
+
+            Result.failure(Exception("Failed to get similar tracks from all providers"))
         }
     }
 
@@ -293,6 +383,7 @@ class MusicRepositoryImpl @Inject constructor(
                 trackId = track.id,
                 title = track.title,
                 artist = track.artist,
+                album = track.album,
                 albumImageUrl = track.albumImageUrl
             )
         )
@@ -549,7 +640,66 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun getTopArtists(): Flow<List<Artist>> = flow { emit(emptyList()) }
 
-    override fun getUserSpotifyPlaylists(): Flow<List<Playlist>> = flow { emit(emptyList()) }
+    override fun getUserSpotifyPlaylists(): Flow<List<Playlist>> = flow {
+        try {
+            val userId = sessionManager.userId
+            if (userId != null) {
+                val dtos = postgrest.from("spotify_playlists")
+                    .select {
+                        filter { eq("user_id", userId) }
+                    }
+                    .decodeList<com.vibevault.app.data.remote.dto.SupabaseSpotifyPlaylistDto>()
+                
+                val playlists = dtos.map { dto ->
+                    Playlist(
+                        id = dto.playlistId,
+                        title = dto.name,
+                        description = dto.description,
+                        coverUrl = dto.image,
+                        ownerName = dto.ownerName,
+                        trackCount = dto.trackCount
+                    )
+                }
+                emit(playlists)
+            } else {
+                emit(emptyList())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override suspend fun getSpotifyPlaylistTracks(playlistId: String): List<Track> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val userId = sessionManager.userId
+            if (userId != null) {
+                val dtos = postgrest.from("spotify_playlist_tracks")
+                    .select {
+                        filter { 
+                            eq("user_id", userId)
+                            eq("playlist_id", playlistId)
+                        }
+                    }
+                    .decodeList<com.vibevault.app.data.remote.dto.SupabaseSpotifyPlaylistTrackDto>()
+                
+                dtos.sortedBy { it.position }.map { dto ->
+                    Track(
+                        id = dto.spotifyTrackId,
+                        title = dto.title,
+                        artist = dto.artist,
+                        album = dto.album,
+                        albumImageUrl = dto.coverUrl,
+                        durationMs = dto.durationMs
+                    )
+                }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
 
     override fun getBrowseCategories(): Flow<List<Category>> = flow { emit(emptyList()) }
 
@@ -557,81 +707,71 @@ class MusicRepositoryImpl @Inject constructor(
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 var searchQuery = query
-                
-                // 1. Wikipedia Typo Correction (fixes issues like "bille jean" -> "Billie Jean")
-                try {
-                    val wikiUrl = java.net.URL("https://en.wikipedia.org/w/api.php?action=opensearch&search=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=1&namespace=0&format=json&origin=*")
-                    val wikiConn = wikiUrl.openConnection() as java.net.HttpURLConnection
-                    wikiConn.requestMethod = "GET"
-                    wikiConn.connectTimeout = 3000
-                    if (wikiConn.responseCode == 200) {
-                        val wikiResponse = wikiConn.inputStream.bufferedReader().readText()
-                        val wikiJsonArray = org.json.JSONArray(wikiResponse)
-                        val suggestions = wikiJsonArray.optJSONArray(1)
-                        if (suggestions != null && suggestions.length() > 0) {
-                            val suggestion = suggestions.getString(0)
-                            if (suggestion.isNotEmpty()) {
-                                searchQuery = suggestion
-                                Log.d("MusicRepo", "Corrected search typo: '$query' -> '$searchQuery'")
+                val API_INSTANCES = listOf(
+                    "https://us-west.monochrome.tf",
+                    "https://eu-central.monochrome.tf",
+                    "https://api.monochrome.tf",
+                    "https://monochrome-api.samidy.com",
+                    "https://hifi-two.spotisaver.net"
+                )
+
+                for (instance in API_INSTANCES) {
+                    try {
+                        val url = java.net.URL("$instance/search/?limit=25&s=${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
+                        val connection = url.openConnection() as java.net.HttpURLConnection
+                        connection.requestMethod = "GET"
+                        connection.connectTimeout = 5000
+                        connection.readTimeout = 5000
+
+                        if (connection.responseCode == 200) {
+                            val response = connection.inputStream.bufferedReader().readText()
+                            val json = org.json.JSONObject(response)
+                            val data = json.optJSONObject("data")
+                            val items = data?.optJSONArray("items") ?: org.json.JSONArray()
+                            
+                            val tracks = mutableListOf<Track>()
+                            val likedIds = likedSongDao.getLikedSongIds().toSet()
+                            
+                            for (i in 0 until items.length()) {
+                                val content = items.getJSONObject(i)
+                                
+                                val trackId = content.optInt("id", 0).toString()
+                                if (trackId == "0") continue
+                                
+                                val title = content.optString("title", "Unknown")
+                                val durationSec = content.optInt("duration", 0)
+                                
+                                val artistObj = content.optJSONObject("artist")
+                                val artistName = artistObj?.optString("name", "Unknown") ?: "Unknown"
+                                
+                                val albumObj = content.optJSONObject("album")
+                                val albumName = albumObj?.optString("title", "Unknown") ?: "Unknown"
+                                
+                                val coverUuid = albumObj?.optString("cover", "") ?: ""
+                                val coverUrl = if (coverUuid.isNotEmpty()) {
+                                    "https://resources.tidal.com/images/${coverUuid.replace("-", "/")}/640x640.jpg"
+                                } else ""
+                                
+                                tracks.add(Track(
+                                    id = trackId,
+                                    title = title,
+                                    artist = artistName,
+                                    album = albumName,
+                                    albumImageUrl = coverUrl,
+                                    durationMs = durationSec * 1000L,
+                                    isLiked = likedIds.contains(trackId),
+                                    source = "tidal"
+                                ))
                             }
+                            return@withContext Result.success(SpotifySearchResult(tracks, emptyList(), emptyList(), emptyList()))
                         }
+                    } catch (e: Exception) {
+                        Log.w("MusicRepo", "Search failed via $instance", e)
                     }
-                } catch (e: Exception) {
-                    Log.w("MusicRepo", "Wikipedia typo correction failed", e)
                 }
-
-                val url = java.net.URL("https://us-west.monochrome.tf/search/?limit=25&s=${java.net.URLEncoder.encode(searchQuery, "UTF-8")}")
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().readText()
-                    val json = org.json.JSONObject(response)
-                    val data = json.optJSONObject("data")
-                    val items = data?.optJSONArray("items") ?: org.json.JSONArray()
-                    
-                    val tracks = mutableListOf<Track>()
-                    val likedIds = likedSongDao.getLikedSongIds().toSet()
-                    
-                    for (i in 0 until items.length()) {
-                        val content = items.getJSONObject(i)
-                        
-                        val trackId = content.optInt("id", 0).toString()
-                        if (trackId == "0") continue
-                        
-                        val title = content.optString("title", "Unknown")
-                        val durationSec = content.optInt("duration", 0)
-                        
-                        val artistObj = content.optJSONObject("artist")
-                        val artistName = artistObj?.optString("name", "Unknown") ?: "Unknown"
-                        
-                        val albumObj = content.optJSONObject("album")
-                        val albumName = albumObj?.optString("title", "Unknown") ?: "Unknown"
-                        
-                        val coverUuid = albumObj?.optString("cover", "") ?: ""
-                        val coverUrl = if (coverUuid.isNotEmpty()) {
-                            "https://resources.tidal.com/images/${coverUuid.replace("-", "/")}/640x640.jpg"
-                        } else ""
-                        
-                        tracks.add(Track(
-                            id = trackId,
-                            title = title,
-                            artist = artistName,
-                            album = albumName,
-                            albumImageUrl = coverUrl,
-                            durationMs = durationSec * 1000L,
-                            isLiked = likedIds.contains(trackId),
-                            source = "tidal"
-                        ))
-                    }
-                    Result.success(SpotifySearchResult(tracks, emptyList(), emptyList(), emptyList()))
-                } else {
-                    Result.failure(Exception("HTTP Error: ${connection.responseCode}"))
-                }
+                Result.failure(Exception("All API instances failed for search"))
             } catch (e: Exception) {
-                Log.e("MusicRepo", "Search failed via Qobuz", e)
+                Log.e("MusicRepo", "Search failed with exception", e)
                 Result.failure(e)
             }
         }

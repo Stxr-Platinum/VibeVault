@@ -45,6 +45,7 @@ fun LibraryScreen(
 ) {
     val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val spotifyPlaylists by viewModel.spotifyPlaylists.collectAsStateWithLifecycle()
     val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
     val userAvatarUrl by viewModel.userAvatarUrl.collectAsStateWithLifecycle()
     
@@ -157,7 +158,7 @@ fun LibraryScreen(
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("Playlists", "Artists", "Albums", "Podcasts").forEach { filter ->
+            listOf("Playlists", "Artists", "Albums").forEach { filter ->
                 FilterChip(
                     selected = selectedFilter == filter,
                     onClick = { selectedFilter = filter },
@@ -289,7 +290,18 @@ fun LibraryScreen(
                 )
             }
 
-            if (likedTracks.isEmpty() && playlists.isEmpty()) {
+            // ── Spotify Playlists ────────────────────────────
+            items(spotifyPlaylists, key = { "spotify_${it.id}" }) { playlist ->
+                LibraryListItem(
+                    title = playlist.title,
+                    subtitle = "Spotify Playlist • ${playlist.ownerName ?: "Spotify"}",
+                    imageUri = playlist.coverUrl,
+                    placeholderIcon = Icons.Default.QueueMusic,
+                    onClick = { onPlaylistClick(playlist.id) }
+                )
+            }
+
+            if (likedTracks.isEmpty() && playlists.isEmpty() && spotifyPlaylists.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier

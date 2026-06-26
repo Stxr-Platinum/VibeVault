@@ -2,7 +2,6 @@ package com.vibevault.app.data.sync
 
 import android.content.Context
 import android.util.Log
-import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.vibevault.app.data.local.dao.PlaylistDao
@@ -12,29 +11,51 @@ import com.vibevault.app.data.remote.dto.LikeDto
 import com.vibevault.app.data.remote.dto.PlaylistDto
 import com.vibevault.app.data.remote.dto.PlaylistTrackDto
 import com.vibevault.app.core.session.SessionManager
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import java.time.Instant
 
-@HiltWorker
-class SyncWorker @AssistedInject constructor(
-    @Assisted appContext: Context,
-    @Assisted workerParams: WorkerParameters,
-    private val likedSongDao: LikedSongDao,
-    private val playlistDao: PlaylistDao,
-    private val logDao: LogDao,
-    private val postgrest: Postgrest,
-    private val sessionManager: SessionManager
+class SyncWorker(
+    appContext: Context,
+    workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
+
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface SyncWorkerEntryPoint {
+        fun likedSongDao(): LikedSongDao
+        fun playlistDao(): PlaylistDao
+        fun logDao(): LogDao
+        fun postgrest(): Postgrest
+        fun sessionManager(): SessionManager
+    }
 
     companion object {
         const val TAG = "SyncWorker"
         const val WORK_NAME = "vv_sync_worker"
     }
 
+    private lateinit var likedSongDao: LikedSongDao
+    private lateinit var playlistDao: PlaylistDao
+    private lateinit var logDao: LogDao
+    private lateinit var postgrest: Postgrest
+    private lateinit var sessionManager: SessionManager
+
     override suspend fun doWork(): Result {
+        val entryPoint = EntryPointAccessors.fromApplication(
+            applicationContext,
+            SyncWorkerEntryPoint::class.java
+        )
+        likedSongDao = entryPoint.likedSongDao()
+        playlistDao = entryPoint.playlistDao()
+        logDao = entryPoint.logDao()
+        postgrest = entryPoint.postgrest()
+        sessionManager = entryPoint.sessionManager()
+
         val userId = sessionManager.userId ?: return Result.success()
 
         return try {

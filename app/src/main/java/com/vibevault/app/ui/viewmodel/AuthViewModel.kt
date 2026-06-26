@@ -40,8 +40,11 @@ class AuthViewModel @Inject constructor(
     }
 
 
-    fun startSpotifyAuth() {
-        Log.d("SpotifyAuth", "LOGIN STARTED (MOCKED)")
+    fun getSpotifyAuthUrl(): String {
+        val clientId = com.vibevault.app.BuildConfig.SPOTIFY_CLIENT_ID
+        val redirectUri = com.vibevault.app.BuildConfig.SPOTIFY_REDIRECT_URI
+        val scopes = "playlist-read-private playlist-read-collaborative user-library-read"
+        return "https://accounts.spotify.com/authorize?client_id=$clientId&response_type=code&redirect_uri=$redirectUri&scope=$scopes"
     }
 
     fun handleSpotifyCallback(code: String) {

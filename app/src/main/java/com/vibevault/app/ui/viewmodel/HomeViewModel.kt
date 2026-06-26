@@ -25,10 +25,15 @@ data class QuickPickItem(
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val musicRepository: MusicRepository,
     private val spotifyApi: SpotifyApiService,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val queueManager: com.vibevault.app.player.QueueManager
 ) : ViewModel() {
+
+    private val prefs = context.getSharedPreferences("home_cache", android.content.Context.MODE_PRIVATE)
+    private val gson = com.google.gson.Gson()
 
     // 1. State Properties (Initialized first)
 
@@ -68,7 +73,7 @@ class HomeViewModel @Inject constructor(
             }
         }
         playlists.forEach { playlist ->
-            if (items.none { it.id == playlist.id }) {
+            if (playlist.title.length > 1 && items.none { it.id == playlist.id }) {
                 items.add(QuickPickItem(playlist.id, playlist.title, playlist.coverUrl ?: "", "playlist", null))
             }
         }
@@ -89,9 +94,12 @@ class HomeViewModel @Inject constructor(
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
-    // User Avatar
+    // User Avatar and Display Name
     val userAvatarUrl: StateFlow<String?> = sessionManager.userAvatarUrlFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), sessionManager.userAvatarUrl)
+        
+    val userDisplayName: StateFlow<String?> = sessionManager.userDisplayNameFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), sessionManager.userDisplayName)
 
     // 2. Initialization Block (Runs after properties are initialized)
 
@@ -108,6 +116,23 @@ class HomeViewModel @Inject constructor(
     fun refresh() {
         Log.d("SpotifyDebug", "HomeVM: refresh() triggered")
         
+        // 1. Load cached trending tracks to show UI immediately
+        val cachedJson = prefs.getString("trending_tracks", null)
+        if (cachedJson != null) {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<Track>>() {}.type
+                val cachedTracks: List<Track> = gson.fromJson(cachedJson, type)
+                if (cachedTracks.isNotEmpty()) {
+                    _trendingTracks.value = cachedTracks
+                }
+            } catch (e: Exception) {
+                Log.e("SpotifyDebug", "HomeVM: Failed to load cached trending tracks", e)
+            }
+        }
+        
+        // Unblock UI immediately
+        _isLoading.value = false
+        
         viewModelScope.launch {
             Log.d("SpotifyDebug", "HomeVM: Starting sync sequence...")
             
@@ -119,8 +144,6 @@ class HomeViewModel @Inject constructor(
             
             // 3. Sync from Supabase (cloud backup)
             musicRepository.syncFromRemote()
-            
-            _isLoading.value = false
         }
     }
 
@@ -130,7 +153,7 @@ class HomeViewModel @Inject constructor(
         if (recent.isNotEmpty()) {
             val combined = mutableListOf<Track>()
             recent.forEach { track ->
-                val similar = musicRepository.getSimilarTracks(track.id).getOrNull()
+                val similar = musicRepository.getSimilarTracks(track).getOrNull()
                 if (!similar.isNullOrEmpty()) {
                     combined.addAll(similar)
                 } else if (track.artist.isNotBlank() && track.artist != "Unknown Artist" && track.artist != "Unknown") {
@@ -141,14 +164,18 @@ class HomeViewModel @Inject constructor(
                 }
             }
             if (combined.isNotEmpty()) {
-                _trendingTracks.value = combined.distinctBy { it.title }.take(20)
+                val finalTracks = combined.distinctBy { it.title }.shuffled().take(20)
+                _trendingTracks.value = finalTracks
+                prefs.edit().putString("trending_tracks", gson.toJson(finalTracks)).apply()
                 return
             }
         }
         // Fallback to top hits
         val top = musicRepository.getGlobalTop50().firstOrNull()
         if (top != null) {
-            _trendingTracks.value = top.take(20)
+            val finalTracks = top.take(20)
+            _trendingTracks.value = finalTracks
+            prefs.edit().putString("trending_tracks", gson.toJson(finalTracks)).apply()
         }
     }
 

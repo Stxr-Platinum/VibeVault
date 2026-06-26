@@ -39,17 +39,64 @@ object MediaModule {
     @Provides
     @Singleton
     fun provideLoadControl(): LoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            15000, // minBufferMs
+            10 * 60 * 1000, // maxBufferMs (10 mins, enough to pre-fetch next 2 songs)
+            1500, // bufferForPlaybackMs
+            2500  // bufferForPlaybackAfterRebufferMs
+        )
         .build()
 
+    @OptIn(UnstableApi::class)
+    @Provides
+    @Singleton
+    fun provideCache(
+        @ApplicationContext context: Context
+    ): androidx.media3.datasource.cache.Cache {
+        val cacheDir = java.io.File(context.cacheDir, "media_cache")
+        // 500 MB cache size
+        val cacheEvictor = androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor(500 * 1024 * 1024)
+        val databaseProvider = androidx.media3.database.StandaloneDatabaseProvider(context)
+        return androidx.media3.datasource.cache.SimpleCache(cacheDir, cacheEvictor, databaseProvider)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Provides
+    @Singleton
+    fun provideMediaSourceFactory(
+        @ApplicationContext context: Context,
+        cache: androidx.media3.datasource.cache.Cache,
+        streamResolver: com.vibevault.app.player.media.StreamResolver
+    ): androidx.media3.exoplayer.source.MediaSource.Factory {
+        val upstreamFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            
+        val resolvingFactory = androidx.media3.datasource.ResolvingDataSource.Factory(
+            upstreamFactory,
+            streamResolver
+        )
+
+        val cacheDataSourceFactory = androidx.media3.datasource.cache.CacheDataSource.Factory()
+            .setCache(cache)
+            .setUpstreamDataSourceFactory(resolvingFactory)
+            .setFlags(androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        return androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(cacheDataSourceFactory)
+    }
+
+    @OptIn(UnstableApi::class)
     @Provides
     @Singleton
     fun provideExoPlayer(
         @ApplicationContext context: Context,
         audioAttributes: AudioAttributes,
-        loadControl: LoadControl
+        loadControl: LoadControl,
+        mediaSourceFactory: androidx.media3.exoplayer.source.MediaSource.Factory
     ): ExoPlayer = ExoPlayer.Builder(context)
         .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
         .setLoadControl(loadControl)
+        .setMediaSourceFactory(mediaSourceFactory)
         .setHandleAudioBecomingNoisy(true)   // Pause on headphone disconnect
         .build()
 

@@ -177,16 +177,47 @@ class QueueManager @Inject constructor() {
 
     fun appendTracks(tracks: List<Track>) {
         if (tracks.isEmpty()) return
-        val wasAtEnd = _currentIndex.value == currentQueue.size - 1
 
         originalQueue.addAll(tracks)
         currentQueue.addAll(tracks)
         _queueState.value = currentQueue.toList()
         debugLog()
+    }
 
-        // If we were at the very end of the queue, advance now
-        if (wasAtEnd) {
-            next()
+    fun appendTrack(track: Track) {
+        val wasEmpty = currentQueue.isEmpty()
+        originalQueue.add(track)
+        currentQueue.add(track)
+        _queueState.value = currentQueue.toList()
+        debugLog()
+        
+        if (wasEmpty) {
+            // Queue was empty before
+            _currentIndex.value = 0
+            updateState()
+        }
+    }
+
+    fun removeTrackAt(index: Int) {
+        if (index in currentQueue.indices) {
+            val trackToRemove = currentQueue[index]
+            currentQueue.removeAt(index)
+            originalQueue.remove(trackToRemove)
+            
+            if (index < _currentIndex.value) {
+                _currentIndex.value -= 1
+            } else if (index == _currentIndex.value) {
+                // Currently playing track was removed!
+                if (currentQueue.isEmpty()) {
+                    _currentIndex.value = -1
+                    _currentTrack.value = null
+                } else if (_currentIndex.value >= currentQueue.size) {
+                    _currentIndex.value = 0
+                }
+                updateState()
+            }
+            
+            _queueState.value = currentQueue.toList()
         }
     }
 }

@@ -34,7 +34,21 @@ fun UserAvatar(
 ) {
     val initial = displayName?.firstOrNull()?.uppercase() ?: "V"
     val fallbackUrl = "https://ui-avatars.com/api/?name=${displayName ?: "V"}&background=1DB954&color=fff&size=200"
-    val model = avatarUrl.takeIf { !it.isNullOrBlank() } ?: fallbackUrl
+    
+    val decodedBytes = androidx.compose.runtime.remember(avatarUrl) {
+        if (avatarUrl != null && avatarUrl.startsWith("data:image/")) {
+            try {
+                val base64String = avatarUrl.substringAfter("base64,")
+                android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    val model = decodedBytes ?: (avatarUrl.takeIf { !it.isNullOrBlank() } ?: fallbackUrl)
     
     Box(
         modifier = modifier

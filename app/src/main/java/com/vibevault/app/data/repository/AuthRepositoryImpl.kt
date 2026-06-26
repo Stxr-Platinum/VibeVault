@@ -173,15 +173,6 @@ class AuthRepositoryImpl @Inject constructor(
                 }
                 .decodeSingleOrNull<ProfileDto>()
 
-            // 2. Fetch Reorganized PFPs
-            val pfps = postgrest.from("pfps")
-                .select {
-                    filter { eq("user_id", userId) }
-                }
-                .decodeList<PfpDto>()
-
-            val activePfp = pfps.find { it.isActive } ?: pfps.firstOrNull()
-
             if (profile != null) {
                 // Update Local Table (Reorganization)
                 profileDao.insertProfile(
@@ -189,16 +180,11 @@ class AuthRepositoryImpl @Inject constructor(
                         id = userId,
                         username = profile.username,
                         accountHolderName = profile.accountHolderName,
-                        avatarUrl = activePfp?.url ?: profile.avatarUrl,
+                        avatarUrl = profile.avatarUrl,
                         email = sessionManager.userEmail,
                         lastSyncedAt = System.currentTimeMillis()
                     )
                 )
-
-                // Update PFP Table
-                pfps.forEach { dto ->
-                    pfpDao.insertPfp(dto.toPfpEntity())
-                }
 
                 // Update Session (Legacy/Compatibility)
                 sessionManager.saveSession(
@@ -207,7 +193,7 @@ class AuthRepositoryImpl @Inject constructor(
                     userId = userId,
                     email = sessionManager.userEmail ?: "",
                     displayName = profile.username ?: profile.accountHolderName ?: sessionManager.userDisplayName,
-                    avatarUrl = activePfp?.url ?: profile.avatarUrl ?: sessionManager.userAvatarUrl,
+                    avatarUrl = profile.avatarUrl ?: sessionManager.userAvatarUrl,
                     expiresAtEpochMs = sessionManager.sessionExpiryMs
                 )
             }
@@ -239,21 +225,7 @@ class AuthRepositoryImpl @Inject constructor(
                 )
             )
 
-            // 3. Reorganize PFP: Insert into pfps table and mark active
-            val newPfpId = java.util.UUID.randomUUID().toString()
-            postgrest.from("pfps").insert(
-                PfpDto(
-                    id = newPfpId,
-                    userId = userId,
-                    url = avatarUrl,
-                    isActive = true
-                )
-            )
-            
-            // Mark others inactive in Supabase (simplified: just do it via SQL or multiple calls)
-            // For now, we assume the latest one we inserted is active.
-            
-            // 4. Update Local
+            // 3. Update Local
             val currentProfile = profileDao.getProfileSync(userId)
             profileDao.insertProfile(
                 ProfileEntity(
@@ -264,9 +236,7 @@ class AuthRepositoryImpl @Inject constructor(
                     email = sessionManager.userEmail
                 )
             )
-            pfpDao.setActivePfp(userId, newPfpId)
-            pfpDao.insertPfp(PfpEntity(id = newPfpId, userId = userId, url = avatarUrl, isActive = true))
-
+            // 4. Removed pfpDao references
             // 5. Update Session
             val session = auth.currentSessionOrNull()
             if (session != null) {

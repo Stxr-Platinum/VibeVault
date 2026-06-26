@@ -114,26 +114,47 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
-        // 1b. Observe QueueManager's queueEnded for Infinite Radio
+        // 1b. Observe Queue for Infinite Radio Pre-fetching
+        var lastFetchedRadioTrackId: String? = null
         viewModelScope.launch {
-            queueManager.queueEnded.collect {
-                val track = queueManager.currentTrack.value ?: return@collect
-                Log.d("PlaybackDebug", "Queue ended, triggering infinite radio for ${track.title}")
-                try {
-                    val result = musicRepository.getSimilarTracks(track.id)
-                    result.onSuccess { similarTracks ->
-                        if (similarTracks.isNotEmpty()) {
-                            Log.d("PlaybackDebug", "Got ${similarTracks.size} similar tracks. Appending to queue.")
-                            queueManager.appendTracks(similarTracks)
-                        } else {
-                            Log.d("PlaybackDebug", "No similar tracks found.")
+            combine(queueManager.currentIndex, queueManager.queueState) { idx, q ->
+                idx to q
+            }.collect { (idx, q) ->
+                if (q.isNotEmpty() && idx == q.size - 1) {
+                    val track = q[idx]
+                    if (track.id != lastFetchedRadioTrackId) {
+                        lastFetchedRadioTrackId = track.id
+                        Log.d("PlaybackDebug", "Reached end of queue, pre-fetching infinite radio for ${track.title}")
+                        try {
+                            val result = musicRepository.getSimilarTracks(track)
+                            result.onSuccess { similarTracks ->
+                                if (similarTracks.isNotEmpty()) {
+                                    Log.d("PlaybackDebug", "Got ${similarTracks.size} similar tracks. Appending to queue.")
+                                    queueManager.appendTracks(similarTracks)
+                                } else {
+                                    Log.d("PlaybackDebug", "No similar tracks found.")
+                                }
+                            }.onFailure { err ->
+                                Log.e("PlaybackDebug", "Failed to fetch similar tracks", err)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("PlaybackDebug", "Exception in infinite radio pre-fetch", e)
                         }
-                    }.onFailure { err ->
-                        Log.e("PlaybackDebug", "Failed to fetch similar tracks", err)
                     }
-                } catch (e: Exception) {
-                    Log.e("PlaybackDebug", "Exception in infinite radio fetch", e)
                 }
+            }
+        }
+        
+        // 1c. Observe queue and repeat mode mutations to sync upcoming tracks
+        viewModelScope.launch {
+            queueManager.queueState.drop(1).collect {
+                syncUpcomingTracks()
+            }
+        }
+        
+        viewModelScope.launch {
+            queueManager.repeatMode.drop(1).collect {
+                syncUpcomingTracks()
             }
         }
 
@@ -150,16 +171,38 @@ class PlayerViewModel @Inject constructor(
 
     private fun setupPlayerListener() {
         player?.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                _isPlaying.value = playing
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                _isPlaying.value = playWhenReady
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     _duration.value = player?.duration?.coerceAtLeast(0) ?: 0L
                 } else if (playbackState == Player.STATE_ENDED) {
-                    // ExoPlayer finished the track. Let QueueManager advance.
+                    // Entire ExoPlayer playlist finished. 
                     queueManager.next()
+                }
+            }
+            
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                super.onMediaItemTransition(mediaItem, reason)
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    val newId = mediaItem?.mediaId
+                    if (newId != null && newId != currentlyPlayingTrackId) {
+                        Log.d("PlaybackDebug", "Auto transitioned to: $newId")
+                        currentlyPlayingTrackId = newId
+                        sessionManager.lastPlayedTrackId = newId
+                        
+                        viewModelScope.launch {
+                            val track = queueManager.queueState.value.find { it.id == newId }
+                            if (track != null) {
+                                musicRepository.recordPlay(track)
+                            }
+                        }
+                        
+                        queueManager.next() // Synchronize UI state
+                        ensureUpcomingTracks()
+                    }
                 }
             }
         })
@@ -174,10 +217,6 @@ class PlayerViewModel @Inject constructor(
         currentlyPlayingTrackId = null
     }
 
-    /**
-     * Executes playback for EXACTLY ONE track. Queue progression is handled by STATE_ENDED.
-     * Delegates Qobuz stream resolution entirely to PlaybackService.
-     */
     private fun playInternal(track: Track) {
         if (player == null) {
             pendingTrack = track
@@ -189,21 +228,81 @@ class PlayerViewModel @Inject constructor(
         
         Log.d("PlaybackDebug", "playInternal: ${track.title} (${track.id}) via MediaController")
         
-        val mediaItem = MediaItem.Builder()
+        // Stop currently playing audio immediately to prevent overlap while resolving new stream
+        player?.pause()
+        
+        val mediaItem = buildMediaItem(track)
+
+        player?.let { controller ->
+            controller.setMediaItem(mediaItem)
+            controller.prepare()
+            controller.play()
+        }
+        
+        ensureUpcomingTracks()
+    }
+    
+    private fun buildMediaItem(track: Track): MediaItem {
+        return MediaItem.Builder()
             .setMediaId(track.id)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(track.title)
                     .setArtist(track.artist)
                     .setAlbumTitle(track.album)
+                    .setArtworkUri(android.net.Uri.parse(track.albumImageUrl))
                     .build()
             )
             .build()
-
+    }
+    
+    private fun syncUpcomingTracks() {
         player?.let { controller ->
-            controller.setMediaItem(mediaItem)
-            controller.prepare()
-            controller.play()
+            val currentIdx = controller.currentMediaItemIndex
+            if (currentIdx >= 0 && currentIdx + 1 < controller.mediaItemCount) {
+                controller.removeMediaItems(currentIdx + 1, controller.mediaItemCount)
+            }
+            ensureUpcomingTracks()
+        }
+    }
+    
+    private fun ensureUpcomingTracks() {
+        viewModelScope.launch {
+            val q = queueManager.queueState.value
+            val idx = queueManager.currentIndex.value
+            if (idx < 0 || idx >= q.size) return@launch
+            
+            player?.let { controller ->
+                val desiredUpcoming = 2
+                val currentControllerCount = controller.mediaItemCount
+                val currentControllerIndex = controller.currentMediaItemIndex
+                val itemsAhead = currentControllerCount - currentControllerIndex - 1
+                
+                if (itemsAhead < desiredUpcoming) {
+                    for (i in (itemsAhead + 1)..desiredUpcoming) {
+                        val repeat = queueManager.repeatMode.value
+                        
+                        val nextQIdx = if (repeat == Player.REPEAT_MODE_ONE) {
+                            idx
+                        } else {
+                            idx + i
+                        }
+                        
+                        if (nextQIdx < q.size) {
+                            val trackToAdd = q[nextQIdx]
+                            controller.addMediaItem(buildMediaItem(trackToAdd))
+                            Log.d("PlaybackDebug", "Pre-added ${trackToAdd.title} to ExoPlayer playlist")
+                        } else if (repeat == Player.REPEAT_MODE_ALL) {
+                            val wrapIdx = nextQIdx % q.size
+                            if (wrapIdx < q.size) {
+                                val trackToAdd = q[wrapIdx]
+                                controller.addMediaItem(buildMediaItem(trackToAdd))
+                                Log.d("PlaybackDebug", "Pre-added (repeat) ${trackToAdd.title} to ExoPlayer playlist")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -233,11 +332,28 @@ class PlayerViewModel @Inject constructor(
         queueManager.setQueue(tracks, startIndex)
     }
 
+    fun removeTrackAt(index: Int) {
+        queueManager.removeTrackAt(index)
+    }
+
+    fun addToQueue(track: Track) {
+        queueManager.appendTrack(track)
+    }
+
     fun togglePlayPause() {
         val p = player ?: return
-        if (p.isPlaying) {
+        if (p.playWhenReady) {
             p.pause()
         } else {
+            if (p.mediaItemCount == 0 && currentlyPlayingTrackId != null) {
+                // The service might have died and lost the media item, restore it
+                val track = queueManager.queueState.value.find { it.id == currentlyPlayingTrackId }
+                if (track != null) {
+                    playInternal(track)
+                    return
+                }
+            }
+            
             if (currentlyPlayingTrackId == null && queue.value.isNotEmpty()) {
                 playInternal(queue.value[currentIndex.value])
             } else {

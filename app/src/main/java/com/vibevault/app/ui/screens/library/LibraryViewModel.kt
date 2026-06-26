@@ -28,6 +28,9 @@ class LibraryViewModel @Inject constructor(
     val playlists: StateFlow<List<com.vibevault.app.data.local.entity.PlaylistEntity>> = musicRepository.getPlaylists()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val spotifyPlaylists: StateFlow<List<com.vibevault.app.domain.model.Playlist>> = musicRepository.getUserSpotifyPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun createPlaylist(title: String) {
         viewModelScope.launch {
             musicRepository.createPlaylist(title)

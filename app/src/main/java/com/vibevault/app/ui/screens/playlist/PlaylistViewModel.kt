@@ -22,8 +22,8 @@ class PlaylistViewModel @Inject constructor(
     private val _playlist = MutableStateFlow<PlaylistEntity?>(null)
     val playlist: StateFlow<PlaylistEntity?> = _playlist.asStateFlow()
 
-    val tracks: StateFlow<List<Track>> = musicRepository.getPlaylistTracks(playlistId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _tracks = MutableStateFlow<List<Track>>(emptyList())
+    val tracks: StateFlow<List<Track>> = _tracks.asStateFlow()
 
     init {
         loadPlaylist()
@@ -31,7 +31,27 @@ class PlaylistViewModel @Inject constructor(
 
     private fun loadPlaylist() {
         viewModelScope.launch {
-            _playlist.value = musicRepository.getPlaylist(playlistId)
+            val localPlaylist = musicRepository.getPlaylist(playlistId)
+            if (localPlaylist != null) {
+                _playlist.value = localPlaylist
+                musicRepository.getPlaylistTracks(playlistId).collect {
+                    _tracks.value = it
+                }
+            } else {
+                // Try to find it in Spotify Playlists
+                val spotifyPlaylists = musicRepository.getUserSpotifyPlaylists().first()
+                val sp = spotifyPlaylists.find { it.id == playlistId }
+                if (sp != null) {
+                    _playlist.value = PlaylistEntity(
+                        id = sp.id,
+                        title = sp.title,
+                        createdAt = 0L,
+                        trackCount = sp.trackCount,
+                        coverUrl = sp.coverUrl
+                    )
+                    _tracks.value = musicRepository.getSpotifyPlaylistTracks(playlistId)
+                }
+            }
         }
     }
 

@@ -43,6 +43,9 @@ class MainViewModel @Inject constructor(
                 if (route == Screen.Home.route) {
                     realtimeListener.startListening()
                     syncScheduler.schedulePeriodicSync()
+                    launch {
+                        authRepository.refreshProfile()
+                    }
                 }
             }
         }

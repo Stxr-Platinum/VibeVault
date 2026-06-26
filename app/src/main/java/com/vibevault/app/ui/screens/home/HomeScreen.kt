@@ -1,6 +1,7 @@
 package com.vibevault.app.ui.screens.home
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,8 +44,11 @@ fun HomeScreen(
     onTrackClick: (Track) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onProfileClick: () -> Unit,
-    viewModel: HomeViewModel = hiltViewModel()
+    onSwipeToQueue: (Track) -> Unit,
+    viewModel: HomeViewModel = hiltViewModel(),
+    authViewModel: com.vibevault.app.ui.viewmodel.AuthViewModel = hiltViewModel()
 ) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
     val quickPicks by viewModel.quickPicks.collectAsStateWithLifecycle()
     val trendingTracks by viewModel.trendingTracks.collectAsStateWithLifecycle()
@@ -53,6 +57,7 @@ fun HomeScreen(
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val userAvatarUrl by viewModel.userAvatarUrl.collectAsStateWithLifecycle()
+    val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -68,7 +73,7 @@ fun HomeScreen(
         ) {
             UserAvatar(
                 avatarUrl = userAvatarUrl,
-                displayName = "D",
+                displayName = userDisplayName ?: "D",
                 size = 38.dp,
                 modifier = Modifier.clickable { onProfileClick() }
             )
@@ -76,8 +81,21 @@ fun HomeScreen(
             ChipFilter("All", true)
             Spacer(Modifier.width(8.dp))
             ChipFilter("Music", false)
-            Spacer(Modifier.width(8.dp))
-            ChipFilter("Podcasts", false)
+            Spacer(Modifier.weight(1f))
+            // Connect to Spotify Button
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF1DB954))
+                    .clickable { uriHandler.openUri(authViewModel.getSpotifyAuthUrl()) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "Connect",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.Black
+                )
+            }
         }
 
         if (searchQuery.isNotBlank()) {
@@ -92,7 +110,7 @@ fun HomeScreen(
                     CircularProgressIndicator(color = VibePrimary)
                 }
             } else {
-                SearchResults(searchResults, onTrackClick = { viewModel.playTrack(it); onTrackClick(it) })
+                SearchResults(viewModel = viewModel, searchResponse = searchResults, onTrackClick = { onTrackClick(it) }, onSwipeToQueue = onSwipeToQueue)
             }
         } else {
             if (isLoading) {
@@ -107,7 +125,8 @@ fun HomeScreen(
                     onTrackClick = { viewModel.playTrack(it); onTrackClick(it) },
                     onPlaylistClick = onPlaylistClick,
                     onSearchClick = { /* Scroll to top or focus search */ },
-                    onProfileClick = onProfileClick
+                    onProfileClick = onProfileClick,
+                    onSwipeToQueue = onSwipeToQueue
                 )
             }
         }
@@ -226,7 +245,8 @@ fun HomeFeed(
     onTrackClick: (Track) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onSearchClick: () -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onSwipeToQueue: (Track) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -302,7 +322,7 @@ fun HomeFeed(
                         .padding(vertical = 8.dp)
                 ) {
                     trendingTracks.forEachIndexed { index, track ->
-                        TrendingTrackRow(track, index + 1, onClick = { onTrackClick(track) })
+                        TrendingTrackRow(track, index + 1, onClick = { onTrackClick(track) }, onSwipeToQueue = { onSwipeToQueue(track) })
                     }
                 }
             }
@@ -421,50 +441,87 @@ fun PlaylistCardTrack(track: Track, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = index.toString(),
-            color = VibeOnSurfaceDim,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.width(24.dp),
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.width(16.dp))
-        AsyncImage(
-            model = track.albumImageUrl,
-            contentDescription = track.album,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            contentScale = ContentScale.Crop
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = VibeOnSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = VibeOnSurfaceDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit, onSwipeToQueue: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onSwipeToQueue()
+                android.widget.Toast.makeText(context, "Added to queue", android.widget.Toast.LENGTH_SHORT).show()
+                false
+            } else {
+                false
+            }
         }
-        Spacer(Modifier.width(12.dp))
-        Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = VibeOnSurfaceDim, modifier = Modifier.size(20.dp))
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            val color by animateColorAsState(
+                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) Color(0xFF1DB954) else Color.Transparent,
+                label = "swipeBgColor"
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(color)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
+                    Icon(Icons.Default.QueueMusic, contentDescription = "Add to Queue", tint = Color.White)
+                }
+            }
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(VibeBg)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = index.toString(),
+                color = VibeOnSurfaceDim,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.width(24.dp),
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.width(16.dp))
+            AsyncImage(
+                model = track.albumImageUrl,
+                contentDescription = track.album,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = VibeOnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VibeOnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = VibeOnSurfaceDim, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
@@ -501,7 +558,7 @@ fun SearchHeader(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-private fun SearchResults(searchResponse: SpotifySearchResponse?, onTrackClick: (Track) -> Unit) {
+private fun SearchResults(viewModel: HomeViewModel, searchResponse: SpotifySearchResponse?, onTrackClick: (Track) -> Unit, onSwipeToQueue: (Track) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(bottom = 120.dp)) {
         searchResponse?.tracks?.items?.let { tracks ->
             item { SectionHeader("Tracks") }
@@ -518,7 +575,7 @@ private fun SearchResults(searchResponse: SpotifySearchResponse?, onTrackClick: 
                     source = "spotify",
                     externalUrl = dto.externalUrls["spotify"]
                 )
-                TrackRow(track, onClick = { onTrackClick(track) })
+                TrackRow(track, onClick = { onTrackClick(track) }, onSwipeToQueue = { onSwipeToQueue(track) })
             }
         }
 
@@ -587,39 +644,80 @@ private fun SearchResults(searchResponse: SpotifySearchResponse?, onTrackClick: 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TrackRow(track: Track, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun TrackRow(track: Track, onClick: () -> Unit, onSwipeToQueue: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onSwipeToQueue()
+                android.widget.Toast.makeText(context, "Added to queue", android.widget.Toast.LENGTH_SHORT).show()
+                false // Bounce back
+            } else {
+                false
+            }
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            val color by animateColorAsState(
+                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) Color(0xFF1DB954) else Color.Transparent,
+                label = "swipeBgColor"
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(color)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
+                    Icon(
+                        Icons.Default.QueueMusic,
+                        contentDescription = "Add to Queue",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
     ) {
-        AsyncImage(
-            model = track.albumImageUrl,
-            contentDescription = track.album,
+        Row(
             modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(6.dp)),
-            contentScale = ContentScale.Crop
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = VibeOnSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                .fillMaxWidth()
+                .background(VibeSurface) // Ensure solid background over swipe background
+                .clickable(onClick = onClick)
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = track.albumImageUrl,
+                contentDescription = track.album,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+                contentScale = ContentScale.Crop
             )
-            Text(
-                text = "${track.artist} • ${track.album}",
-                style = MaterialTheme.typography.bodySmall,
-                color = VibeOnSurfaceDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = VibeOnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${track.artist} • ${track.album}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VibeOnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

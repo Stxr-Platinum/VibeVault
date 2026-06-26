@@ -45,6 +45,7 @@ fun PlayerScreen(
 
     var showPlaylistMenu by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var showQueueSheet by remember { mutableStateOf(false) }
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
 
     if (showAddToPlaylistDialog && currentTrack != null) {
@@ -101,8 +102,8 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(VibeBg)
-            .statusBarsPadding()
-            .padding(16.dp)
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp, bottom = 16.dp)
     ) {
         // Top Bar
         Row(
@@ -123,7 +124,7 @@ fun PlayerScreen(
             }
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.weight(0.5f))
 
         // Album Art
         AsyncImage(
@@ -136,7 +137,7 @@ fun PlayerScreen(
             contentScale = ContentScale.Crop
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.weight(0.5f))
 
         // Title and Actions
         Row(
@@ -186,7 +187,7 @@ fun PlayerScreen(
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.weight(0.5f))
 
         // Progress Bar
         var isDragging by remember { mutableStateOf(false) }
@@ -221,7 +222,7 @@ fun PlayerScreen(
             Text(formatTime(safeDuration.toLong()), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.weight(0.5f))
 
         // Playback Controls
         Row(
@@ -258,7 +259,7 @@ fun PlayerScreen(
             }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.weight(0.5f))
 
         // Volume Bar
         Row(
@@ -282,6 +283,29 @@ fun PlayerScreen(
         }
         
         Spacer(Modifier.weight(1f))
+        
+        // Bottom Actions (Devices, Queue)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            IconButton(onClick = { showQueueSheet = true }) {
+                Icon(Icons.Default.QueueMusic, "Queue", tint = VibeOnSurfaceVariant)
+            }
+        }
+    }
+
+    if (showQueueSheet) {
+        val queueList by viewModel.queue.collectAsStateWithLifecycle()
+        val queueIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
+        
+        QueueBottomSheet(
+            queue = queueList,
+            currentIndex = queueIndex,
+            onDismiss = { showQueueSheet = false },
+            onTrackClick = { viewModel.playTrack(it.id) },
+            onRemoveTrack = { viewModel.removeTrackAt(it) }
+        )
     }
 }
 

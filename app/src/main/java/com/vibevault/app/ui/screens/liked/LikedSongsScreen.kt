@@ -44,7 +44,6 @@ fun LikedSongsScreen(
             Box(
                 Modifier.fillMaxWidth().height(240.dp)
                     .background(Brush.verticalGradient(listOf(VibePrimary.copy(0.5f), VibeBg)))
-                    .statusBarsPadding()
             ) {
                 IconButton(onClick = onBack, Modifier.padding(16.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = VibeOnSurface)

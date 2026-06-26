@@ -25,7 +25,7 @@ interface MusicRepository {
     fun getDiscoveryTracks(): Flow<List<Track>>
 
     /** Get similar tracks (Infinite Radio mode). */
-    suspend fun getSimilarTracks(trackId: String): Result<List<Track>>
+    suspend fun getSimilarTracks(track: Track): Result<List<Track>>
 
     /** Get tracks by artist name. */
     fun getTracksByArtist(artistName: String): Flow<List<Track>>
@@ -76,6 +76,7 @@ interface MusicRepository {
     fun getNewReleases(): Flow<List<Track>>
     fun getTopArtists(): Flow<List<com.vibevault.app.domain.model.Artist>>
     fun getUserSpotifyPlaylists(): Flow<List<com.vibevault.app.domain.model.Playlist>>
+    suspend fun getSpotifyPlaylistTracks(playlistId: String): List<Track>
     fun getBrowseCategories(): Flow<List<com.vibevault.app.domain.model.Category>>
     suspend fun searchSpotifyAll(query: String): Result<com.vibevault.app.domain.model.SpotifySearchResult>
     fun getGlobalTop50(): Flow<List<Track>>

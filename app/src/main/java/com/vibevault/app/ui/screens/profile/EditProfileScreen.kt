@@ -35,7 +35,6 @@ fun EditProfileScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(VibeBg)
-            .statusBarsPadding()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -95,21 +94,6 @@ fun EditProfileScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = uiState.avatarUrl,
-            onValueChange = viewModel::onAvatarUrlChange,
-            label = { Text("Avatar URL (Optional)") },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = VibeOnSurface,
-                unfocusedTextColor = VibeOnSurface,
-                focusedBorderColor = VibePrimary,
-                unfocusedBorderColor = VibeOutlineVariant,
-                focusedLabelColor = VibePrimary,
-                unfocusedLabelColor = VibeOnSurfaceVariant
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
 
         if (uiState.error != null) {
             Spacer(modifier = Modifier.height(8.dp))
