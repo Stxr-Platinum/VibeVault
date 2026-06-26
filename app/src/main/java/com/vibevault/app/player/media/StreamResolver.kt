@@ -19,6 +19,10 @@ import javax.inject.Singleton
 @Singleton
 class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
 
+    private fun normalize(str: String): String {
+        return str.lowercase().replace(Regex("[^a-z0-9]"), "")
+    }
+
     private val preloadCache = ConcurrentHashMap<String, String>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -35,7 +39,7 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
             val title = uri.getQueryParameter("title") ?: ""
             val artist = uri.getQueryParameter("artist") ?: ""
             
-            val query = java.net.URLEncoder.encode("$title $artist".trim(), "UTF-8")
+            val query = android.net.Uri.encode("$title $artist".trim())
             Log.d("StreamResolver", "Attempting to resolve stream for: $title by $artist (Query: $query)")
 
             val cachedUrl = preloadCache.remove(query)
@@ -59,7 +63,18 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
                             val json = JSONObject(response)
                             val tracks = json.optJSONObject("data")?.optJSONObject("tracks")?.optJSONArray("items")
                             if (tracks != null && tracks.length() > 0) {
-                                qobuzTrackId = tracks.getJSONObject(0).optString("id")
+                                val targetNorm = normalize(title)
+                                for (i in 0 until tracks.length()) {
+                                    val track = tracks.getJSONObject(i)
+                                    val trackTitle = track.optString("title", "")
+                                    if (normalize(trackTitle) == targetNorm) {
+                                        qobuzTrackId = track.optString("id")
+                                        break
+                                    }
+                                }
+                                if (qobuzTrackId == null) {
+                                    qobuzTrackId = tracks.getJSONObject(0).optString("id")
+                                }
                                 Log.d("StreamResolver", "Found Qobuz Track ID: $qobuzTrackId")
                             }
                         }
@@ -90,7 +105,7 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
                 // LISTENFREE / JIOSAAVN FALLBACK
                 try {
                     Log.d("StreamResolver", "Trying ListenFree fallback for: $query")
-                    val jioUrl = URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/search/songs?limit=1&query=$query")
+                    val jioUrl = URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/search/songs?limit=10&query=$query")
                     val jioConn = jioUrl.openConnection() as HttpURLConnection
                     jioConn.requestMethod = "GET"
                     jioConn.connectTimeout = 5000
@@ -101,7 +116,17 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
                         val json = JSONObject(response)
                         val results = json.optJSONObject("data")?.optJSONArray("results")
                         if (results != null && results.length() > 0) {
-                            val topResult = results.getJSONObject(0)
+                            var topResult = results.getJSONObject(0)
+                            val targetNorm = normalize(title)
+                            for (i in 0 until results.length()) {
+                                val track = results.getJSONObject(i)
+                                val trackTitle = track.optString("name", "")
+                                if (normalize(trackTitle) == targetNorm) {
+                                    topResult = track
+                                    break
+                                }
+                            }
+
                             val downloadUrlArray = topResult.optJSONArray("downloadUrl")
                             if (downloadUrlArray != null && downloadUrlArray.length() > 0) {
                                 // Highest quality is usually the last element
@@ -129,7 +154,7 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
 
     fun preResolve(title: String, artist: String) {
         scope.launch {
-            val query = java.net.URLEncoder.encode("$title $artist".trim(), "UTF-8")
+            val query = android.net.Uri.encode("$title $artist".trim())
             if (query.isEmpty() || preloadCache.containsKey(query)) return@launch
             
             Log.d("StreamResolver", "Pre-resolving stream for: $query")
@@ -148,7 +173,18 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
                         val json = JSONObject(response)
                         val tracks = json.optJSONObject("data")?.optJSONObject("tracks")?.optJSONArray("items")
                         if (tracks != null && tracks.length() > 0) {
-                            qobuzTrackId = tracks.getJSONObject(0).optString("id")
+                            val targetNorm = normalize(title)
+                            for (i in 0 until tracks.length()) {
+                                val track = tracks.getJSONObject(i)
+                                val trackTitle = track.optString("title", "")
+                                if (normalize(trackTitle) == targetNorm) {
+                                    qobuzTrackId = track.optString("id")
+                                    break
+                                }
+                            }
+                            if (qobuzTrackId == null) {
+                                qobuzTrackId = tracks.getJSONObject(0).optString("id")
+                            }
                         }
                     }
 
@@ -178,7 +214,7 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
 
             // LISTENFREE / JIOSAAVN FALLBACK
             try {
-                val jioUrl = URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/search/songs?limit=1&query=$query")
+                val jioUrl = URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/search/songs?limit=10&query=$query")
                 val jioConn = jioUrl.openConnection() as HttpURLConnection
                 jioConn.requestMethod = "GET"
                 jioConn.connectTimeout = 5000
@@ -189,7 +225,17 @@ class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
                     val json = JSONObject(response)
                     val results = json.optJSONObject("data")?.optJSONArray("results")
                     if (results != null && results.length() > 0) {
-                        val topResult = results.getJSONObject(0)
+                        var topResult = results.getJSONObject(0)
+                        val targetNorm = normalize(title)
+                        for (i in 0 until results.length()) {
+                            val track = results.getJSONObject(i)
+                            val trackTitle = track.optString("name", "")
+                            if (normalize(trackTitle) == targetNorm) {
+                                topResult = track
+                                break
+                            }
+                        }
+
                         val downloadUrlArray = topResult.optJSONArray("downloadUrl")
                         if (downloadUrlArray != null && downloadUrlArray.length() > 0) {
                             val highestQuality = downloadUrlArray.getJSONObject(downloadUrlArray.length() - 1)

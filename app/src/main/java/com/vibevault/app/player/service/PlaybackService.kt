@@ -70,15 +70,20 @@ class PlaybackService : MediaSessionService() {
                         
                         val title = item.mediaMetadata.title?.toString() ?: ""
                         val artist = item.mediaMetadata.artist?.toString() ?: ""
-                        val titleEnc = java.net.URLEncoder.encode(title, "UTF-8")
-                        val artistEnc = java.net.URLEncoder.encode(artist, "UTF-8")
                         
                         // Fire off proactive URL resolution in the background!
                         streamResolver.preResolve(title, artist)
                         
                         // Defer resolution to StreamResolver via custom scheme
+                        val uri = android.net.Uri.Builder()
+                            .scheme("vibevault")
+                            .authority("stream")
+                            .appendQueryParameter("title", title)
+                            .appendQueryParameter("artist", artist)
+                            .build()
+                            
                         item.buildUpon()
-                            .setUri("vibevault://stream?title=$titleEnc&artist=$artistEnc")
+                            .setUri(uri.toString())
                             .build()
                     }
                 }
