@@ -38,11 +38,14 @@ import com.vibevault.app.ui.theme.*
 @Composable
 fun SearchScreen(
     onTrackClick: (String, List<Track>) -> Unit,
+    onPlaylistClick: (String) -> Unit = {},
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val searchResult by viewModel.searchResult.collectAsStateWithLifecycle()
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
+    
+    var selectedFilter by remember { mutableStateOf("Songs") }
 
     Column(
         modifier = Modifier
@@ -107,43 +110,60 @@ fun SearchScreen(
                     contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
                     searchResult?.let { result ->
-                        // Songs Section
-                        if (result.tracks.isNotEmpty()) {
-                            item { SectionHeader("Songs") }
-                            items(result.tracks) { track ->
-                                SearchResultRow(
-                                    title = track.title,
-                                    subtitle = "${track.artist} • ${track.album}",
-                                    imageUrl = track.albumImageUrl,
-                                    onClick = { onTrackClick(track.id, listOf(track)) }
+                        // Filter Pills
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = selectedFilter == "Songs",
+                                    onClick = { selectedFilter = "Songs" },
+                                    label = { Text("Songs", color = if (selectedFilter == "Songs") Color.Black else Color.White) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = VibePrimary,
+                                        containerColor = Color.DarkGray
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                FilterChip(
+                                    selected = selectedFilter == "Albums",
+                                    onClick = { selectedFilter = "Albums" },
+                                    label = { Text("Albums", color = if (selectedFilter == "Albums") Color.Black else Color.White) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = VibePrimary,
+                                        containerColor = Color.DarkGray
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
                                 )
                             }
                         }
 
-                        // Artists Section
-                        if (result.artists.isNotEmpty()) {
-                            item { SectionHeader("Artists") }
-                            items(result.artists) { artist ->
-                                SearchResultRow(
-                                    title = artist.name,
-                                    subtitle = "Artist",
-                                    imageUrl = artist.imageUrl,
-                                    isCircular = true,
-                                    onClick = { /* Navigate to Artist */ }
-                                )
+                        if (selectedFilter == "Songs") {
+                            // Songs Section
+                            if (result.tracks.isNotEmpty()) {
+                                items(result.tracks) { track ->
+                                    SearchResultRow(
+                                        title = track.title,
+                                        subtitle = "${track.artist} • ${track.album}",
+                                        imageUrl = track.albumImageUrl,
+                                        onClick = { onTrackClick(track.id, listOf(track)) }
+                                    )
+                                }
                             }
-                        }
-
-                        // Playlists Section
-                        if (result.playlists.isNotEmpty()) {
-                            item { SectionHeader("Playlists") }
-                            items(result.playlists) { playlist ->
-                                SearchResultRow(
-                                    title = playlist.title,
-                                    subtitle = "Playlist • ${playlist.description ?: ""}",
-                                    imageUrl = playlist.coverUrl,
-                                    onClick = { /* Navigate to Playlist */ }
-                                )
+                        } else if (selectedFilter == "Albums") {
+                            // Albums Section
+                            if (result.albums.isNotEmpty()) {
+                                items(result.albums) { album ->
+                                    SearchResultRow(
+                                        title = album.album,
+                                        subtitle = "Album • ${album.artist}",
+                                        imageUrl = album.albumImageUrl,
+                                        onClick = { onPlaylistClick("album:${album.album}") }
+                                    )
+                                }
                             }
                         }
                     }

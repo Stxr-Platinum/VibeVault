@@ -135,15 +135,24 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 musicRepository.getRecentlyPlayed(50),
-                musicRepository.getPlaylists()
-            ) { recent, playlists ->
+                musicRepository.getPlaylists(),
+                sessionManager.recentContextsFlow
+            ) { recent, playlists, recentContexts ->
                 val items = mutableListOf<QuickPickItem>()
+                
+                recentContexts.forEach { ctx ->
+                    if (items.none { it.id == ctx.id }) {
+                        items.add(QuickPickItem(ctx.id, ctx.title, ctx.coverUrl, ctx.type, null))
+                    }
+                }
+                
                 recent.forEach { track ->
                     val albumId = "album:${track.album}"
                     if (track.album.isNotEmpty() && items.none { it.id == albumId }) {
                         items.add(QuickPickItem(albumId, track.album, track.albumImageUrl, "album", track))
                     }
                 }
+                
                 playlists.forEach { playlist ->
                     if (playlist.title.length > 1 && items.none { it.id == playlist.id }) {
                         items.add(QuickPickItem(playlist.id, playlist.title, playlist.coverUrl ?: "", "playlist", null))

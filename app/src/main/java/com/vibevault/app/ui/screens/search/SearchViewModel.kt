@@ -31,11 +31,11 @@ class SearchViewModel @Inject constructor(
             } else {
                 _isSearching.value = true
                 flow {
-                    val result = musicRepository.searchSpotify(q)
+                    val result = musicRepository.searchOnline(q)
                     val searchResult = result.getOrNull()?.let { tracks ->
                         SpotifySearchResult(
                             tracks = tracks,
-                            albums = emptyList(),
+                            albums = tracks.filter { it.album.isNotBlank() }.distinctBy { it.album },
                             artists = emptyList(),
                             playlists = emptyList()
                         )

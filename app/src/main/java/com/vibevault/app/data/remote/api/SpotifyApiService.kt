@@ -23,7 +23,35 @@ class SpotifyApiService @Inject constructor(
     }
 
     suspend fun getUserProfile(): Result<Any> = Result.failure(Exception("Stub"))
-    suspend fun searchTracks(query: String): Result<SpotifySearchResponse> = Result.failure(Exception("Stub"))
+    
+    suspend fun searchTracks(query: String): Result<SpotifySearchResponse> = withContext(Dispatchers.IO) {
+        val authHeader = getAuthHeader() ?: return@withContext Result.failure(Exception("No Spotify token"))
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isEmpty()) return@withContext Result.success(SpotifySearchResponse(null))
+        
+        val url = "https://api.spotify.com/v1/search?q=${java.net.URLEncoder.encode(trimmedQuery, "UTF-8")}&type=track&limit=25"
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", authHeader)
+            .build()
+            
+        try {
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val bodyString = response.body?.string()
+                if (bodyString != null) {
+                    val parsed = json.decodeFromString<SpotifySearchResponse>(bodyString)
+                    Result.success(parsed)
+                } else {
+                    Result.failure(Exception("Empty body"))
+                }
+            } else {
+                Result.failure(Exception("HTTP ${response.code}: ${response.body?.string()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     suspend fun getRecommendations(seedId: String?): Result<List<SpotifyTrackDto>> = Result.failure(Exception("Stub"))
     suspend fun getTrack(trackId: String): Result<SpotifyTrackDto> = Result.failure(Exception("Stub"))
     suspend fun getRecentlyPlayed(): Result<Any> = Result.failure(Exception("Stub"))

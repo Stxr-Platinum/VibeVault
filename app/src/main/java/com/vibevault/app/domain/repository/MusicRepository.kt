@@ -30,8 +30,8 @@ interface MusicRepository {
     /** Get tracks by artist name. */
     fun getTracksByArtist(artistName: String): Flow<List<Track>>
 
-    /** Search tracks specifically on Spotify. */
-    suspend fun searchSpotify(query: String): Result<List<Track>>
+    /** Search tracks online (using iTunes API for fast, popularity-sorted results). */
+    suspend fun searchOnline(query: String): Result<List<Track>>
 
     /** Toggle like status for a track. */
     suspend fun toggleLike(trackId: String)

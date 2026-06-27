@@ -3,6 +3,7 @@ package com.vibevault.app.ui.screens.playlist
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.data.local.entity.PlaylistEntity
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.domain.repository.MusicRepository
@@ -14,6 +15,7 @@ import javax.inject.Inject
 @HiltViewModel
 class PlaylistViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
+    private val sessionManager: SessionManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -31,6 +33,29 @@ class PlaylistViewModel @Inject constructor(
 
     private fun loadPlaylist() {
         viewModelScope.launch {
+            if (playlistId.startsWith("album:")) {
+                val albumName = playlistId.removePrefix("album:")
+                _playlist.value = PlaylistEntity(
+                    id = playlistId,
+                    title = albumName,
+                    createdAt = 0L,
+                    trackCount = 0,
+                    coverUrl = ""
+                )
+                
+                musicRepository.searchOnline(albumName).onSuccess { results ->
+                    val albumTracks = results.filter { it.album.contains(albumName, ignoreCase = true) || albumName.contains(it.album, ignoreCase = true) }
+                    val tracksToShow = if (albumTracks.isNotEmpty()) albumTracks else results
+                    
+                    _playlist.value = _playlist.value?.copy(
+                        trackCount = tracksToShow.size,
+                        coverUrl = tracksToShow.firstOrNull()?.albumImageUrl ?: ""
+                    )
+                    _tracks.value = tracksToShow
+                }
+                return@launch
+            }
+
             val localPlaylist = musicRepository.getPlaylist(playlistId)
             if (localPlaylist != null) {
                 _playlist.value = localPlaylist
@@ -82,5 +107,10 @@ class PlaylistViewModel @Inject constructor(
         viewModelScope.launch {
             musicRepository.removeTrackFromPlaylist(playlistId, trackId)
         }
+    }
+
+    fun recordPlayed() {
+        val p = _playlist.value ?: return
+        sessionManager.addRecentContext(p.id, "playlist", p.title, p.coverUrl ?: "")
     }
 }

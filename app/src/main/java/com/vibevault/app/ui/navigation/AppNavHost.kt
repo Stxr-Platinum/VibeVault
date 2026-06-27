@@ -86,6 +86,9 @@ fun AppNavHost(
                 onTrackClick = { trackId, context ->
                     playerViewModel.playTrack(trackId, context)
                     navController.navigate(Screen.Player.createRoute(trackId))
+                },
+                onPlaylistClick = { playlistId ->
+                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                 }
             )
         }

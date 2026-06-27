@@ -302,13 +302,13 @@ fun HomeFeed(
                             val l = i * 2; val r = i * 2 + 1
                             if (l < picks.size) {
                                 QuickPickItemCard(picks[l], onClick = {
-                                    if (picks[l].type == "playlist") onPlaylistClick(picks[l].id)
+                                    if (picks[l].type == "playlist" || picks[l].type == "album") onPlaylistClick(picks[l].id)
                                     else picks[l].track?.let { onTrackClick(it) }
                                 }, Modifier.weight(1f))
                             }
                             if (r < picks.size) {
                                 QuickPickItemCard(picks[r], onClick = {
-                                    if (picks[r].type == "playlist") onPlaylistClick(picks[r].id)
+                                    if (picks[r].type == "playlist" || picks[r].type == "album") onPlaylistClick(picks[r].id)
                                     else picks[r].track?.let { onTrackClick(it) }
                                 }, Modifier.weight(1f))
                             } else if (picks.size > 1) Spacer(Modifier.weight(1f))

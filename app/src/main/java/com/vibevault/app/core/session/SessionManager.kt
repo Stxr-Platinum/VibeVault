@@ -14,7 +14,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import com.vibevault.app.data.remote.dto.SpotifyTokenResponse
 import com.vibevault.app.data.remote.dto.TokenRefreshRequest
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+@Serializable
+data class RecentContext(
+    val id: String,
+    val type: String,
+    val title: String,
+    val coverUrl: String
+)
 
 /**
  * SessionManager — Secure token persistence.
@@ -67,6 +77,9 @@ class SessionManager @Inject constructor(
     private val _spotifyAccessTokenFlow = MutableStateFlow<String?>(null)
     val spotifyAccessTokenFlow = _spotifyAccessTokenFlow.asStateFlow()
 
+    private val _recentContextsFlow = MutableStateFlow<List<RecentContext>>(emptyList())
+    val recentContextsFlow = _recentContextsFlow.asStateFlow()
+
     init {
         _userDisplayName.value = prefs.getString(KEY_USER_DISPLAY_NAME, null)
         _userAvatarUrl.value = prefs.getString(KEY_USER_AVATAR_URL, null)
@@ -77,6 +90,8 @@ class SessionManager @Inject constructor(
         // that can be used to silently get a new one.
         val hasRefreshToken = prefs.getString(KEY_SPOTIFY_REFRESH_TOKEN, null) != null
         _isSpotifyConnected.value = _spotifyAccessTokenFlow.value != null && (!isSpotifyExpired || hasRefreshToken)
+        
+        _recentContextsFlow.value = getRecentContexts()
     }
 
     private fun createPreferences(): SharedPreferences {
@@ -177,6 +192,31 @@ class SessionManager @Inject constructor(
         set(value) {
             prefs.edit().putString(KEY_LAST_PLAYED_TRACK_ID, value).apply()
         }
+
+    fun addRecentContext(id: String, type: String, title: String, coverUrl: String) {
+        val currentJson = prefs.getString("recent_contexts", "[]") ?: "[]"
+        try {
+            val format = Json { ignoreUnknownKeys = true }
+            val list = format.decodeFromString<List<RecentContext>>(currentJson).toMutableList()
+            val newItem = RecentContext(id, type, title, coverUrl)
+            list.removeAll { it.id == id }
+            list.add(0, newItem)
+            val updated = list.take(10)
+            prefs.edit().putString("recent_contexts", format.encodeToString(updated)).apply()
+            _recentContextsFlow.value = updated
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding recent context", e)
+        }
+    }
+
+    fun getRecentContexts(): List<RecentContext> {
+        val currentJson = prefs.getString("recent_contexts", "[]") ?: "[]"
+        return try {
+            Json { ignoreUnknownKeys = true }.decodeFromString(currentJson)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
 
     val isLoggedIn: Boolean get() = prefs.getString(KEY_ACCESS_TOKEN, null) != null

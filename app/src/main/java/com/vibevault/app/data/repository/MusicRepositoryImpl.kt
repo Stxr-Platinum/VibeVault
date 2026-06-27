@@ -96,39 +96,59 @@ class MusicRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun searchSpotify(query: String): Result<List<Track>> {
-        Log.d("SpotifyDebug", "MusicRepo: searchSpotify called with query = $query")
-        return try {
-            val result = spotifyApi.searchTracks(query)
-            if (result.isFailure) {
-                val err = result.exceptionOrNull()
-                Log.e("SpotifyDebug", "MusicRepo: Spotify API search FAILURE", err)
-                return Result.failure(err ?: Exception("Spotify search failed"))
+    override suspend fun searchOnline(query: String): Result<List<Track>> {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val searchQuery = query.trim()
+                if (searchQuery.isEmpty()) return@withContext Result.success(emptyList())
+
+                Log.d("SearchDebug", "Searching iTunes for: $searchQuery")
+                val url = java.net.URL("https://itunes.apple.com/search?term=${java.net.URLEncoder.encode(searchQuery, "UTF-8")}&entity=song&limit=25")
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().readText()
+                    val json = org.json.JSONObject(response)
+                    val results = json.optJSONArray("results") ?: org.json.JSONArray()
+                    
+                    val tracks = mutableListOf<Track>()
+                    val likedIds = likedSongDao.getLikedSongIds().toSet()
+                    
+                    for (i in 0 until results.length()) {
+                        val song = results.getJSONObject(i)
+                        
+                        val songId = song.optInt("trackId", 0).toString()
+                        if (songId == "0") continue
+                        
+                        val title = song.optString("trackName", "Unknown Title")
+                        val artist = song.optString("artistName", "Unknown Artist")
+                        val album = song.optString("collectionName", "")
+                        val coverUrl = song.optString("artworkUrl100", "").replace("100x100bb", "600x600bb")
+                        val durationMs = song.optLong("trackTimeMillis", 0L)
+                        
+                        tracks.add(Track(
+                            id = songId,
+                            title = title,
+                            artist = artist,
+                            album = album,
+                            albumImageUrl = coverUrl,
+                            audioUrl = "", // StreamResolver handles this
+                            durationMs = durationMs,
+                            isLiked = likedIds.contains(songId),
+                            source = "itunes"
+                        ))
+                    }
+                    Result.success(tracks)
+                } else {
+                    Result.failure(Exception("iTunes API error: ${connection.responseCode}"))
+                }
+            } catch (e: Exception) {
+                Log.e("SearchDebug", "iTunes search failed", e)
+                Result.failure(e)
             }
-            
-            val response = result.getOrNull()
-            Log.d("SpotifyDebug", "MusicRepo: Spotify API search SUCCESS. Track count = ${response?.tracks?.items?.size}")
-            val likedIds = likedSongDao.getLikedSongIds().toSet()
-            
-            val tracks = response?.tracks?.items?.mapNotNull { dto ->
-                val id = dto.id ?: return@mapNotNull null
-                Track(
-                    id = id,
-                    title = dto.name,
-                    artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                    album = dto.album?.name ?: "Unknown",
-                    albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                    audioUrl = dto.previewUrl,
-                    durationMs = dto.durationMs,
-                    isLiked = likedIds.contains(dto.id),
-                    source = "spotify"
-                )
-            } ?: emptyList()
-            Log.d("SpotifyDebug", "MusicRepo: Returning ${tracks.size} tracks to caller")
-            Result.success(tracks)
-        } catch (e: Exception) {
-            Log.e("SpotifyDebug", "MusicRepo: Exception in searchSpotify", e)
-            Result.failure(e)
         }
     }
 
@@ -449,7 +469,7 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun refreshTracks() {
         // Fetch some trending tracks to populate the home screen
-        searchSpotify("trending").onSuccess { tracks ->
+        searchOnline("trending").onSuccess { tracks ->
             tracks.forEach { track ->
                 // Don't auto-like them, but maybe we should have a "Trending" table
                 // For now, let's just use Search to find them.
@@ -574,7 +594,7 @@ class MusicRepositoryImpl @Inject constructor(
         // Seed with some popular tracks if the DB is empty
         val popularQueries = listOf("The Weeknd", "Justin Bieber", "Dua Lipa", "Drake")
         popularQueries.forEach { query ->
-            searchSpotify(query).onSuccess { tracks ->
+            searchOnline(query).onSuccess { tracks ->
                 tracks.take(3).forEach { track ->
                     likedSongDao.insertLikedSong(
                         LikedSongEntity(

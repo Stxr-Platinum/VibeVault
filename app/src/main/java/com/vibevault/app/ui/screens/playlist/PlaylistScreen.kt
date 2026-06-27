@@ -213,6 +213,7 @@ fun PlaylistScreen(
                                 .background(Color(0xFF1DB954)) // Spotify Green
                                 .clickable {
                                     if (tracks.isNotEmpty()) {
+                                        viewModel.recordPlayed()
                                         onTrackClick(tracks.first().id, tracks)
                                     }
                                 },
@@ -272,7 +273,10 @@ fun PlaylistScreen(
                                 .fillMaxWidth()
                                 .clip(shape)
                                 .background(Color.White.copy(alpha = 0.1f))
-                                .clickable { onTrackClick(track.id, tracks) }
+                                .clickable { 
+                                    viewModel.recordPlayed()
+                                    onTrackClick(track.id, tracks) 
+                                }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
