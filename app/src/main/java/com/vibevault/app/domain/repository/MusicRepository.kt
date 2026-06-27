@@ -30,6 +30,12 @@ interface MusicRepository {
     /** Get tracks by artist name. */
     fun getTracksByArtist(artistName: String): Flow<List<Track>>
 
+    /** Get artist top songs via iTunes API. */
+    suspend fun getArtistTopSongs(artistName: String): Result<List<Track>>
+
+    /** Get artist latest albums via iTunes API. */
+    suspend fun getArtistLatestAlbums(artistName: String): Result<List<com.vibevault.app.domain.model.Album>>
+
     /** Search tracks online (using iTunes API for fast, popularity-sorted results). */
     suspend fun searchOnline(query: String): Result<List<Track>>
 

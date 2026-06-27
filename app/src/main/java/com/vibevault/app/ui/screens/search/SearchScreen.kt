@@ -39,6 +39,7 @@ import com.vibevault.app.ui.theme.*
 fun SearchScreen(
     onTrackClick: (String, List<Track>) -> Unit,
     onPlaylistClick: (String) -> Unit = {},
+    onArtistClick: (String) -> Unit = {},
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -138,6 +139,16 @@ fun SearchScreen(
                                     ),
                                     shape = RoundedCornerShape(16.dp)
                                 )
+                                FilterChip(
+                                    selected = selectedFilter == "Artists",
+                                    onClick = { selectedFilter = "Artists" },
+                                    label = { Text("Artists", color = if (selectedFilter == "Artists") Color.Black else Color.White) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = VibePrimary,
+                                        containerColor = Color.DarkGray
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
                             }
                         }
 
@@ -165,10 +176,23 @@ fun SearchScreen(
                                     )
                                 }
                             }
+                        } else if (selectedFilter == "Artists") {
+                            // Artists Section
+                            if (result.artists.isNotEmpty()) {
+                                items(result.artists) { artist ->
+                                    SearchResultRow(
+                                        title = artist.name,
+                                        subtitle = "Artist",
+                                        imageUrl = artist.imageUrl,
+                                        onClick = { onArtistClick(artist.name) },
+                                        isCircular = true
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    if (searchResult == null || (searchResult?.tracks?.isEmpty() == true && searchResult?.artists?.isEmpty() == true)) {
+                    if (searchResult == null || (searchResult?.tracks?.isEmpty() == true && searchResult?.albums?.isEmpty() == true && searchResult?.artists?.isEmpty() == true)) {
                         item {
                             Box(
                                 modifier = Modifier

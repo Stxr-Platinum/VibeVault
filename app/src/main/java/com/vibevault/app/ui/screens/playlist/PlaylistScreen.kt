@@ -44,9 +44,46 @@ fun PlaylistScreen(
 ) {
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
+    val userPlaylists by viewModel.userPlaylists.collectAsStateWithLifecycle()
     
     var showMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+
+    if (showAddToPlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddToPlaylistDialog = false },
+            title = { Text("Save Album to Playlist", color = Color.White) },
+            text = {
+                LazyColumn {
+                    items(userPlaylists, key = { it.id }) { p ->
+                        Text(
+                            text = p.title,
+                            color = Color.White,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.addAlbumToPlaylist(p.id)
+                                    showAddToPlaylistDialog = false
+                                }
+                                .padding(16.dp)
+                        )
+                    }
+                    if (userPlaylists.isEmpty()) {
+                        item {
+                            Text("No playlists available", color = Color.Gray, modifier = Modifier.padding(16.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAddToPlaylistDialog = false }) {
+                    Text("Close", color = VibePrimary)
+                }
+            },
+            containerColor = Color(0xFF282828)
+        )
+    }
 
     if (showRenameDialog) {
         var newName by remember { mutableStateOf(playlist?.title ?: "") }
@@ -114,20 +151,30 @@ fun PlaylistScreen(
                     onDismissRequest = { showMenu = false },
                     modifier = Modifier.background(Color(0xFF282828))
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Rename", color = Color.White) },
-                        onClick = {
-                            showMenu = false
-                            showRenameDialog = true
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete playlist", color = Color.Red) },
-                        onClick = {
-                            showMenu = false
-                            viewModel.deletePlaylist(onBackClick)
-                        }
-                    )
+                    if (playlistId.startsWith("album:")) {
+                        DropdownMenuItem(
+                            text = { Text("Save Album to Playlist", color = Color.White) },
+                            onClick = {
+                                showMenu = false
+                                showAddToPlaylistDialog = true
+                            }
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("Rename", color = Color.White) },
+                            onClick = {
+                                showMenu = false
+                                showRenameDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete playlist", color = Color.Red) },
+                            onClick = {
+                                showMenu = false
+                                viewModel.deletePlaylist(onBackClick)
+                            }
+                        )
+                    }
                 }
             }
         }

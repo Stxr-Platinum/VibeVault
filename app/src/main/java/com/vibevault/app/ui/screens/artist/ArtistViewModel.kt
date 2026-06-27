@@ -17,10 +17,22 @@ class ArtistViewModel @Inject constructor(
     private val _artistName = MutableStateFlow("")
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val artistTracks: StateFlow<List<Track>> = _artistName
+    val topSongs: StateFlow<List<Track>> = _artistName
         .flatMapLatest { name ->
             if (name.isBlank()) flowOf(emptyList())
-            else musicRepository.getTracksByArtist(name)
+            else kotlinx.coroutines.flow.flow {
+                emit(musicRepository.getArtistTopSongs(name).getOrDefault(emptyList()))
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val latestAlbums: StateFlow<List<com.vibevault.app.domain.model.Album>> = _artistName
+        .flatMapLatest { name ->
+            if (name.isBlank()) flowOf(emptyList())
+            else kotlinx.coroutines.flow.flow {
+                emit(musicRepository.getArtistLatestAlbums(name).getOrDefault(emptyList()))
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 

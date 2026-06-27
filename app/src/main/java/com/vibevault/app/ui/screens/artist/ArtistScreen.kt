@@ -38,6 +38,7 @@ import com.vibevault.app.ui.theme.*
 fun ArtistScreen(
     artistName: String,
     onTrackClick: (String, List<Track>) -> Unit,
+    onPlaylistClick: (String) -> Unit = {},
     onBack: () -> Unit,
     viewModel: ArtistViewModel = hiltViewModel()
 ) {
@@ -45,7 +46,10 @@ fun ArtistScreen(
         viewModel.loadArtist(artistName)
     }
 
-    val tracks by viewModel.artistTracks.collectAsStateWithLifecycle()
+
+
+    val topSongs by viewModel.topSongs.collectAsStateWithLifecycle()
+    val latestAlbums by viewModel.latestAlbums.collectAsStateWithLifecycle()
 
     LazyColumn(
         modifier = Modifier
@@ -92,7 +96,7 @@ fun ArtistScreen(
                     Spacer(Modifier.height(12.dp))
 
                     // Artist avatar
-                    val avatarUrl = tracks.firstOrNull()?.albumImageUrl ?: ""
+                    val avatarUrl = topSongs.firstOrNull()?.albumImageUrl ?: ""
                     Box(
                         modifier = Modifier
                             .size(160.dp)
@@ -128,7 +132,7 @@ fun ArtistScreen(
                     )
 
                     Text(
-                        text = "${tracks.size} tracks",
+                        text = "Artist",
                         style = MaterialTheme.typography.bodyMedium,
                         color = VibeOnSurfaceVariant
                     )
@@ -146,7 +150,7 @@ fun ArtistScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
-                    onClick = { tracks.firstOrNull()?.let { onTrackClick(it.id, tracks) } },
+                    onClick = { topSongs.firstOrNull()?.let { onTrackClick(it.id, topSongs) } },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -187,12 +191,61 @@ fun ArtistScreen(
             )
         }
 
-        items(tracks, key = { it.id }) { track ->
+        items(topSongs, key = { it.id }) { track ->
             ArtistTrackRow(
                 track = track,
-                index = tracks.indexOf(track) + 1,
-                onClick = { onTrackClick(track.id, tracks) }
+                index = topSongs.indexOf(track) + 1,
+                onClick = { onTrackClick(track.id, topSongs) }
             )
+        }
+
+        if (latestAlbums.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Latest Releases",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = VibeOnSurface,
+                    modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 12.dp)
+                )
+            }
+            item {
+                androidx.compose.foundation.lazy.LazyRow(
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(latestAlbums, key = { it.id }) { album ->
+                        Column(
+                            modifier = Modifier
+                                .width(140.dp)
+                                .clickable { onPlaylistClick(album.id) }
+                        ) {
+                            AsyncImage(
+                                model = album.coverUrl,
+                                contentDescription = album.title,
+                                modifier = Modifier
+                                    .size(140.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = album.title,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = VibeOnSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = album.releaseDate,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = VibeOnSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

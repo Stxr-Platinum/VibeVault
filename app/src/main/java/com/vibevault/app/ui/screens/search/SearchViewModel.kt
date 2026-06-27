@@ -33,10 +33,20 @@ class SearchViewModel @Inject constructor(
                 flow {
                     val result = musicRepository.searchOnline(q)
                     val searchResult = result.getOrNull()?.let { tracks ->
+                        val artists = tracks.filter { it.artist.isNotBlank() }
+                            .distinctBy { it.artist }
+                            .map { 
+                                com.vibevault.app.domain.model.Artist(
+                                    id = it.artist, 
+                                    name = it.artist, 
+                                    imageUrl = it.albumImageUrl
+                                )
+                            }
+                        
                         SpotifySearchResult(
                             tracks = tracks,
                             albums = tracks.filter { it.album.isNotBlank() }.distinctBy { it.album },
-                            artists = emptyList(),
+                            artists = artists,
                             playlists = emptyList()
                         )
                     }

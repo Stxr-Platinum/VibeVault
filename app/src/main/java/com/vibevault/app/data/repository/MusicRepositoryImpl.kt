@@ -152,6 +152,68 @@ class MusicRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getArtistTopSongs(artistName: String): Result<List<Track>> {
+        return searchOnline(artistName).map { tracks -> 
+            tracks.filter { it.artist.contains(artistName, ignoreCase = true) }.take(10) 
+        }
+    }
+
+    override suspend fun getArtistLatestAlbums(artistName: String): Result<List<com.vibevault.app.domain.model.Album>> {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val encodedQuery = java.net.URLEncoder.encode(artistName, "UTF-8")
+                val url = java.net.URL("https://itunes.apple.com/search?term=$encodedQuery&entity=album&limit=20")
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonResponse = org.json.JSONObject(response)
+                    val results = jsonResponse.optJSONArray("results")
+                    
+                    val albums = mutableListOf<com.vibevault.app.domain.model.Album>()
+                    if (results != null) {
+                        for (i in 0 until results.length()) {
+                            val albumObj = results.optJSONObject(i) ?: continue
+                            
+                            val albumId = albumObj.optString("collectionId", "")
+                            val title = albumObj.optString("collectionName", "Unknown")
+                            val artist = albumObj.optString("artistName", "Unknown")
+                            
+                            if (!artist.contains(artistName, ignoreCase = true)) continue
+
+                            var coverUrl = albumObj.optString("artworkUrl100", "")
+                            if (coverUrl.isNotEmpty()) {
+                                coverUrl = coverUrl.replace("100x100bb", "600x600bb")
+                            }
+                            
+                            var releaseDate = albumObj.optString("releaseDate", "")
+                            if (releaseDate.isNotEmpty()) {
+                                releaseDate = releaseDate.substring(0, 4) // Just get the year for simplicity, or format it
+                            }
+                            
+                            albums.add(com.vibevault.app.domain.model.Album(
+                                id = "album:${title}", // Keep consistent with existing album routing
+                                title = title,
+                                artist = artist,
+                                coverUrl = coverUrl,
+                                releaseDate = releaseDate
+                            ))
+                        }
+                    }
+                    Result.success(albums.sortedByDescending { it.releaseDate })
+                } else {
+                    Result.failure(Exception("iTunes API error: ${connection.responseCode}"))
+                }
+            } catch (e: Exception) {
+                Log.e("SearchDebug", "iTunes album search failed", e)
+                Result.failure(e)
+            }
+        }
+    }
+
     override fun getDiscoveryTracks(): Flow<List<Track>> = flow {
         Log.d("SpotifyDebug", "MusicRepo: getDiscoveryTracks called")
         // Fetch recommendations from Spotify based on a recently liked track

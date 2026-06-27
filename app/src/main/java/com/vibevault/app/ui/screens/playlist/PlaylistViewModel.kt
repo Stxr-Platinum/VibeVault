@@ -27,6 +27,9 @@ class PlaylistViewModel @Inject constructor(
     private val _tracks = MutableStateFlow<List<Track>>(emptyList())
     val tracks: StateFlow<List<Track>> = _tracks.asStateFlow()
 
+    val userPlaylists: StateFlow<List<PlaylistEntity>> = musicRepository.getPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     init {
         loadPlaylist()
     }
@@ -112,5 +115,13 @@ class PlaylistViewModel @Inject constructor(
     fun recordPlayed() {
         val p = _playlist.value ?: return
         sessionManager.addRecentContext(p.id, "playlist", p.title, p.coverUrl ?: "")
+    }
+
+    fun addAlbumToPlaylist(targetPlaylistId: String) {
+        viewModelScope.launch {
+            _tracks.value.forEach { track ->
+                musicRepository.addTrackToPlaylist(targetPlaylistId, track.id)
+            }
+        }
     }
 }
