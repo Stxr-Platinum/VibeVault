@@ -20,7 +20,8 @@ data class QuickPickItem(
     val title: String,
     val coverUrl: String,
     val type: String,
-    val track: Track? = null
+    val track: Track? = null,
+    val timestamp: Long = 0L
 )
 
 @HiltViewModel
@@ -138,27 +139,43 @@ class HomeViewModel @Inject constructor(
                 musicRepository.getPlaylists(),
                 sessionManager.recentContextsFlow
             ) { recent, playlists, recentContexts ->
-                val items = mutableListOf<QuickPickItem>()
+                val allItems = mutableListOf<QuickPickItem>()
                 
                 recentContexts.forEach { ctx ->
-                    if (items.none { it.id == ctx.id }) {
-                        items.add(QuickPickItem(ctx.id, ctx.title, ctx.coverUrl, ctx.type, null))
-                    }
+                    allItems.add(QuickPickItem(ctx.id, ctx.title, ctx.coverUrl, ctx.type, null, ctx.timestamp))
                 }
+                
+                // Collect playlist context timestamps to detect songs played from playlists
+                val playlistContextTimestamps = recentContexts
+                    .filter { it.type == "playlist" }
+                    .map { it.timestamp }
                 
                 recent.forEach { track ->
-                    val albumId = "album:${track.album}"
-                    if (track.album.isNotEmpty() && items.none { it.id == albumId }) {
-                        items.add(QuickPickItem(albumId, track.album, track.albumImageUrl, "album", track))
+                    val albumId = "album:${track.album}::${track.artist}"
+                    if (track.album.isNotEmpty()) {
+                        // Skip album entry if a playlist was opened within 10s of this track being played
+                        // (means the song was played from that playlist, not standalone)
+                        val playedFromPlaylist = playlistContextTimestamps.any { pTs ->
+                            pTs > 0L && track.playedAt > 0L && Math.abs(pTs - track.playedAt) < 10_000L
+                        }
+                        if (!playedFromPlaylist) {
+                            allItems.add(QuickPickItem(albumId, track.album, track.albumImageUrl, "album", track, track.playedAt))
+                        }
                     }
                 }
                 
+                // Sort combined items by timestamp descending, then distinct by id
+                val distinctItems = allItems.sortedByDescending { it.timestamp }
+                    .distinctBy { it.id }
+                
+                // Add playlists if not enough items
+                val finalItems = distinctItems.toMutableList()
                 playlists.forEach { playlist ->
-                    if (playlist.title.length > 1 && items.none { it.id == playlist.id }) {
-                        items.add(QuickPickItem(playlist.id, playlist.title, playlist.coverUrl ?: "", "playlist", null))
+                    if (playlist.title.length > 1 && finalItems.none { it.id == playlist.id }) {
+                        finalItems.add(QuickPickItem(playlist.id, playlist.title, playlist.coverUrl ?: "", "playlist", null, 0L))
                     }
                 }
-                items.take(8)
+                finalItems.take(8)
             }.collect { items ->
                 if (items.isNotEmpty()) {
                     _quickPicks.value = items
@@ -227,18 +244,24 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isSearching.value = true
             try {
-                val result = spotifyApi.searchTracks(query)
-                result.onSuccess { response ->
-                    Log.d("SpotifyDebug", "HomeVM: Search result SUCCESS - tracks count = ${response.tracks?.items?.size}")
-                    _searchResults.value = response
-                }
-                result.onFailure {
-                    Log.e("SpotifyDebug", "HomeVM: Search result FAILURE", it)
+                val result = musicRepository.searchOnline(query)
+                val tracks = result.getOrNull() ?: emptyList()
+                if (tracks.isNotEmpty()) {
+                    val spotifyTracks = tracks.map { track ->
+                        com.vibevault.app.data.remote.dto.SpotifyTrackDto(
+                            id = track.id,
+                            name = track.title,
+                            artists = listOf(com.vibevault.app.data.remote.dto.SpotifyArtistDto(track.artist, track.artist)),
+                            album = com.vibevault.app.data.remote.dto.SpotifyAlbumDto(track.album, track.album, listOf(com.vibevault.app.data.remote.dto.SpotifyImageDto(track.albumImageUrl))),
+                            durationMs = track.durationMs
+                        )
+                    }
+                    _searchResults.value = com.vibevault.app.data.remote.dto.SpotifySearchResponse(
+                        tracks = com.vibevault.app.data.remote.dto.SpotifyTracksResponse(items = spotifyTracks)
+                    )
+                } else {
                     _searchResults.value = null
                 }
-            } catch (e: Exception) {
-                Log.e("SpotifyDebug", "HomeVM: Search exception", e)
-                _searchResults.value = null
             } finally {
                 _isSearching.value = false
             }

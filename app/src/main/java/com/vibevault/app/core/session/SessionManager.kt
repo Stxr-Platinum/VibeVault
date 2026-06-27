@@ -23,7 +23,8 @@ data class RecentContext(
     val id: String,
     val type: String,
     val title: String,
-    val coverUrl: String
+    val coverUrl: String,
+    val timestamp: Long = 0L
 )
 
 /**
@@ -197,8 +198,12 @@ class SessionManager @Inject constructor(
         val currentJson = prefs.getString("recent_contexts", "[]") ?: "[]"
         try {
             val format = Json { ignoreUnknownKeys = true }
-            val list = format.decodeFromString<List<RecentContext>>(currentJson).toMutableList()
-            val newItem = RecentContext(id, type, title, coverUrl)
+            val list = try {
+                format.decodeFromString<List<RecentContext>>(currentJson).toMutableList()
+            } catch (e: Exception) {
+                mutableListOf()
+            }
+            val newItem = RecentContext(id, type, title, coverUrl, System.currentTimeMillis())
             list.removeAll { it.id == id }
             list.add(0, newItem)
             val updated = list.take(10)

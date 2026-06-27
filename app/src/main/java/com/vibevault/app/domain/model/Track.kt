@@ -15,5 +15,6 @@ data class Track(
     val isLiked: Boolean = false,
     val localPath: String? = null,
     val source: String = "stream",
-    val externalUrl: String? = null
+    val externalUrl: String? = null,
+    val playedAt: Long = 0L
 )

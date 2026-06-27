@@ -20,13 +20,13 @@ sealed class Screen(
     data object Library : Screen("library", "Your Library", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic)
 
     data object Player : Screen("player/{trackId}", "Now Playing") {
-        fun createRoute(trackId: String) = "player/$trackId"
+        fun createRoute(trackId: String) = "player/${android.net.Uri.encode(trackId)}"
     }
     data object Artist : Screen("artist/{artistName}", "Artist") {
-        fun createRoute(artistName: String) = "artist/$artistName"
+        fun createRoute(artistName: String) = "artist/${android.net.Uri.encode(artistName)}"
     }
     data object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Playlist") {
-        fun createRoute(playlistId: String) = "playlist_detail/$playlistId"
+        fun createRoute(playlistId: String) = "playlist_detail/${android.net.Uri.encode(playlistId)}"
     }
 
     data object Login : Screen("login", "Login")

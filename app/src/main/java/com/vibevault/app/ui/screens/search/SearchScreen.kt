@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -160,7 +161,8 @@ fun SearchScreen(
                                         title = track.title,
                                         subtitle = "${track.artist} • ${track.album}",
                                         imageUrl = track.albumImageUrl,
-                                        onClick = { onTrackClick(track.id, listOf(track)) }
+                                        onClick = { onTrackClick(track.id, listOf(track)) },
+                                        onActionClick = { /* Handle add song action */ }
                                     )
                                 }
                             }
@@ -172,7 +174,8 @@ fun SearchScreen(
                                         title = album.album,
                                         subtitle = "Album • ${album.artist}",
                                         imageUrl = album.albumImageUrl,
-                                        onClick = { onPlaylistClick("album:${album.album}") }
+                                        onClick = { onPlaylistClick("album:${album.album}::${album.artist}") },
+                                        onActionClick = { /* Handle add album action */ }
                                     )
                                 }
                             }
@@ -300,7 +303,8 @@ private fun SearchResultRow(
     subtitle: String,
     imageUrl: String?,
     isCircular: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onActionClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -333,6 +337,15 @@ private fun SearchResultRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        if (onActionClick != null) {
+            IconButton(onClick = onActionClick) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add",
+                    tint = Color.White.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }

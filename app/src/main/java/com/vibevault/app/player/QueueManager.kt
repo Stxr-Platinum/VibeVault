@@ -186,16 +186,21 @@ class QueueManager @Inject constructor() {
 
     fun appendTrack(track: Track) {
         val wasEmpty = currentQueue.isEmpty()
-        originalQueue.add(track)
-        currentQueue.add(track)
-        _queueState.value = currentQueue.toList()
-        debugLog()
         
         if (wasEmpty) {
-            // Queue was empty before
+            originalQueue.add(track)
+            currentQueue.add(track)
             _currentIndex.value = 0
             updateState()
+        } else {
+            // Insert right after the currently playing track so it plays next
+            val insertIndex = _currentIndex.value + 1
+            originalQueue.add(insertIndex.coerceAtMost(originalQueue.size), track)
+            currentQueue.add(insertIndex.coerceAtMost(currentQueue.size), track)
         }
+        
+        _queueState.value = currentQueue.toList()
+        debugLog()
     }
 
     fun removeTrackAt(index: Int) {

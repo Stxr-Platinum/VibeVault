@@ -33,6 +33,8 @@ import com.vibevault.app.domain.model.Track
 import com.vibevault.app.ui.theme.VibeBg
 import com.vibevault.app.ui.theme.VibeOnSurfaceVariant
 import com.vibevault.app.ui.theme.VibePrimary
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,58 +188,74 @@ fun PlaylistScreen(
             ) {
                 item {
                     // Header Block
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(24.dp))
-                            .background(Color.White.copy(alpha = 0.1f))
-                            .padding(24.dp)
                     ) {
-                        Box(
+                        if (playlist!!.coverUrl != null) {
+                            AsyncImage(
+                                model = playlist!!.coverUrl,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .blur(50.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded),
+                                contentScale = ContentScale.Crop,
+                                alpha = 0.4f
+                            )
+                        }
+                        Row(
                             modifier = Modifier
-                                .size(120.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF282828)),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.1f))
+                                .padding(24.dp)
                         ) {
-                            if (playlist!!.coverUrl != null) {
-                                AsyncImage(
-                                    model = playlist!!.coverUrl,
-                                    contentDescription = "Playlist Cover",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                            Box(
+                                modifier = Modifier
+                                    .size(120.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF282828)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (playlist!!.coverUrl != null) {
+                                    AsyncImage(
+                                        model = playlist!!.coverUrl,
+                                        contentDescription = "Playlist Cover",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.QueueMusic,
+                                        contentDescription = "Playlist",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(20.dp))
+                            Column(verticalArrangement = Arrangement.Center) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = if (playlistId.startsWith("album:")) "ALBUM" else "PLAYLIST",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
+                                    color = Color.White
                                 )
-                            } else {
-                                Icon(
-                                    Icons.Default.QueueMusic,
-                                    contentDescription = "Playlist",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(48.dp)
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = playlist!!.title,
+                                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black),
+                                    color = Color.White,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    text = "V • ${tracks.size} songs",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.7f)
                                 )
                             }
-                        }
-                        Spacer(Modifier.width(20.dp))
-                        Column(verticalArrangement = Arrangement.Center) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = "PLAYLIST",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
-                                color = Color.White
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = playlist!!.title,
-                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black),
-                                color = Color.White,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = "V • ${tracks.size} songs",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.7f)
-                            )
                         }
                     }
                     Spacer(Modifier.height(16.dp))

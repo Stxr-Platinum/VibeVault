@@ -37,7 +37,10 @@ class PlaylistViewModel @Inject constructor(
     private fun loadPlaylist() {
         viewModelScope.launch {
             if (playlistId.startsWith("album:")) {
-                val albumName = playlistId.removePrefix("album:")
+                val data = playlistId.removePrefix("album:").split("::")
+                val albumName = data[0]
+                val artistName = data.getOrNull(1) ?: ""
+
                 _playlist.value = PlaylistEntity(
                     id = playlistId,
                     title = albumName,
@@ -46,15 +49,37 @@ class PlaylistViewModel @Inject constructor(
                     coverUrl = ""
                 )
                 
-                musicRepository.searchOnline(albumName).onSuccess { results ->
-                    val albumTracks = results.filter { it.album.contains(albumName, ignoreCase = true) || albumName.contains(it.album, ignoreCase = true) }
-                    val tracksToShow = if (albumTracks.isNotEmpty()) albumTracks else results
+                val query = if (artistName.isNotEmpty()) "$albumName $artistName" else albumName
+                
+                musicRepository.searchOnline(query).onSuccess { results ->
+                    var filtered = results.filter { 
+                        (it.album.contains(albumName, ignoreCase = true) || albumName.contains(it.album, ignoreCase = true)) && 
+                        (artistName.isEmpty() || it.artist.contains(artistName, ignoreCase = true) || artistName.contains(it.artist, ignoreCase = true))
+                    }.distinctBy { it.title.trim().lowercase() }
                     
-                    _playlist.value = _playlist.value?.copy(
-                        trackCount = tracksToShow.size,
-                        coverUrl = tracksToShow.firstOrNull()?.albumImageUrl ?: ""
-                    )
-                    _tracks.value = tracksToShow
+                    if (filtered.isEmpty() && artistName.isNotEmpty()) {
+                        // Fallback: search just album name if the combined query returns nothing
+                        musicRepository.searchOnline(albumName).onSuccess { fallbackResults ->
+                            filtered = fallbackResults.filter { 
+                                it.album.contains(albumName, ignoreCase = true) || albumName.contains(it.album, ignoreCase = true) 
+                            }.distinctBy { it.title.trim().lowercase() }
+                            _tracks.value = filtered
+                            if (filtered.isNotEmpty()) {
+                                _playlist.value = _playlist.value?.copy(
+                                    coverUrl = filtered.first().albumImageUrl,
+                                    trackCount = filtered.size
+                                )
+                            }
+                        }
+                    } else {
+                        _tracks.value = filtered
+                        if (filtered.isNotEmpty()) {
+                            _playlist.value = _playlist.value?.copy(
+                                coverUrl = filtered.first().albumImageUrl,
+                                trackCount = filtered.size
+                            )
+                        }
+                    }
                 }
                 return@launch
             }
@@ -114,7 +139,8 @@ class PlaylistViewModel @Inject constructor(
 
     fun recordPlayed() {
         val p = _playlist.value ?: return
-        sessionManager.addRecentContext(p.id, "playlist", p.title, p.coverUrl ?: "")
+        val type = if (p.id.startsWith("album:")) "album" else "playlist"
+        sessionManager.addRecentContext(p.id, type, p.title, p.coverUrl ?: "")
     }
 
     fun addAlbumToPlaylist(targetPlaylistId: String) {

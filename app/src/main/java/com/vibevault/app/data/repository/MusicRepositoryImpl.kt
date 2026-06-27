@@ -55,7 +55,8 @@ class MusicRepositoryImpl @Inject constructor(
                     artist = entity.artist,
                     album = entity.album.ifEmpty { "Unknown" },
                     albumImageUrl = entity.albumImageUrl,
-                    durationMs = 0
+                    durationMs = 0,
+                    playedAt = entity.playedAt
                 )
             }
         }
@@ -106,6 +107,7 @@ class MusicRepositoryImpl @Inject constructor(
                 val url = java.net.URL("https://itunes.apple.com/search?term=${java.net.URLEncoder.encode(searchQuery, "UTF-8")}&entity=song&limit=25")
                 val connection = url.openConnection() as java.net.HttpURLConnection
                 connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
 
@@ -195,7 +197,7 @@ class MusicRepositoryImpl @Inject constructor(
                             }
                             
                             albums.add(com.vibevault.app.domain.model.Album(
-                                id = "album:${title}", // Keep consistent with existing album routing
+                                id = "album:${title}::${artist}", // Keep consistent with existing album routing
                                 title = title,
                                 artist = artist,
                                 coverUrl = coverUrl,
@@ -963,8 +965,10 @@ class MusicRepositoryImpl @Inject constructor(
                     t
                 }.distinctBy { it.id!! }
                 
-                // Removed early return. If a playlist is legitimately empty on Spotify, we should sync that empty state.
-
+                if (parsed.isEmpty()) {
+                    Log.d("SpotifySync", "Parsed tracks is empty. Skipping sync to avoid erasing existing tracks.")
+                    return
+                }
                 val existingTracks = postgrest.from("spotify_playlist_tracks")
                     .select {
                         filter {
