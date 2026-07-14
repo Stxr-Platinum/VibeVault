@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
+    alias(libs.plugins.protobufPlugin)
 }
 
 android {
@@ -44,6 +45,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -61,6 +63,24 @@ android {
 configurations.all {
     resolutionStrategy {
         force(libs.javapoet)
+    }
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+                create("kotlin") {
+                    option("lite")
+                }
+            }
+        }
     }
 }
 
@@ -110,8 +130,15 @@ dependencies {
     implementation(libs.supabase.realtime)
     implementation(libs.supabase.functions)
 
-    // ── Ktor Engine (required by supabase-kt) ──────────────
+    // ── Ktor Engine (required by supabase-kt and ListenTogether) ──────────────
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.websockets)
+
+    // ── Serialization & Protobuf ──────────────────────────────────────
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.protobuf.javalite)
+    implementation(libs.protobuf.kotlin.lite)
+    implementation(project(":innertube"))
 
     // ── Coroutines ─────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
@@ -125,9 +152,10 @@ dependencies {
 
     // ── Security (EncryptedSharedPreferences) ──────────────
     implementation(libs.androidx.security.crypto)
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // ── Serialization ──────────────────────────────────────
-    implementation(libs.kotlinx.serialization.json)
+    // (Moved above)
 
     // ── WorkManager ────────────────────────────────────────
     implementation(libs.androidx.work.runtime.ktx)
@@ -142,4 +170,7 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
+    implementation("com.jakewharton.timber:timber:5.0.1")
 }

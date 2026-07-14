@@ -119,8 +119,13 @@ fun PlayerScreen(
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White
             )
-            IconButton(onClick = { }) {
-                Icon(Icons.Default.MoreVert, "More Options", tint = Color.White)
+            Row {
+                IconButton(onClick = { /* TODO: Launch Listen Together UI */ }) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Share, "Listen Together", tint = Color.White)
+                }
+                IconButton(onClick = { }) {
+                    Icon(Icons.Default.MoreVert, "More Options", tint = Color.White)
+                }
             }
         }
 

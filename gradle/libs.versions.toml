@@ -44,6 +44,10 @@ securityCrypto = "1.1.0-alpha06"
 # Serialization
 kotlinxSerialization = "1.7.3"
 
+# Protobuf
+protobuf = "4.33.5"
+protobufPlugin = "0.9.4"
+
 # WorkManager
 workRuntime = "2.10.0"
 hiltWork = "1.2.0"
@@ -103,6 +107,7 @@ supabase-functions = { group = "io.github.jan-tennert.supabase", name = "functio
 
 # Ktor (engine for supabase-kt)
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
 
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
@@ -119,6 +124,8 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 
 # Serialization
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
 
 # WorkManager
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntime" }
@@ -138,3 +145,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+protobufPlugin = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

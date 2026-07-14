@@ -1,257 +1,72 @@
 package com.vibevault.app.player.media
 
-import android.util.Log
-import androidx.annotation.OptIn
-import androidx.media3.common.util.UnstableApi
+import android.content.Context
+import android.net.ConnectivityManager
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.ResolvingDataSource
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import java.util.concurrent.ConcurrentHashMap
+import com.vibevault.app.constants.AudioQuality
+import com.vibevault.app.data.youtube.YTPlayerUtils
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.runBlocking
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@OptIn(UnstableApi::class)
+import com.music.innertube.YouTube
+import com.music.innertube.models.SongItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 @Singleton
-class StreamResolver @Inject constructor() : ResolvingDataSource.Resolver {
+class StreamResolver @Inject constructor(
+    @ApplicationContext private val context: Context
+) : ResolvingDataSource.Resolver {
 
-    private fun normalize(str: String): String {
-        return str.lowercase().replace(Regex("[^a-z0-9]"), "")
+    fun preResolve(title: String, artist: String) {
+        // Optional pre-fetching
     }
-
-    private val preloadCache = ConcurrentHashMap<String, String>()
-    private val scope = CoroutineScope(Dispatchers.IO)
-
-    private val qobuzInstances = listOf(
-        "https://api.qobuz.freemyip.com",
-        "https://api.qobuz.karpik.pl",
-        "https://qobuz.ngrok.app",
-        "https://api.qobuz.karpik.pl"
-    )
 
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
         val uri = dataSpec.uri
-        if (uri.scheme == "vibevault" && uri.host == "stream") {
+        if (uri.scheme == "vibevault" && uri.authority == "stream") {
             val title = uri.getQueryParameter("title") ?: ""
             val artist = uri.getQueryParameter("artist") ?: ""
+            val query = "$title $artist"
             
-            val query = android.net.Uri.encode("$title $artist".trim())
-            Log.d("StreamResolver", "Attempting to resolve stream for: $title by $artist (Query: $query)")
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-            val cachedUrl = preloadCache.remove(query)
-            if (cachedUrl != null) {
-                Log.d("StreamResolver", "Preload cache hit for query: $query")
-                return dataSpec.buildUpon().setUri(cachedUrl).build()
-            }
-
-            if (query.isNotEmpty()) {
-                for (instance in qobuzInstances) {
-                    try {
-                        val searchUrl = URL("$instance/api/get-music?q=$query&offset=0")
-                        val searchConn = searchUrl.openConnection() as HttpURLConnection
-                        searchConn.requestMethod = "GET"
-                        searchConn.connectTimeout = 5000
-                        searchConn.readTimeout = 5000
-
-                        var qobuzTrackId: String? = null
-                        if (searchConn.responseCode == 200) {
-                            val response = searchConn.inputStream.bufferedReader().readText()
-                            val json = JSONObject(response)
-                            val tracks = json.optJSONObject("data")?.optJSONObject("tracks")?.optJSONArray("items")
-                            if (tracks != null && tracks.length() > 0) {
-                                val targetNorm = normalize(title)
-                                for (i in 0 until tracks.length()) {
-                                    val track = tracks.getJSONObject(i)
-                                    val trackTitle = track.optString("title", "")
-                                    if (normalize(trackTitle) == targetNorm) {
-                                        qobuzTrackId = track.optString("id")
-                                        break
-                                    }
-                                }
-                                if (qobuzTrackId == null) {
-                                    qobuzTrackId = tracks.getJSONObject(0).optString("id")
-                                }
-                                Log.d("StreamResolver", "Found Qobuz Track ID: $qobuzTrackId")
-                            }
-                        }
-
-                        if (qobuzTrackId != null) {
-                            val url = URL("$instance/api/download-music?track_id=$qobuzTrackId&quality=6")
-                            val connection = url.openConnection() as HttpURLConnection
-                            connection.requestMethod = "GET"
-                            connection.connectTimeout = 5000
-                            connection.readTimeout = 5000
-
-                            if (connection.responseCode == 200) {
-                                val response = connection.inputStream.bufferedReader().readText()
-                                val json = JSONObject(response)
-                                val data = json.optJSONObject("data")
-                                if (data != null && data.has("url")) {
-                                    val streamUrl = data.getString("url")
-                                    Log.d("StreamResolver", "Resolved stream URL via $instance")
-                                    return dataSpec.buildUpon().setUri(streamUrl).build()
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("StreamResolver", "Failed to resolve Qobuz via $instance", e)
-                    }
-                }
-
-                // LISTENFREE / JIOSAAVN FALLBACK
+            return runBlocking {
                 try {
-                    Log.d("StreamResolver", "Trying ListenFree fallback for: $query")
-                    val jioUrl = URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/search/songs?limit=10&query=$query")
-                    val jioConn = jioUrl.openConnection() as HttpURLConnection
-                    jioConn.requestMethod = "GET"
-                    jioConn.connectTimeout = 5000
-                    jioConn.readTimeout = 5000
+                    // 1. Search YouTube for the video ID using innertube
+                    val searchResult = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                    val searchItems = searchResult.getOrNull()?.items
+                    val songItem = searchItems?.firstOrNull { it is SongItem } as? SongItem
+                        ?: searchItems?.firstOrNull() // Fallback if no SongItem found
+                    
+                    val videoId = songItem?.id ?: throw Exception("No video found for query: $query")
+                    
+                    Timber.d("StreamResolver found videoId: $videoId for query: $query")
 
-                    if (jioConn.responseCode == 200) {
-                        val response = jioConn.inputStream.bufferedReader().readText()
-                        val json = JSONObject(response)
-                        val results = json.optJSONObject("data")?.optJSONArray("results")
-                        if (results != null && results.length() > 0) {
-                            var topResult = results.getJSONObject(0)
-                            val targetNorm = normalize(title)
-                            for (i in 0 until results.length()) {
-                                val track = results.getJSONObject(i)
-                                val trackTitle = track.optString("name", "")
-                                if (normalize(trackTitle) == targetNorm) {
-                                    topResult = track
-                                    break
-                                }
-                            }
-
-                            val downloadUrlArray = topResult.optJSONArray("downloadUrl")
-                            if (downloadUrlArray != null && downloadUrlArray.length() > 0) {
-                                // Highest quality is usually the last element
-                                val highestQuality = downloadUrlArray.getJSONObject(downloadUrlArray.length() - 1)
-                                val streamUrl = highestQuality.optString("url")
-                                if (streamUrl.isNotEmpty()) {
-                                    Log.d("StreamResolver", "Resolved stream URL via ListenFree fallback")
-                                    return dataSpec.buildUpon().setUri(streamUrl).build()
-                                }
-                            }
-                        }
+                    // 2. Resolve the stream URL using the actual video ID
+                    val result = YTPlayerUtils.playerResponseForPlayback(
+                        videoId = videoId,
+                        audioQuality = AudioQuality.HIGH,
+                        connectivityManager = connectivityManager,
+                        context = context
+                    )
+                    
+                    val streamUrl = result.getOrNull()?.streamUrl
+                    if (streamUrl != null) {
+                        dataSpec.buildUpon().setUri(streamUrl).build()
+                    } else {
+                        dataSpec
                     }
                 } catch (e: Exception) {
-                    Log.e("StreamResolver", "ListenFree fallback failed", e)
+                    Timber.e(e, "Failed to resolve stream for $query")
+                    dataSpec
                 }
             }
-            
-            Log.e("StreamResolver", "Could not resolve stream URL for query: $query")
-            // Return error uri if unable to resolve
-            return dataSpec.buildUpon().setUri("https://error.invalid/stream_not_found.mp3").build()
         }
-        
         return dataSpec
-    }
-
-    fun preResolve(title: String, artist: String) {
-        scope.launch {
-            val query = android.net.Uri.encode("$title $artist".trim())
-            if (query.isEmpty() || preloadCache.containsKey(query)) return@launch
-            
-            Log.d("StreamResolver", "Pre-resolving stream for: $query")
-
-            for (instance in qobuzInstances) {
-                try {
-                    val searchUrl = URL("$instance/api/get-music?q=$query&offset=0")
-                    val searchConn = searchUrl.openConnection() as HttpURLConnection
-                    searchConn.requestMethod = "GET"
-                    searchConn.connectTimeout = 5000
-                    searchConn.readTimeout = 5000
-
-                    var qobuzTrackId: String? = null
-                    if (searchConn.responseCode == 200) {
-                        val response = searchConn.inputStream.bufferedReader().readText()
-                        val json = JSONObject(response)
-                        val tracks = json.optJSONObject("data")?.optJSONObject("tracks")?.optJSONArray("items")
-                        if (tracks != null && tracks.length() > 0) {
-                            val targetNorm = normalize(title)
-                            for (i in 0 until tracks.length()) {
-                                val track = tracks.getJSONObject(i)
-                                val trackTitle = track.optString("title", "")
-                                if (normalize(trackTitle) == targetNorm) {
-                                    qobuzTrackId = track.optString("id")
-                                    break
-                                }
-                            }
-                            if (qobuzTrackId == null) {
-                                qobuzTrackId = tracks.getJSONObject(0).optString("id")
-                            }
-                        }
-                    }
-
-                    if (qobuzTrackId != null) {
-                        val url = URL("$instance/api/download-music?track_id=$qobuzTrackId&quality=6")
-                        val connection = url.openConnection() as HttpURLConnection
-                        connection.requestMethod = "GET"
-                        connection.connectTimeout = 5000
-                        connection.readTimeout = 5000
-
-                        if (connection.responseCode == 200) {
-                            val response = connection.inputStream.bufferedReader().readText()
-                            val json = JSONObject(response)
-                            val data = json.optJSONObject("data")
-                            if (data != null && data.has("url")) {
-                                val streamUrl = data.getString("url")
-                                preloadCache[query] = streamUrl
-                                Log.d("StreamResolver", "Successfully pre-resolved via $instance")
-                                return@launch
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Ignore and fallback
-                }
-            }
-
-            // LISTENFREE / JIOSAAVN FALLBACK
-            try {
-                val jioUrl = URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/search/songs?limit=10&query=$query")
-                val jioConn = jioUrl.openConnection() as HttpURLConnection
-                jioConn.requestMethod = "GET"
-                jioConn.connectTimeout = 5000
-                jioConn.readTimeout = 5000
-
-                if (jioConn.responseCode == 200) {
-                    val response = jioConn.inputStream.bufferedReader().readText()
-                    val json = JSONObject(response)
-                    val results = json.optJSONObject("data")?.optJSONArray("results")
-                    if (results != null && results.length() > 0) {
-                        var topResult = results.getJSONObject(0)
-                        val targetNorm = normalize(title)
-                        for (i in 0 until results.length()) {
-                            val track = results.getJSONObject(i)
-                            val trackTitle = track.optString("name", "")
-                            if (normalize(trackTitle) == targetNorm) {
-                                topResult = track
-                                break
-                            }
-                        }
-
-                        val downloadUrlArray = topResult.optJSONArray("downloadUrl")
-                        if (downloadUrlArray != null && downloadUrlArray.length() > 0) {
-                            val highestQuality = downloadUrlArray.getJSONObject(downloadUrlArray.length() - 1)
-                            val streamUrl = highestQuality.optString("url")
-                            if (streamUrl.isNotEmpty()) {
-                                preloadCache[query] = streamUrl
-                                Log.d("StreamResolver", "Successfully pre-resolved via ListenFree")
-                                return@launch
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore
-            }
-            Log.d("StreamResolver", "Failed to pre-resolve stream for: $query")
-        }
     }
 }

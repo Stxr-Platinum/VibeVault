@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">VibeVault</string>
+
+    <!-- Listen Together -->
+    <string name="listen_together">Listen Together</string>
+    <string name="listen_together_notification_channel_name">Listen Together</string>
+    <string name="listen_together_notification_channel_desc">Notifications for Listen Together sessions</string>
+    <string name="listen_together_join_request_notification">%1$s wants to join your room</string>
+    <string name="listen_together_room_created">Room created! Code: %1$s</string>
+    <string name="listen_together_suggestion_received">%1$s suggests: %2$s</string>
+    <string name="listen_together_suggestion_sent">Suggestion sent!</string>
+    <string name="approve">Approve</string>
+    <string name="reject">Reject</string>
 </resources>
