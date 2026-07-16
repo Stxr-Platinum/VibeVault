@@ -35,6 +35,7 @@ import com.vibevault.app.ui.viewmodel.PlayerViewModel
 fun PlayerScreen(
     trackId: String?,
     onBackClick: () -> Unit,
+    onListenTogetherClick: () -> Unit,
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
@@ -120,7 +121,7 @@ fun PlayerScreen(
                 color = Color.White
             )
             Row {
-                IconButton(onClick = { /* TODO: Launch Listen Together UI */ }) {
+                IconButton(onClick = onListenTogetherClick) {
                     Icon(androidx.compose.material.icons.Icons.Default.Share, "Listen Together", tint = Color.White)
                 }
                 IconButton(onClick = { }) {

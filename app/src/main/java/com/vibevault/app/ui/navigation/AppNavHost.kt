@@ -56,6 +56,9 @@ fun AppNavHost(
                 },
                 onProfileClick = {
                     navController.navigate(Screen.Profile.route)
+                },
+                onListenTogetherClick = {
+                    navController.navigate(Screen.ListenTogether.route)
                 }
             )
         }
@@ -75,6 +78,32 @@ fun AppNavHost(
             com.vibevault.app.ui.screens.premium.PremiumScreen(
                 onBack = { navController.popBackStack() }
             )
+        }
+
+        
+        // Dummy routes to prevent crashes until they are fully ported
+        composable("listen_together/chat") {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                androidx.compose.material3.Text("Chat coming soon!", modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.Center))
+                androidx.compose.material3.TextButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopStart)
+                ) {
+                    androidx.compose.material3.Text("Back")
+                }
+            }
+        }
+        
+        composable("settings/integrations/listen_together") {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                androidx.compose.material3.Text("Listen Together Settings coming soon!", modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.Center))
+                androidx.compose.material3.TextButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopStart)
+                ) {
+                    androidx.compose.material3.Text("Back")
+                }
+            }
         }
         composable(Screen.EditProfile.route) {
             com.vibevault.app.ui.screens.profile.EditProfileScreen(
@@ -131,6 +160,7 @@ fun AppNavHost(
             PlayerScreen(
                 trackId = trackId,
                 onBackClick = { navController.popBackStack() },
+                onListenTogetherClick = { navController.navigate(Screen.ListenTogether.route) },
                 viewModel = playerViewModel
             )
         }
@@ -146,6 +176,12 @@ fun AppNavHost(
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                 }
+            )
+        }
+        composable(Screen.ListenTogether.route) {
+            com.vibevault.app.ui.screens.listentogether.ListenTogetherScreen(
+                navController = navController,
+                showTopBar = true
             )
         }
     }

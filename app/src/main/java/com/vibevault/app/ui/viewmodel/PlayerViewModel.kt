@@ -25,6 +25,10 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.vibevault.app.data.listentogether.ListenTogetherManager
+import com.vibevault.app.playback.PlayerConnection
+import com.vibevault.app.playback.MusicService
+import com.vibevault.app.extensions.toMediaItem
 
 /**
  * PlayerViewModel — Bridges Media3 MediaController to the Compose UI,
@@ -36,7 +40,8 @@ class PlayerViewModel @Inject constructor(
     private val queueManager: QueueManager,
     private val musicRepository: MusicRepository,
     private val audioFocusManager: AudioFocusManager,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val listenTogetherManager: ListenTogetherManager
 ) : ViewModel() {
 
     // ── Playback State (Delegated to QueueManager) ──────────
@@ -61,6 +66,11 @@ class PlayerViewModel @Inject constructor(
 
     private val _spotifyError = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val spotifyError: SharedFlow<String> = _spotifyError.asSharedFlow()
+
+    // ── ListenTogether Bridge State ───────────────────────
+    private val _isMuted = MutableStateFlow(false)
+    private val _queueTitle = MutableStateFlow<String?>(null)
+    private val _queueWindows = MutableStateFlow<List<MediaItem>>(emptyList())
 
     private var currentlyPlayingTrackId: String? = null
 
@@ -206,6 +216,107 @@ class PlayerViewModel @Inject constructor(
                 }
             }
         })
+        
+        setupListenTogetherBridge()
+    }
+
+    private fun setupListenTogetherBridge() {
+        // Map queue updates to MediaItems for ListenTogether
+        viewModelScope.launch {
+            queueManager.queueState.collect { tracks ->
+                _queueWindows.value = tracks.map { it.toMediaItem() }
+            }
+        }
+
+        val bridge = object : PlayerConnection {
+            override val player: Player = this@PlayerViewModel.player!!
+            override val service: MusicService = object : MusicService {
+                override var queueTitle: String?
+                    get() = _queueTitle.value
+                    set(value) { _queueTitle.value = value }
+                override val playerVolume: MutableStateFlow<Float> = _volume
+            }
+            override val queueTitle: StateFlow<String?> = _queueTitle.asStateFlow()
+            override val queueWindows: StateFlow<List<MediaItem>> = _queueWindows.asStateFlow()
+            override val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
+            override var allowInternalSync: Boolean = false
+            override var shouldBlockPlaybackChanges: (() -> Boolean)? = null
+            override var onSkipPrevious: (() -> Unit)? = null
+            override var onSkipNext: (() -> Unit)? = null
+            override var onRestartSong: (() -> Unit)? = null
+
+            override fun play() { player?.play() }
+            override fun pause() { player?.pause() }
+            override fun seekTo(position: Long) { player?.seekTo(position) }
+            override fun seekToNext() { queueManager.next() }
+            override fun seekToPrevious() { queueManager.previous() }
+            
+            override fun playQueue(queue: com.vibevault.app.playback.queues.YouTubeQueue) {
+                // In VibeVault, we just play the single track endpoint provided.
+                val videoId = queue.endpoint.videoId
+                if (videoId != null) {
+                    viewModelScope.launch {
+                        try {
+                            // Try to get track info
+                            val localTrackResult = musicRepository.searchTracks(videoId).firstOrNull()?.firstOrNull()
+                            if (localTrackResult != null) {
+                                playInternal(localTrackResult)
+                            } else {
+                                // Create a placeholder track if network search fails
+                                val placeholder = com.vibevault.app.domain.model.Track(
+                                    id = videoId,
+                                    title = queue.preloadItem?.title ?: "Unknown",
+                                    artist = queue.preloadItem?.artists?.firstOrNull()?.name ?: "Unknown",
+                                    album = "",
+                                    albumImageUrl = queue.preloadItem?.thumbnailUrl ?: "",
+                                    durationMs = (queue.preloadItem?.duration ?: 0) * 1000L
+                                )
+                                playInternal(placeholder)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("ListenTogether", "Failed to playQueue for $videoId", e)
+                        }
+                    }
+                }
+            }
+            
+            override fun playNext(mediaItem: MediaItem) {
+                val track = mediaItemToTrack(mediaItem)
+                // Insert after current track
+                val q = queueManager.queueState.value.toMutableList()
+                val idx = queueManager.currentIndex.value
+                if (idx in q.indices) {
+                    q.add(idx + 1, track)
+                } else {
+                    q.add(track)
+                }
+                viewModelScope.launch { queueManager.setQueue(q, queueManager.currentIndex.value) }
+            }
+            
+            override fun addToQueue(mediaItem: MediaItem) {
+                val track = mediaItemToTrack(mediaItem)
+                viewModelScope.launch { queueManager.appendTracks(listOf(track)) }
+            }
+            
+            override fun setMuted(muted: Boolean) {
+                _isMuted.value = muted
+                player?.volume = if (muted) 0f else _volume.value
+            }
+            
+            private fun mediaItemToTrack(mediaItem: MediaItem): com.vibevault.app.domain.model.Track {
+                val md = mediaItem.mediaMetadata
+                return com.vibevault.app.domain.model.Track(
+                    id = mediaItem.mediaId,
+                    title = md.title?.toString() ?: "Unknown",
+                    artist = md.artist?.toString() ?: "Unknown",
+                    album = md.albumTitle?.toString() ?: "Unknown",
+                    albumImageUrl = md.artworkUri?.toString() ?: "",
+                    durationMs = 0L // Placeholder
+                )
+            }
+        }
+        
+        listenTogetherManager.setPlayerConnection(bridge)
     }
 
     // ── Internal Playback Execution ────────────────────────

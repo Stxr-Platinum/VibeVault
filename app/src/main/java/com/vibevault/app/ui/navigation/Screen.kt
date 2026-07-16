@@ -36,6 +36,7 @@ sealed class Screen(
     data object Premium : Screen("premium", "Premium")
     data object Profile : Screen("profile", "Profile")
     data object EditProfile : Screen("edit_profile", "Edit Profile")
+    data object ListenTogether : Screen("listen_together", "Listen Together")
 
     companion object {
         val bottomNavItems get() = listOf(Home, Search, Library)

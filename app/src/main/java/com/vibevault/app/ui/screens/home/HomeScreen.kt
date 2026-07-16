@@ -44,6 +44,7 @@ fun HomeScreen(
     onTrackClick: (Track) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onProfileClick: () -> Unit,
+    onListenTogetherClick: () -> Unit,
     onSwipeToQueue: (Track) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
     authViewModel: com.vibevault.app.ui.viewmodel.AuthViewModel = hiltViewModel()
@@ -66,63 +67,87 @@ fun HomeScreen(
             .fillMaxSize()
             .background(VibeBg)
     ) {
-        // ── Top Bar (Always Visible) ──────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            UserAvatar(
-                avatarUrl = userAvatarUrl,
-                displayName = userDisplayName ?: "D",
-                size = 38.dp,
-                modifier = Modifier.clickable { onProfileClick() }
-            )
-            Spacer(Modifier.width(12.dp))
-            ChipFilter("All", true)
-            Spacer(Modifier.width(8.dp))
-            ChipFilter("Music", false)
-            Spacer(Modifier.weight(1f))
-            
-            // Connect to Spotify Button
-            if (!isSpotifyConnected) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF1DB954))
-                        .clickable { uriHandler.openUri(authViewModel.getSpotifyAuthUrl()) }
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = "Connect to Spotify",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color.Black
+        // ── Top Header and Chips ──────────────────────────
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                UserAvatar(
+                    avatarUrl = userAvatarUrl,
+                    displayName = userDisplayName ?: "D",
+                    size = 38.dp,
+                    modifier = Modifier.clickable { onProfileClick() }
+                )
+                Spacer(Modifier.weight(1f))
+                
+                // Listen Together Button
+                IconButton(onClick = onListenTogetherClick) {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(com.vibevault.app.R.drawable.group),
+                        contentDescription = "Listen Together",
+                        tint = VibeOnSurface,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
-            } else {
-                // Connected indicator (Click to disconnect)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp)
-                        .clickable { viewModel.disconnectSpotify() }
-                        .padding(4.dp) // extra touch target
-                ) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.CheckCircle,
-                        contentDescription = "Spotify Connected",
-                        tint = Color(0xFF1DB954),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = "Spotify Connected",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF1DB954)
-                    )
+                Spacer(Modifier.width(8.dp))
+                
+                // Connect to Spotify Button
+                if (!isSpotifyConnected) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFF1DB954))
+                            .clickable { uriHandler.openUri(authViewModel.getSpotifyAuthUrl()) }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Connect to Spotify",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.Black
+                        )
+                    }
+                } else {
+                    // Connected indicator (Click to disconnect)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .clickable { viewModel.disconnectSpotify() }
+                            .padding(4.dp) // extra touch target
+                    ) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.CheckCircle,
+                            contentDescription = "Spotify Connected",
+                            tint = Color(0xFF1DB954),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Spotify Connected",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF1DB954)
+                        )
+                    }
                 }
             }
+
+            // Horizontally scrolling chips
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item { ChipFilter("All", true) }
+                item { ChipFilter("Music", false) }
+                item { ChipFilter("Podcasts", false) }
+                item { ChipFilter("Workout", false) }
+                item { ChipFilter("Feel good", false) }
+                item { ChipFilter("Romance", false) }
+            }
+            Spacer(Modifier.height(12.dp))
         }
 
         if (searchQuery.isNotBlank()) {
