@@ -109,6 +109,23 @@ class MainActivity : ComponentActivity() {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
 
+                // Auto-navigate to Now Playing screen when guest receives a track change
+                val listenTogetherVm: com.vibevault.app.ui.viewmodels.ListenTogetherViewModel = hiltViewModel()
+                val guestTrackId by listenTogetherVm.guestTrackChanged.collectAsStateWithLifecycle()
+                
+                androidx.compose.runtime.LaunchedEffect(guestTrackId) {
+                    guestTrackId?.let { trackId ->
+                        android.util.Log.d("VibeVault", "Guest received track change: $trackId, auto-navigating")
+                        val current = navController.currentBackStackEntry?.destination?.route
+                        // Only navigate if not already on the Player screen
+                        if (current?.startsWith("player_screen") != true) {
+                            navController.navigate(Screen.Player.createRoute(trackId))
+                        }
+                        // Clear the state so it doesn't re-trigger on configuration change
+                        listenTogetherVm.clearGuestTrackChanged()
+                    }
+                }
+
                 if (startDestination == null) {
                     // ── Spotify-style Splash Screen ──────────────────
                     Box(

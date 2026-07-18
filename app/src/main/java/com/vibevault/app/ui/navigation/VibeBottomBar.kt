@@ -38,11 +38,6 @@ fun VibeBottomBar(
                 selected = isSelected,
                 onClick = {
                     if (currentRoute != screen.route) {
-                        // If on a non-tab route (e.g. ListenTogether), pop it off first
-                        val isOnBottomNavRoute = Screen.bottomNavItems.any { it.route == currentRoute }
-                        if (!isOnBottomNavRoute) {
-                            navController.popBackStack()
-                        }
                         navController.navigate(screen.route) {
                             // Pop up to start destination to avoid stacking
                             popUpTo(Screen.Home.route) { saveState = true }

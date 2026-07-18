@@ -196,10 +196,16 @@ class PlayerViewModel @Inject constructor(
             
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 super.onMediaItemTransition(mediaItem, reason)
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                
+                // We must also handle PLAYLIST_CHANGED to catch ListenTogether track changes!
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ||
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                    
                     val newId = mediaItem?.mediaId
                     if (newId != null && newId != currentlyPlayingTrackId) {
-                        Log.d("PlaybackDebug", "Auto transitioned to: $newId")
+                        Log.d("PlaybackDebug", "Transitioned to: $newId (reason: $reason)")
                         currentlyPlayingTrackId = newId
                         sessionManager.lastPlayedTrackId = newId
                         
@@ -210,7 +216,28 @@ class PlayerViewModel @Inject constructor(
                             }
                         }
                         
-                        queueManager.next() // Synchronize UI state
+                        val existingTrack = queueManager.queueState.value.find { it.id == newId }
+                        if (existingTrack != null) {
+                            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                                queueManager.next() // Auto-advance playlist
+                            } else {
+                                queueManager.syncExternalTrack(existingTrack) // ListenTogether or external action jumped to a queue item
+                            }
+                        } else {
+                            // Track not in queue! Must be from ListenTogether!
+                            // Sync it so the Compose UI updates and shows the mini-player
+                            val md = mediaItem.mediaMetadata
+                            val externalTrack = com.vibevault.app.domain.model.Track(
+                                id = mediaItem.mediaId,
+                                title = md.title?.toString() ?: "Unknown",
+                                artist = md.artist?.toString() ?: "Unknown",
+                                album = md.albumTitle?.toString() ?: "",
+                                albumImageUrl = md.artworkUri?.toString() ?: "",
+                                durationMs = 0L
+                            )
+                            queueManager.syncExternalTrack(externalTrack)
+                        }
+                        
                         ensureUpcomingTracks()
                     }
                 }
@@ -354,17 +381,7 @@ class PlayerViewModel @Inject constructor(
     }
     
     private fun buildMediaItem(track: Track): MediaItem {
-        return MediaItem.Builder()
-            .setMediaId(track.id)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(track.title)
-                    .setArtist(track.artist)
-                    .setAlbumTitle(track.album)
-                    .setArtworkUri(android.net.Uri.parse(track.albumImageUrl))
-                    .build()
-            )
-            .build()
+        return track.toMediaItem()
     }
     
     private fun syncUpcomingTracks() {

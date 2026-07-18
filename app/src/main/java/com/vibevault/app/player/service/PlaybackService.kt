@@ -78,6 +78,7 @@ class PlaybackService : MediaSessionService() {
                         val uri = android.net.Uri.Builder()
                             .scheme("vibevault")
                             .authority("stream")
+                            .appendQueryParameter("id", trackId)
                             .appendQueryParameter("title", title)
                             .appendQueryParameter("artist", artist)
                             .build()

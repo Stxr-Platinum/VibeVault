@@ -122,7 +122,11 @@ fun PlayerScreen(
             )
             Row {
                 IconButton(onClick = onListenTogetherClick) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Share, "Listen Together", tint = Color.White)
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(com.vibevault.app.R.drawable.group),
+                        contentDescription = "Listen Together",
+                        tint = Color.White
+                    )
                 }
                 IconButton(onClick = { }) {
                     Icon(Icons.Default.MoreVert, "More Options", tint = Color.White)

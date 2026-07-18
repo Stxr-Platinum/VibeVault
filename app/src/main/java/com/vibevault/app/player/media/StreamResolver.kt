@@ -29,6 +29,7 @@ class StreamResolver @Inject constructor(
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
         val uri = dataSpec.uri
         if (uri.scheme == "vibevault" && uri.authority == "stream") {
+            val trackId = uri.getQueryParameter("id")
             val title = uri.getQueryParameter("title") ?: ""
             val artist = uri.getQueryParameter("artist") ?: ""
             val query = "$title $artist"
@@ -37,15 +38,20 @@ class StreamResolver @Inject constructor(
 
             return runBlocking {
                 try {
-                    // 1. Search YouTube for the video ID using innertube
-                    val searchResult = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
-                    val searchItems = searchResult.getOrNull()?.items
-                    val songItem = searchItems?.firstOrNull { it is SongItem } as? SongItem
-                        ?: searchItems?.firstOrNull() // Fallback if no SongItem found
+                    val videoId = if (!trackId.isNullOrEmpty() && trackId.length == 11 && !trackId.contains(" ")) {
+                        Timber.d("StreamResolver using direct videoId: $trackId")
+                        trackId
+                    } else {
+                        // Search YouTube for the video ID using innertube
+                        val searchResult = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                        val searchItems = searchResult.getOrNull()?.items
+                        val songItem = searchItems?.firstOrNull { it is SongItem } as? SongItem
+                            ?: searchItems?.firstOrNull() // Fallback if no SongItem found
+                        
+                        songItem?.id ?: throw Exception("No video found for query: $query")
+                    }
                     
-                    val videoId = songItem?.id ?: throw Exception("No video found for query: $query")
-                    
-                    Timber.d("StreamResolver found videoId: $videoId for query: $query")
+                    Timber.d("StreamResolver resolving stream for videoId: $videoId")
 
                     // 2. Resolve the stream URL using the actual video ID
                     val result = YTPlayerUtils.playerResponseForPlayback(

@@ -167,6 +167,7 @@ class QueueManager @Inject constructor() {
         val index = currentQueue.indexOfFirst { it.id == track.id }
         if (index >= 0) {
             _currentIndex.value = index
+            updateState() // CRITICAL: Actually emit the new track to the UI!
         } else {
             // If it's a completely external track, just update the current track state
             // without breaking the queue
