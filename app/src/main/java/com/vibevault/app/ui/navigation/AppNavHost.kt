@@ -4,11 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
-import com.vibevault.app.ui.theme.VibeBg
-import com.vibevault.app.ui.theme.VibeOnSurface
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.vibevault.app.ui.screens.artist.ArtistScreen
@@ -20,6 +19,7 @@ import com.vibevault.app.ui.screens.player.PlayerScreen
 import com.vibevault.app.ui.screens.search.SearchScreen
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
 
+@androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
 fun AppNavHost(
     navController: NavHostController,
@@ -30,7 +30,7 @@ fun AppNavHost(
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        modifier = Modifier.padding(innerPadding)
+        modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
     ) {
         composable(Screen.Login.route) {
             LoginScreen(
@@ -59,6 +59,9 @@ fun AppNavHost(
                 },
                 onListenTogetherClick = {
                     navController.navigate(Screen.ListenTogether.route)
+                },
+                onSettingsClick = {
+                    navController.navigate(Screen.Settings.route)
                 }
             )
         }
@@ -131,6 +134,9 @@ fun AppNavHost(
                 },
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onSettingsClick = {
+                    navController.navigate(Screen.Settings.route)
                 }
             )
         }
@@ -184,5 +190,40 @@ fun AppNavHost(
                 showTopBar = true
             )
         }
+        
+        composable(Screen.Settings.route) {
+            com.vibevault.app.ui.screens.settings.SettingsScreen(navController = navController)
+        }
+        composable(Screen.ContentSettings.route) {
+            com.vibevault.app.ui.screens.settings.ContentSettings(
+                navController = navController,
+                scrollBehavior = androidx.compose.material3.TopAppBarDefaults.pinnedScrollBehavior()
+            )
+        }
+        composable(Screen.AppearanceSettings.route) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val activity = context as? android.app.Activity
+            val snackbarHostState = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }
+            if (activity != null) {
+                com.vibevault.app.ui.screens.settings.AppearanceSettings(
+                    navController = navController,
+                    scrollBehavior = androidx.compose.material3.TopAppBarDefaults.pinnedScrollBehavior(),
+                    activity = activity,
+                    snackbarHostState = snackbarHostState
+                )
+            }
+        }
+        composable(Screen.PlayerSettings.route) {
+            com.vibevault.app.ui.screens.settings.PlayerSettings(
+                navController = navController,
+                scrollBehavior = androidx.compose.material3.TopAppBarDefaults.pinnedScrollBehavior()
+            )
+        }
+        composable(Screen.ThemeSettings.route) {
+            com.vibevault.app.ui.screens.settings.ThemeScreen(
+                navController = navController
+            )
+        }
     }
 }
+

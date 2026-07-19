@@ -46,6 +46,8 @@ import com.vibevault.app.ui.components.MiniPlayer
 import com.vibevault.app.ui.navigation.AppNavHost
 import com.vibevault.app.ui.navigation.Screen
 import com.vibevault.app.ui.navigation.VibeBottomBar
+import com.vibevault.app.constants.DynamicBackgroundKey
+import com.vibevault.app.utils.rememberPreference
 import com.vibevault.app.ui.theme.VibePrimary
 import com.vibevault.app.ui.theme.VibeVaultTheme
 import com.vibevault.app.ui.viewmodel.MainViewModel
@@ -60,6 +62,7 @@ import dagger.hilt.android.AndroidEntryPoint
  * ensuring both remain visible when a track is playing.
  */
 @AndroidEntryPoint
+@androidx.compose.material3.ExperimentalMaterial3Api
 class MainActivity : ComponentActivity() {
 
     @Inject
@@ -108,6 +111,8 @@ class MainActivity : ComponentActivity() {
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
+                
+                val (dynamicBackground) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
 
                 // Auto-navigate to Now Playing screen when guest receives a track change
                 val listenTogetherVm: com.vibevault.app.ui.viewmodels.ListenTogetherViewModel = hiltViewModel()
@@ -154,24 +159,27 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF050505))) {
-                        if (currentTrack != null) {
-                            coil.compose.AsyncImage(
-                                model = currentTrack!!.albumImageUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .scale(1.2f)
-                                    .alpha(0.85f)
-                                    .blur(22.dp)
-                            )
+                        if (dynamicBackground) {
+                            if (currentTrack != null) {
+                                coil.compose.AsyncImage(
+                                    model = currentTrack!!.albumImageUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .scale(1.2f)
+                                        .alpha(0.85f)
+                                        .blur(22.dp)
+                                )
+                            }
+                            // Deep dark overlay to keep text readable
+                            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
                         }
-                        // Deep dark overlay to keep text readable
-                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
                         
                         Scaffold(
                             modifier = Modifier.fillMaxSize(),
                             containerColor = Color.Transparent,
+                            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
                             bottomBar = {
                                 if (currentRoute != Screen.Player.route && currentRoute != Screen.Login.route) {
                                     Column(modifier = Modifier) {

@@ -26,10 +26,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
-import com.vibevault.app.ui.theme.VibeBg
-import com.vibevault.app.ui.theme.VibeOnSurface
-import com.vibevault.app.ui.theme.VibeOnSurfaceDim
-import com.vibevault.app.ui.theme.VibePrimary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,7 +102,7 @@ fun QueueBottomSheet(
                         Icon(
                             imageVector = Icons.Default.GraphicEq,
                             contentDescription = null,
-                            tint = VibePrimary,
+                            tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -115,14 +111,14 @@ fun QueueBottomSheet(
                         Text(
                             text = currentTrack.title,
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = VibePrimary,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = currentTrack.artist,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = VibeOnSurfaceDim,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -131,7 +127,7 @@ fun QueueBottomSheet(
                     Text(
                         text = formatDuration(currentTrack.durationMs),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = VibeOnSurfaceDim
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -163,7 +159,7 @@ fun QueueBottomSheet(
             if (upcomingTracks.isEmpty()) {
                 Text(
                     text = "No upcoming tracks",
-                    color = VibeOnSurfaceDim,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 32.dp).align(Alignment.CenterHorizontally)
                 )
             } else {
@@ -248,7 +244,7 @@ private fun QueueUpcomingTrackRow(
         ) {
             Text(
                 text = index.toString(),
-                color = VibeOnSurfaceDim,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.width(28.dp),
                 textAlign = TextAlign.Center
@@ -274,7 +270,7 @@ private fun QueueUpcomingTrackRow(
                 Text(
                     text = track.artist,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = VibeOnSurfaceDim,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -283,7 +279,7 @@ private fun QueueUpcomingTrackRow(
             Text(
                 text = formatDuration(track.durationMs),
                 style = MaterialTheme.typography.bodyMedium,
-                color = VibeOnSurfaceDim
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

@@ -49,11 +49,15 @@ fun SearchScreen(
     
     var selectedFilter by remember { mutableStateOf("Songs") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(VibeBg)
-    ) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+        ) {
         // ── Header ──────────────────────────────────────────
         Text(
             text = "Search",
@@ -91,7 +95,7 @@ fun SearchScreen(
                 unfocusedContainerColor = Color(0xFF1A1A1A),
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
-                cursorColor = VibePrimary,
+                cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent
             ),
@@ -105,7 +109,7 @@ fun SearchScreen(
         if (query.isNotEmpty()) {
             if (isSearching) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = VibePrimary)
+                    CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                 }
             } else {
                 LazyColumn(
@@ -125,7 +129,7 @@ fun SearchScreen(
                                     onClick = { selectedFilter = "Songs" },
                                     label = { Text("Songs", color = if (selectedFilter == "Songs") Color.Black else Color.White) },
                                     colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = VibePrimary,
+                                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                         containerColor = Color.DarkGray
                                     ),
                                     shape = RoundedCornerShape(16.dp)
@@ -135,7 +139,7 @@ fun SearchScreen(
                                     onClick = { selectedFilter = "Albums" },
                                     label = { Text("Albums", color = if (selectedFilter == "Albums") Color.Black else Color.White) },
                                     colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = VibePrimary,
+                                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                         containerColor = Color.DarkGray
                                     ),
                                     shape = RoundedCornerShape(16.dp)
@@ -145,7 +149,7 @@ fun SearchScreen(
                                     onClick = { selectedFilter = "Artists" },
                                     label = { Text("Artists", color = if (selectedFilter == "Artists") Color.Black else Color.White) },
                                     colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = VibePrimary,
+                                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                         containerColor = Color.DarkGray
                                     ),
                                     shape = RoundedCornerShape(16.dp)
@@ -206,7 +210,7 @@ fun SearchScreen(
                                 Text(
                                     "No results found for \"$query\"",
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = VibeOnSurfaceVariant
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -286,6 +290,7 @@ fun SearchScreen(
         }
     }
 }
+}
 
 @Composable
 private fun SectionHeader(title: String) {
@@ -333,7 +338,7 @@ private fun SearchResultRow(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = VibeOnSurfaceVariant,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

@@ -30,9 +30,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
-import com.vibevault.app.ui.theme.VibeBg
-import com.vibevault.app.ui.theme.VibeOnSurfaceVariant
-import com.vibevault.app.ui.theme.VibePrimary
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 
@@ -80,7 +77,7 @@ fun PlaylistScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showAddToPlaylistDialog = false }) {
-                    Text("Close", color = VibePrimary)
+                    Text("Close", color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                 }
             },
             containerColor = Color(0xFF282828)
@@ -102,8 +99,8 @@ fun PlaylistScreen(
                         unfocusedTextColor = Color.White,
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
-                        cursorColor = VibePrimary,
-                        focusedBorderColor = VibePrimary,
+                        cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = Color.Gray
                     )
                 )
@@ -115,7 +112,7 @@ fun PlaylistScreen(
                     }
                     showRenameDialog = false
                 }) {
-                    Text("Save", color = VibePrimary)
+                    Text("Save", color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -131,7 +128,7 @@ fun PlaylistScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VibeBg)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
     ) {
         // Top Bar
         Row(

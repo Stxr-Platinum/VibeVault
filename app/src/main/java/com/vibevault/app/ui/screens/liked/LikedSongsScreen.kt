@@ -37,29 +37,29 @@ fun LikedSongsScreen(
     val liked by viewModel.likedTracks.collectAsStateWithLifecycle()
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(VibeBg),
+        modifier = Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 100.dp)
     ) {
         item {
             Box(
                 Modifier.fillMaxWidth().height(240.dp)
-                    .background(Brush.verticalGradient(listOf(VibePrimary.copy(0.5f), VibeBg)))
+                    .background(Brush.verticalGradient(listOf(androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(0.5f), androidx.compose.material3.MaterialTheme.colorScheme.background)))
             ) {
                 IconButton(onClick = onBack, Modifier.padding(16.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = VibeOnSurface)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
                 }
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Favorite, "Liked", tint = VibePrimary, modifier = Modifier.size(56.dp))
+                    Icon(Icons.Default.Favorite, "Liked", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text("Liked Songs", style = MaterialTheme.typography.headlineMedium, color = VibeOnSurface)
-                    Text("${liked.size} songs", style = MaterialTheme.typography.bodyMedium, color = VibeOnSurfaceVariant)
+                    Text("Liked Songs", style = MaterialTheme.typography.headlineMedium, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
+                    Text("${liked.size} songs", style = MaterialTheme.typography.bodyMedium, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { liked.firstOrNull()?.let { onTrackClick(it.id, liked) } }, Modifier.weight(1f), shape = RoundedCornerShape(24.dp), colors = ButtonDefaults.buttonColors(VibePrimary)) {
+                Button(onClick = { liked.firstOrNull()?.let { onTrackClick(it.id, liked) } }, Modifier.weight(1f), shape = RoundedCornerShape(24.dp), colors = ButtonDefaults.buttonColors(androidx.compose.material3.MaterialTheme.colorScheme.primary)) {
                     Icon(Icons.Default.PlayArrow, "Play", Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("Play All")
                 }
                 OutlinedButton(onClick = { }, Modifier.weight(1f), shape = RoundedCornerShape(24.dp)) {
@@ -73,10 +73,10 @@ fun LikedSongsScreen(
                 AsyncImage(track.albumImageUrl, track.album, Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(track.title, style = MaterialTheme.typography.bodyLarge, color = VibeOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${track.artist} • ${track.album}", style = MaterialTheme.typography.bodySmall, color = VibeOnSurfaceVariant)
+                    Text(track.title, style = MaterialTheme.typography.bodyLarge, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${track.artist} • ${track.album}", style = MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.Default.Favorite, "Liked", tint = VibePrimary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Favorite, "Liked", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }
         }
     }

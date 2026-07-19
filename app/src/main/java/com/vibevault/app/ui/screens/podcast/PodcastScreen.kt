@@ -37,7 +37,7 @@ fun PodcastScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VibeBg)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
@@ -49,11 +49,11 @@ fun PodcastScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = VibeOnSurface)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
             }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { }) {
-                Icon(Icons.Default.MoreVert, "More", tint = VibeOnSurface)
+                Icon(Icons.Default.MoreVert, "More", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
             }
         }
 
@@ -77,19 +77,19 @@ fun PodcastScreen(
                 Text(
                     "The Creative Mind",
                     style = MaterialTheme.typography.titleLarge,
-                    color = VibeOnSurface
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Episode 42: Finding Flow",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = VibePrimary
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "45 min • May 1, 2026",
                     style = MaterialTheme.typography.bodySmall,
-                    color = VibeOnSurfaceVariant
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -108,8 +108,8 @@ fun PodcastScreen(
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = VibePrimary,
-                    contentColor = VibeOnPrimary
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                    contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
                 )
             ) {
                 Icon(Icons.Default.PlayArrow, "Play", Modifier.size(20.dp))
@@ -120,7 +120,7 @@ fun PodcastScreen(
                 onClick = { },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = VibeOnSurface)
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
             ) {
                 Icon(Icons.Default.Download, "Download", Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
@@ -134,14 +134,14 @@ fun PodcastScreen(
         Text(
             text = "Episode Description",
             style = MaterialTheme.typography.titleMedium,
-            color = VibeOnSurface,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 24.dp)
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = "In this episode, we explore the psychology of creative flow states — how artists, musicians, and developers enter deep focus and produce their best work. We discuss practical techniques for triggering flow, managing distractions, and building environments that support sustained creative output.",
             style = MaterialTheme.typography.bodyMedium,
-            color = VibeOnSurfaceVariant,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 24.dp),
             maxLines = 4,
             overflow = TextOverflow.Ellipsis
@@ -153,7 +153,7 @@ fun PodcastScreen(
         Text(
             "More Episodes",
             style = MaterialTheme.typography.titleMedium,
-            color = VibeOnSurface,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 24.dp)
         )
         Spacer(Modifier.height(12.dp))
@@ -179,11 +179,11 @@ private fun EpisodeRow(title: String, duration: String, date: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = VibeOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("$duration • $date", style = MaterialTheme.typography.bodySmall, color = VibeOnSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("$duration • $date", style = MaterialTheme.typography.bodySmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = { }) {
-            Icon(Icons.Default.PlayArrow, "Play", tint = VibePrimary)
+            Icon(Icons.Default.PlayArrow, "Play", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
         }
     }
 }

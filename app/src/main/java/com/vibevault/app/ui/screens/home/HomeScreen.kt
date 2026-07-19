@@ -45,6 +45,7 @@ fun HomeScreen(
     onPlaylistClick: (String) -> Unit,
     onProfileClick: () -> Unit,
     onListenTogetherClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onSwipeToQueue: (Track) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
     authViewModel: com.vibevault.app.ui.viewmodel.AuthViewModel = hiltViewModel()
@@ -65,7 +66,8 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VibeBg)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
     ) {
         // ── Top Header and Chips ──────────────────────────
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -88,7 +90,18 @@ fun HomeScreen(
                     Icon(
                         painter = androidx.compose.ui.res.painterResource(com.vibevault.app.R.drawable.group),
                         contentDescription = "Listen Together",
-                        tint = VibeOnSurface,
+                        tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                
+                // Settings Button
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -159,7 +172,7 @@ fun HomeScreen(
             
             if (isSearching) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = VibePrimary)
+                    CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                 }
             } else {
                 SearchResults(viewModel = viewModel, searchResponse = searchResults, onTrackClick = { onTrackClick(it) }, onSwipeToQueue = onSwipeToQueue)
@@ -285,7 +298,7 @@ fun ShimmerBox(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.u
             .then(if (width > 0.dp) Modifier.width(width) else Modifier)
             .height(height)
             .clip(RoundedCornerShape(cornerRadius))
-            .background(VibeSurfaceElevated.copy(alpha = alpha))
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer.copy(alpha = alpha))
     )
 }
 
@@ -309,7 +322,7 @@ fun HomeFeed(
             Text(
                 text = "Good afternoon",
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                color = VibeOnSurface,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)
             )
         }
@@ -388,7 +401,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-        color = VibeOnSurface,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
         modifier = modifier.padding(horizontal = 20.dp, vertical = 14.dp)
     )
 }
@@ -397,7 +410,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier) {
 fun ChipFilter(text: String, isSelected: Boolean) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = if (isSelected) VibePrimary else VibeSurfaceElevated,
+        color = if (isSelected) androidx.compose.material3.MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.height(32.dp)
     ) {
         Box(
@@ -406,7 +419,7 @@ fun ChipFilter(text: String, isSelected: Boolean) {
         ) {
             Text(
                 text = text,
-                color = if (isSelected) Color.Black else VibeOnSurfaceMedium,
+                color = if (isSelected) Color.Black else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -428,7 +441,7 @@ fun QuickPickItemCard(item: com.vibevault.app.ui.viewmodel.QuickPickItem, onClic
                 modifier = Modifier
                     .size(64.dp)
                     .clip(RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp))
-                    .background(VibePrimary.copy(alpha = 0.1f)),
+                    .background(androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (item.coverUrl.isNotEmpty()) {
@@ -439,12 +452,12 @@ fun QuickPickItemCard(item: com.vibevault.app.ui.viewmodel.QuickPickItem, onClic
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Icon(Icons.Filled.LibraryMusic, null, tint = VibePrimary)
+                    Icon(Icons.Filled.LibraryMusic, null, tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                 }
             }
             Text(
                 text = item.title,
-                color = VibeOnSurface,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -477,7 +490,7 @@ fun PlaylistCardTrack(track: Track, onClick: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Text(
             text = track.title,
-            color = VibeOnSurface,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -485,7 +498,7 @@ fun PlaylistCardTrack(track: Track, onClick: () -> Unit) {
         Spacer(Modifier.height(4.dp))
         Text(
             text = track.artist,
-            color = VibeOnSurfaceDim,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -533,14 +546,14 @@ fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit, onSwipeToQue
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(VibeBg)
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = index.toString(),
-                color = VibeOnSurfaceDim,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.width(24.dp),
                 textAlign = TextAlign.Center
@@ -559,20 +572,20 @@ fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit, onSwipeToQue
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = VibeOnSurface,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = track.artist,
                     style = MaterialTheme.typography.bodySmall,
-                    color = VibeOnSurfaceDim,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = VibeOnSurfaceDim, modifier = Modifier.size(20.dp))
+            Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -586,21 +599,21 @@ fun SearchHeader(query: String, onQueryChange: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        placeholder = { Text("Search for songs, artists, albums...", color = VibeOnSurfaceDim) },
-        leadingIcon = { Icon(Icons.Default.Search, "Search", tint = VibeOnSurfaceMedium) },
+        placeholder = { Text("Search for songs, artists, albums...", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant) },
+        leadingIcon = { Icon(Icons.Default.Search, "Search", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant) },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Close, "Clear", tint = VibeOnSurfaceMedium)
+                    Icon(Icons.Default.Close, "Clear", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = VibeSurfaceElevated,
-            unfocusedContainerColor = VibeSurfaceElevated,
-            focusedTextColor = VibeOnSurface,
-            unfocusedTextColor = VibeOnSurface,
-            cursorColor = VibePrimary,
+            focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer,
+            unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer,
+            focusedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+            cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent
         ),
@@ -652,7 +665,7 @@ private fun SearchResults(viewModel: HomeViewModel, searchResponse: SpotifySearc
                     Text(
                         text = dto.name,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = VibeOnSurface
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -680,14 +693,14 @@ private fun SearchResults(viewModel: HomeViewModel, searchResponse: SpotifySearc
                         Text(
                             text = dto.name,
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = VibeOnSurface,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = dto.artists.firstOrNull()?.name ?: "Unknown",
                             style = MaterialTheme.typography.bodySmall,
-                            color = VibeOnSurfaceDim
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -740,7 +753,7 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onSwipeToQueue: () -> Un
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(VibeSurface) // Ensure solid background over swipe background
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.surface) // Ensure solid background over swipe background
                 .clickable(onClick = onClick)
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -758,14 +771,14 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onSwipeToQueue: () -> Un
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = VibeOnSurface,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "${track.artist} • ${track.album}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = VibeOnSurfaceDim,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

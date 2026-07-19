@@ -1,10 +1,10 @@
 plugins {
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt.android)
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.ksp)
-    alias(libs.plugins.hilt.android)
     alias(libs.plugins.protobufPlugin)
 }
 
@@ -85,6 +85,7 @@ protobuf {
 }
 
 dependencies {
+    implementation("com.materialkolor:material-kolor:2.0.0")
     // ── AndroidX Core ──────────────────────────────────────
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -174,3 +175,9 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     implementation("com.jakewharton.timber:timber:5.0.1")
 }
+
+
+tasks.register("unitTestClasses") {
+    dependsOn("compileDebugUnitTestSources")
+}
+

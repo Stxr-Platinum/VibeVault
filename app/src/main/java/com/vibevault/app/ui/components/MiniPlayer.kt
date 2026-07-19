@@ -28,13 +28,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.vibevault.app.ui.theme.*
+import com.vibevault.app.constants.DynamicBackgroundKey
+import com.vibevault.app.utils.rememberPreference
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * MiniPlayer — Persistent playback bar docked above the bottom nav.
+ * MiniPlayer â€” Persistent playback bar docked above the bottom nav.
  * Redesigned to be a floating "pill" with swipe-to-skip gestures.
  */
 @Composable
@@ -47,6 +49,8 @@ fun MiniPlayer(
     val isPlaying by playerViewModel.isPlaying.collectAsStateWithLifecycle()
     val position by playerViewModel.currentPosition.collectAsStateWithLifecycle()
     val duration by playerViewModel.duration.collectAsStateWithLifecycle()
+    
+    val (dynamicBackground) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
 
     val coroutineScope = rememberCoroutineScope()
     val offsetXAnimatable = remember { Animatable(0f) }
@@ -110,7 +114,7 @@ fun MiniPlayer(
                         .fillMaxWidth()
                         .height(64.dp)
                         .clip(RoundedCornerShape(32.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(if (dynamicBackground) Color.Black.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { onExpand(track.id) }
                         .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -206,3 +210,4 @@ fun MiniPlayer(
         }
     }
 }
+

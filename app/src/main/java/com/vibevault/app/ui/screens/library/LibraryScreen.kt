@@ -41,6 +41,7 @@ import com.vibevault.app.ui.theme.*
 fun LibraryScreen(
     onLikedSongsClick: () -> Unit,
     onPlaylistClick: (String) -> Unit,
+    onSettingsClick: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel()
 ) {
     val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
@@ -68,8 +69,8 @@ fun LibraryScreen(
                         unfocusedTextColor = Color.White,
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
-                        cursorColor = VibePrimary,
-                        focusedBorderColor = VibePrimary,
+                        cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = Color.Gray
                     )
                 )
@@ -83,7 +84,7 @@ fun LibraryScreen(
                         showCreateDialog = false
                     }
                 ) {
-                    Text("Create", color = VibePrimary)
+                    Text("Create", color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -96,11 +97,15 @@ fun LibraryScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(VibeBg)
-    ) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+        ) {
         // ── Header ──────────────────────────────────────────
         Row(
             modifier = Modifier
@@ -122,25 +127,28 @@ fun LibraryScreen(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.5).sp
                     ),
-                    color = VibeOnSurface
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                 )
             }
             Row {
+                IconButton(onClick = onSettingsClick) {
+                    Icon(Icons.Default.Settings, "Settings", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
+                }
                 IconButton(onClick = { }) {
-                    Icon(Icons.Default.Search, "Search", tint = VibeOnSurface, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Default.Search, "Search", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
                 }
                 Box {
                     IconButton(onClick = { showAddMenu = true }) {
-                        Icon(Icons.Default.Add, "Add", tint = VibeOnSurface, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Default.Add, "Add", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(32.dp))
                     }
                     DropdownMenu(
                         expanded = showAddMenu,
                         onDismissRequest = { showAddMenu = false },
-                        modifier = Modifier.background(VibeSurfaceHigh)
+                        modifier = Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Create playlist", color = VibeOnSurface) },
-                            leadingIcon = { Icon(Icons.Default.PlaylistAdd, null, tint = VibePrimary) },
+                            text = { Text("Create playlist", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface) },
+                            leadingIcon = { Icon(Icons.Default.PlaylistAdd, null, tint = androidx.compose.material3.MaterialTheme.colorScheme.primary) },
                             onClick = { 
                                 showAddMenu = false
                                 showCreateDialog = true
@@ -169,10 +177,10 @@ fun LibraryScreen(
                         )
                     },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = VibePrimary,
-                        selectedLabelColor = VibeOnPrimary,
-                        containerColor = VibeSurface,
-                        labelColor = VibeOnSurfaceVariant
+                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
+                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                        labelColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     shape = CircleShape,
                     border = null
@@ -194,16 +202,16 @@ fun LibraryScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.clickable { /* Show Sort Menu */ }
             ) {
-                Icon(Icons.Default.Sort, null, tint = VibeOnSurface, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Sort, null, tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
                     "Recents",
                     style = MaterialTheme.typography.labelLarge,
-                    color = VibeOnSurface
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                 )
             }
             IconButton(onClick = { }) {
-                Icon(Icons.Default.GridView, null, tint = VibeOnSurface, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.GridView, null, tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -247,7 +255,7 @@ fun LibraryScreen(
                             "Liked Songs",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                color = VibePrimary
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                             )
                         )
                         Spacer(Modifier.height(4.dp))
@@ -255,13 +263,13 @@ fun LibraryScreen(
                             Icon(
                                 Icons.Default.PushPin,
                                 null,
-                                tint = VibePrimary,
+                                tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(14.dp).padding(end = 4.dp)
                             )
                             Text(
                                 "Playlist • ${likedTracks.size} songs",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = VibeOnSurfaceVariant
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -313,7 +321,7 @@ fun LibraryScreen(
                             Icon(
                                 Icons.Default.LibraryMusic,
                                 "Empty Library",
-                                tint = VibeOnSurfaceVariant,
+                                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(48.dp)
                             )
                             Spacer(Modifier.height(16.dp))
@@ -326,7 +334,7 @@ fun LibraryScreen(
                             Text(
                                 "Like some songs to see them here",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = VibeOnSurfaceVariant
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -335,6 +343,7 @@ fun LibraryScreen(
         }
     }
 }
+}
 
 @Composable
 fun LibraryListItem(
@@ -342,7 +351,7 @@ fun LibraryListItem(
     subtitle: String,
     imageUri: String? = null,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-    iconTint: Color = VibeOnSurfaceVariant,
+    iconTint: Color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
     placeholderIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.MusicNote,
     onClick: () -> Unit
 ) {
@@ -357,7 +366,7 @@ fun LibraryListItem(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(VibeSurface),
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.surface),
             contentAlignment = Alignment.Center
         ) {
             if (imageUri != null) {
@@ -378,7 +387,7 @@ fun LibraryListItem(
                 Icon(
                     placeholderIcon,
                     contentDescription = null,
-                    tint = VibeOnSurfaceVariant,
+                    tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -390,7 +399,7 @@ fun LibraryListItem(
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Medium
                 ),
-                color = VibeOnSurface,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -398,7 +407,7 @@ fun LibraryListItem(
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = VibeOnSurfaceVariant,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

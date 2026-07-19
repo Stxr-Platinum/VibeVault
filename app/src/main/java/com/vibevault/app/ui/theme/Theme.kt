@@ -5,21 +5,31 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.materialkolor.PaletteStyle
 
-/**
- * Theme.kt — VibeVault MaterialTheme wrapping the Stitch Design System.
- *
- * Always dark — music streaming apps are dark-mode-first.
- * The color scheme maps every Stitch token to its Material 3 slot.
- */
+import com.materialkolor.rememberDynamicColorScheme
+import com.vibevault.app.ui.screens.settings.DarkMode
+import com.vibevault.app.constants.DarkModeKey
+import com.vibevault.app.constants.DynamicBackgroundKey
+import com.vibevault.app.constants.PureBlackKey
+import com.vibevault.app.constants.SelectedThemeColorKey
+import com.vibevault.app.utils.rememberEnumPreference
+import com.vibevault.app.utils.rememberPreference
 
-private val VibeVaultColorScheme = darkColorScheme(
-    // Surfaces
+val DefaultThemeColor = Color(0xFFED5564)
+
+val VibeVaultColorScheme = darkColorScheme(
     background              = VibeBg,
     surface                 = VibeSurface,
     surfaceVariant          = VibeSurfaceVariant,
@@ -31,40 +41,28 @@ private val VibeVaultColorScheme = darkColorScheme(
     surfaceContainerHighest = VibeSurfaceHighest,
     surfaceContainerLow     = VibeSurfaceContainerLow,
     surfaceContainerLowest  = VibeSurfaceContainerLowest,
-
-    // Primary
     primary                 = VibePrimary,
     onPrimary               = VibeOnPrimary,
     primaryContainer        = VibePrimaryContainer,
     onPrimaryContainer      = VibeOnPrimaryContainer,
     inversePrimary          = VibeInversePrimary,
-
-    // Secondary
     secondary               = VibeSecondary,
     onSecondary             = VibeOnSecondary,
     secondaryContainer      = VibeSecondaryContainer,
     onSecondaryContainer    = VibeOnSecondaryContainer,
-
-    // Tertiary
     tertiary                = VibeTertiary,
     onTertiary              = VibeOnTertiary,
     tertiaryContainer       = VibeTertiaryContainer,
     onTertiaryContainer     = VibeOnTertiaryContainer,
-
-    // Error
     error                   = VibeError,
     onError                 = VibeOnError,
     errorContainer          = VibeErrorContainer,
     onErrorContainer        = VibeOnErrorContainer,
-
-    // Content
     onBackground            = VibeOnBackground,
     onSurface               = VibeOnSurface,
     onSurfaceVariant        = VibeOnSurfaceVariant,
     outline                 = VibeOutline,
     outlineVariant          = VibeOutlineVariant,
-
-    // Inverse
     inverseSurface          = VibeInverseSurface,
     inverseOnSurface        = VibeInverseOnSurface,
 )
@@ -73,22 +71,94 @@ private val VibeVaultColorScheme = darkColorScheme(
 fun VibeVaultTheme(
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
+    val (darkModePref) = rememberEnumPreference(DarkModeKey, DarkMode.AUTO)
+    val (pureBlackPref) = rememberPreference(PureBlackKey, defaultValue = false)
+    val (dynamicBackgroundPref) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
+    val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = DefaultThemeColor.toArgb())
+
+    val isSystemDark = isSystemInDarkTheme()
+    val isDarkTheme = when (darkModePref) {
+        DarkMode.ON -> true
+        DarkMode.OFF -> false
+        DarkMode.AUTO -> isSystemDark
+    }
+    
+    val selectedThemeColor = Color(selectedThemeColorInt)
+    
+    val initialColorScheme = if (selectedThemeColorInt == 0x00000001) {
+        VibeVaultColorScheme
+    } else {
+        val useSystemDynamicColor = (selectedThemeColor == DefaultThemeColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        if (useSystemDynamicColor) {
+            if (isDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        } else {
+            rememberDynamicColorScheme(
+                seedColor = selectedThemeColor,
+                isDark = isDarkTheme,
+                isAmoled = false,
+                style = if (selectedThemeColor.toArgb() == 0xFF000000.toInt()) PaletteStyle.Monochrome else PaletteStyle.TonalSpot
+            )
+        }
+    }
+    
+    val colorScheme = remember(initialColorScheme, pureBlackPref, isDarkTheme, dynamicBackgroundPref) {
+        val baseScheme = if (isDarkTheme && pureBlackPref) {
+            initialColorScheme.copy(
+                background = Color.Black,
+                surface = Color.Black,
+                surfaceContainer = Color.Black,
+                surfaceContainerLowest = Color.Black,
+                surfaceContainerLow = Color.Black,
+                surfaceContainerHigh = Color.Black,
+                surfaceContainerHighest = Color.Black
+            )
+        } else {
+            initialColorScheme
+        }
+        
+        if (dynamicBackgroundPref) {
+            baseScheme.copy(
+                background = Color.Transparent,
+                surface = Color(0x33000000),
+                surfaceContainer = Color(0x33000000),
+                surfaceContainerLowest = Color(0x33000000),
+                surfaceContainerLow = Color(0x33000000),
+                surfaceContainerHigh = Color(0x55000000),
+                surfaceContainerHighest = Color(0x55000000),
+                surfaceVariant = Color(0x44000000)
+            )
+        } else {
+            baseScheme
+        }
+    }
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = VibeBg.toArgb()
-            window.navigationBarColor = VibeBg.toArgb()
+            window.statusBarColor = colorScheme.background.toArgb()
+            window.navigationBarColor = colorScheme.background.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = false
-                isAppearanceLightNavigationBars = false
+                isAppearanceLightStatusBars = !isDarkTheme
+                isAppearanceLightNavigationBars = !isDarkTheme
             }
         }
     }
 
     MaterialTheme(
-        colorScheme = VibeVaultColorScheme,
+        colorScheme = colorScheme,
         typography = VibeTypography,
         content = content
     )
+}
+
+@Composable
+fun vivimusicTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    pureBlack: Boolean = false,
+    themeColor: Color = DefaultThemeColor,
+    content: @Composable () -> Unit,
+) {
+    VibeVaultTheme(content = content)
 }

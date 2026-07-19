@@ -71,7 +71,7 @@ fun PremiumScreen(onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VibeBg)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -87,7 +87,7 @@ fun PremiumScreen(onBack: () -> Unit) {
                                 colors = listOf(
                                     Color(0xFF1DB954),
                                     Color(0xFF0D7A35),
-                                    VibeBg
+                                    androidx.compose.material3.MaterialTheme.colorScheme.background
                                 )
                             )
                         )
@@ -180,7 +180,7 @@ fun PremiumScreen(onBack: () -> Unit) {
                     text = "Why go Premium?",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = VibeOnSurface,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 16.dp)
                 )
             }
@@ -195,7 +195,7 @@ fun PremiumScreen(onBack: () -> Unit) {
                     text = "Pick your plan",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = VibeOnSurface,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(start = 24.dp, top = 32.dp, bottom = 16.dp)
                 )
             }
@@ -210,7 +210,7 @@ fun PremiumScreen(onBack: () -> Unit) {
                 Text(
                     text = "3 months free only open to users who haven't tried Premium before. Subscription auto-renews at ₹9.99/month unless cancelled. Terms apply.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = VibeOnSurfaceVariant.copy(alpha = 0.6f),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     modifier = Modifier.padding(horizontal = 24.dp),
                     lineHeight = 18.sp
                 )
@@ -219,7 +219,7 @@ fun PremiumScreen(onBack: () -> Unit) {
                     onClick = onBack,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
-                    Text("Not now", color = VibeOnSurfaceVariant)
+                    Text("Not now", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -239,13 +239,13 @@ fun FeatureRow(feature: PremiumFeature) {
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(VibeSurfaceHigh),
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = feature.icon,
                 contentDescription = null,
-                tint = VibePrimary,
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -255,13 +255,13 @@ fun FeatureRow(feature: PremiumFeature) {
                 text = feature.title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = VibeOnSurface
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = feature.subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = VibeOnSurfaceVariant,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 20.sp
             )
         }
@@ -275,7 +275,7 @@ fun PlanCard(plan: PremiumPlan) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = VibeSurface),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column {
@@ -294,32 +294,32 @@ fun PlanCard(plan: PremiumPlan) {
                     text = plan.name,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = VibeOnSurface
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = plan.accounts,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = VibeOnSurfaceVariant
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = plan.price,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = VibeOnSurface
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = plan.note,
                     style = MaterialTheme.typography.bodySmall,
-                    color = VibeOnSurfaceVariant
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(
                     onClick = { /* TODO */ },
                     shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = VibeOnSurface),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface),
                     border = ButtonDefaults.outlinedButtonBorder(enabled = true),
                     modifier = Modifier.fillMaxWidth()
                 ) {

@@ -1,4 +1,4 @@
-package com.vibevault.app.ui.navigation
+﻿package com.vibevault.app.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -37,6 +37,12 @@ sealed class Screen(
     data object Profile : Screen("profile", "Profile")
     data object EditProfile : Screen("edit_profile", "Edit Profile")
     data object ListenTogether : Screen("listen_together", "Listen Together")
+
+        data object Settings : Screen("settings", "Settings")
+    data object AppearanceSettings : Screen("settings/appearance", "Appearance")
+    data object PlayerSettings : Screen("settings/player", "Player & Audio")
+    data object ContentSettings : Screen("settings/content", "Content")
+    data object ThemeSettings : Screen("settings/appearance/theme", "Theme")
 
     companion object {
         val bottomNavItems get() = listOf(Home, Search, Library)

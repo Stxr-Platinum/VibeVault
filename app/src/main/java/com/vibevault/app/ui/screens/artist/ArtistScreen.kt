@@ -54,7 +54,7 @@ fun ArtistScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(VibeBg),
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 100.dp)
     ) {
         // ── Top Bar ────────────────────────────────────────
@@ -71,8 +71,8 @@ fun ArtistScreen(
                         .background(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    VibePrimary.copy(alpha = 0.3f),
-                                    VibeBg
+                                    androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                    androidx.compose.material3.MaterialTheme.colorScheme.background
                                 )
                             )
                         )
@@ -89,7 +89,7 @@ fun ArtistScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = VibeOnSurface)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
                         }
                     }
 
@@ -101,7 +101,7 @@ fun ArtistScreen(
                         modifier = Modifier
                             .size(160.dp)
                             .clip(CircleShape)
-                            .background(VibeSurfaceHigh)
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh)
                             .border(2.dp, Color.White.copy(alpha = 0.1f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
@@ -116,7 +116,7 @@ fun ArtistScreen(
                             Text(
                                 text = artistName.firstOrNull()?.toString() ?: "A",
                                 style = MaterialTheme.typography.displaySmall,
-                                color = VibePrimary
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -128,13 +128,13 @@ fun ArtistScreen(
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontWeight = FontWeight.Bold
                         ),
-                        color = VibeOnSurface
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                     )
 
                     Text(
                         text = "Artist",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = VibeOnSurfaceVariant
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -154,8 +154,8 @@ fun ArtistScreen(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = VibePrimary,
-                        contentColor = VibeOnPrimary
+                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
                     ),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
@@ -169,7 +169,7 @@ fun ArtistScreen(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = VibeOnSurface
+                        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
                     ),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
                     contentPadding = PaddingValues(vertical = 12.dp)
@@ -186,7 +186,7 @@ fun ArtistScreen(
             Text(
                 text = "Popular",
                 style = MaterialTheme.typography.titleMedium,
-                color = VibeOnSurface,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
             )
         }
@@ -204,7 +204,7 @@ fun ArtistScreen(
                 Text(
                     text = "Latest Releases",
                     style = MaterialTheme.typography.titleMedium,
-                    color = VibeOnSurface,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 12.dp)
                 )
             }
@@ -232,14 +232,14 @@ fun ArtistScreen(
                             Text(
                                 text = album.title,
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                color = VibeOnSurface,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = album.releaseDate,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = VibeOnSurfaceVariant,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
                             )
                         }
@@ -266,7 +266,7 @@ private fun ArtistTrackRow(
         Text(
             text = "$index",
             style = MaterialTheme.typography.bodyMedium,
-            color = VibeOnSurfaceVariant,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(28.dp)
         )
         AsyncImage(
@@ -282,20 +282,20 @@ private fun ArtistTrackRow(
             Text(
                 track.title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = VibeOnSurface,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 track.album,
                 style = MaterialTheme.typography.bodySmall,
-                color = VibeOnSurfaceVariant
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Text(
             formatDuration(track.durationMs),
             style = MaterialTheme.typography.bodySmall,
-            color = VibeOnSurfaceVariant
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

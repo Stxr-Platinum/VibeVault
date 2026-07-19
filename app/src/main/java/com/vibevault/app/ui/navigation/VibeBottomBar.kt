@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.vibevault.app.ui.theme.*
+import com.vibevault.app.constants.DynamicBackgroundKey
+import com.vibevault.app.utils.rememberPreference
 
 /**
  * VibeBottomBar — Bottom navigation bar.
@@ -25,10 +27,11 @@ fun VibeBottomBar(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val (dynamicBackground) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
 
     NavigationBar(
         modifier = modifier,
-        containerColor = Color(0xFF121212),
+        containerColor = if (dynamicBackground) Color.Transparent else Color(0xFF121212),
         contentColor = Color.White
     ) {
         Screen.bottomNavItems.forEach { screen ->

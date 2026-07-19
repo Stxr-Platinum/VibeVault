@@ -60,9 +60,9 @@ fun ProfileScreen(
                 adminPassword = ""
                 viewModel.clearDeleteError()
             },
-            containerColor = VibeSurface,
-            titleContentColor = VibeOnSurface,
-            textContentColor = VibeOnSurfaceVariant,
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+            titleContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+            textContentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             title = {
                 Text("Delete Account", style = MaterialTheme.typography.titleMedium)
             },
@@ -83,12 +83,12 @@ fun ProfileScreen(
                         singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = VibeOnSurface,
-                            unfocusedTextColor = VibeOnSurface,
-                            focusedBorderColor = VibeError,
-                            unfocusedBorderColor = VibeOutlineVariant,
-                            focusedLabelColor = VibeError,
-                            unfocusedLabelColor = VibeOnSurfaceVariant
+                            focusedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                            unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant,
+                            focusedLabelColor = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                            unfocusedLabelColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -96,7 +96,7 @@ fun ProfileScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             uiState.deleteError!!,
-                            color = VibeError,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -105,9 +105,9 @@ fun ProfileScreen(
             confirmButton = {
                 Button(
                     onClick = { viewModel.deleteAccount(adminPassword) },
-                    colors = ButtonDefaults.buttonColors(containerColor = VibeError)
+                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete", color = VibeOnError)
+                    Text("Delete", color = androidx.compose.material3.MaterialTheme.colorScheme.onError)
                 }
             },
             dismissButton = {
@@ -116,7 +116,7 @@ fun ProfileScreen(
                     adminPassword = ""
                     viewModel.clearDeleteError()
                 }) {
-                    Text("Cancel", color = VibeOnSurfaceVariant)
+                    Text("Cancel", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -125,7 +125,7 @@ fun ProfileScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VibeBg)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
     ) {
         // ── Top Bar ────────────────────────────────────────
@@ -136,10 +136,10 @@ fun ProfileScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = VibeOnSurface)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
             }
             Spacer(Modifier.weight(1f))
-            Text("Profile", style = MaterialTheme.typography.titleMedium, color = VibeOnSurface)
+            Text("Profile", style = MaterialTheme.typography.titleMedium, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.size(48.dp))
         }
@@ -160,43 +160,43 @@ fun ProfileScreen(
             Text(
                 uiState.username ?: "VibeVault User",
                 style = MaterialTheme.typography.titleLarge,
-                color = VibeOnSurface
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
             )
             if (uiState.accountHolderName != null) {
                 Text(
                     uiState.accountHolderName!!,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = VibeOnSurfaceVariant
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Text(
                 uiState.email ?: "",
                 style = MaterialTheme.typography.bodySmall,
-                color = VibeOnSurfaceVariant.copy(alpha = 0.7f)
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
             Spacer(Modifier.height(8.dp))
 
             // Subscription badge
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (uiState.isPremium) VibePrimary.copy(alpha = 0.15f) else VibeSurfaceHigh
+                color = if (uiState.isPremium) androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
                 Text(
                     if (uiState.isPremium) "✦ Premium" else "Free Plan",
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (uiState.isPremium) VibePrimary else VibeOnSurfaceVariant,
+                    color = if (uiState.isPremium) androidx.compose.material3.MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
         }
 
-        HorizontalDivider(color = VibeOutlineVariant, thickness = 0.5.dp)
+        HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
 
         // ── Settings Sections ──────────────────────────────
         SettingsSection("Account") {
             SettingsItem(Icons.Default.Person, "Edit Profile") { onEditProfileClick() }
             if (!uiState.isPremium) {
-                SettingsItem(Icons.Default.WorkspacePremium, "Upgrade to Premium", VibePrimary) {
+                SettingsItem(Icons.Default.WorkspacePremium, "Upgrade to Premium", androidx.compose.material3.MaterialTheme.colorScheme.primary) {
                     onPremiumClick()
                 }
             }
@@ -226,9 +226,9 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
         ) {
-            Icon(Icons.AutoMirrored.Filled.Logout, "Logout", tint = VibeError)
+            Icon(Icons.AutoMirrored.Filled.Logout, "Logout", tint = androidx.compose.material3.MaterialTheme.colorScheme.error)
             Spacer(Modifier.width(8.dp))
-            Text("Log Out", color = VibeError, style = MaterialTheme.typography.labelLarge)
+            Text("Log Out", color = androidx.compose.material3.MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
         }
 
         // ── Delete Account ────────────────────────────────
@@ -238,9 +238,9 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
         ) {
-            Icon(Icons.Default.DeleteForever, "Delete Account", tint = VibeError.copy(alpha = 0.7f))
+            Icon(Icons.Default.DeleteForever, "Delete Account", tint = androidx.compose.material3.MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
             Spacer(Modifier.width(8.dp))
-            Text("Delete Account", color = VibeError.copy(alpha = 0.7f), style = MaterialTheme.typography.labelLarge)
+            Text("Delete Account", color = androidx.compose.material3.MaterialTheme.colorScheme.error.copy(alpha = 0.7f), style = MaterialTheme.typography.labelLarge)
         }
 
         Spacer(Modifier.height(24.dp))
@@ -248,7 +248,7 @@ fun ProfileScreen(
         Text(
             "VibeVault v1.0.0",
             style = MaterialTheme.typography.bodySmall,
-            color = VibeOnSurfaceVariant,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 100.dp)
@@ -263,7 +263,7 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
         Text(
             title,
             style = MaterialTheme.typography.labelLarge,
-            color = VibeOnSurfaceVariant,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp)
         )
         Column(
@@ -280,7 +280,7 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
 private fun SettingsItem(
     icon: ImageVector,
     label: String,
-    tint: androidx.compose.ui.graphics.Color = VibeOnSurface,
+    tint: androidx.compose.ui.graphics.Color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
     onClick: () -> Unit
 ) {
     Row(
@@ -293,6 +293,6 @@ private fun SettingsItem(
         Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(16.dp))
         Text(label, style = MaterialTheme.typography.bodyLarge, color = tint, modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, "Navigate", tint = VibeOnSurfaceVariant, modifier = Modifier.size(20.dp))
+        Icon(Icons.Default.ChevronRight, "Navigate", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }

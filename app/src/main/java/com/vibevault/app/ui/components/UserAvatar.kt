@@ -1,4 +1,4 @@
-package com.vibevault.app.ui.components
+﻿package com.vibevault.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,11 +18,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
-import com.vibevault.app.ui.theme.VibePrimary
-import com.vibevault.app.ui.theme.VibeSurfaceHigh
 
 /**
- * UserAvatar — Premium circular avatar with fallback to initial.
+ * UserAvatar â€” Premium circular avatar with fallback to initial.
  * Matches the design seen in the Library header.
  */
 @Composable
@@ -54,7 +52,7 @@ fun UserAvatar(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(VibeSurfaceHigh)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh)
             .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
@@ -68,7 +66,7 @@ fun UserAvatar(
                     Text(
                         text = initial.toString(),
                         style = MaterialTheme.typography.labelLarge,
-                        color = VibePrimary
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                     )
                 }
             },
@@ -77,10 +75,11 @@ fun UserAvatar(
                     Text(
                         text = initial.toString(),
                         style = MaterialTheme.typography.labelLarge,
-                        color = VibePrimary
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                     )
                 }
             }
         )
     }
 }
+

@@ -103,7 +103,7 @@ fun LoginScreen(
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(VibePrimary),
+                    .background(androidx.compose.material3.MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -130,7 +130,7 @@ fun LoginScreen(
             Text(
                 text = "Secure your sound, own the vibe.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = VibeOnSurfaceVariant.copy(alpha = 0.8f),
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
             )
 
@@ -185,7 +185,7 @@ fun LoginScreen(
                 Text(
                     text = "  OR  ",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = VibeOnSurfaceVariant.copy(alpha = 0.6f)
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
                 HorizontalDivider(
                     modifier = Modifier.weight(1f),
@@ -206,7 +206,7 @@ fun LoginScreen(
                     onValueChange = viewModel::onEmailChange,
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = {
-                        Text("Email Address", color = VibeOnSurfaceVariant.copy(alpha = 0.4f))
+                        Text("Email Address", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                     },
                     singleLine = true,
                     colors = TextFieldDefaults.colors(
@@ -214,7 +214,7 @@ fun LoginScreen(
                         unfocusedContainerColor = Color.Transparent,
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        cursorColor = VibePrimary,
+                        cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent
                     ),
@@ -234,7 +234,7 @@ fun LoginScreen(
                     onValueChange = viewModel::onPasswordChange,
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = {
-                        Text("Password", color = VibeOnSurfaceVariant.copy(alpha = 0.4f))
+                        Text("Password", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                     },
                     singleLine = true,
                     visualTransformation = if (passwordVisible) VisualTransformation.None
@@ -245,7 +245,7 @@ fun LoginScreen(
                                 imageVector = if (passwordVisible) Icons.Default.Visibility
                                               else Icons.Default.VisibilityOff,
                                 contentDescription = null,
-                                tint = VibeOnSurfaceVariant.copy(alpha = 0.6f)
+                                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
                         }
                     },
@@ -254,7 +254,7 @@ fun LoginScreen(
                         unfocusedContainerColor = Color.Transparent,
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        cursorColor = VibePrimary,
+                        cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent
                     ),
@@ -271,7 +271,7 @@ fun LoginScreen(
                     Text(
                         "Forgot password?",
                         style = MaterialTheme.typography.bodySmall,
-                        color = VibeOnSurfaceVariant.copy(alpha = 0.8f)
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -281,7 +281,7 @@ fun LoginScreen(
                 Text(
                     text = uiState.error!!,
                     style = MaterialTheme.typography.bodySmall,
-                    color = VibeError,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
@@ -297,7 +297,7 @@ fun LoginScreen(
                 enabled = !uiState.isLoading,
                 shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = VibePrimary,
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                     contentColor = Color.Black
                 )
             ) {
@@ -326,7 +326,7 @@ fun LoginScreen(
                 Text(
                     if (uiState.isSignUp) "Already have an account? "
                     else "Don't have an account? ",
-                    color = VibeOnSurfaceVariant,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
@@ -346,11 +346,11 @@ fun LoginScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("TERMS", style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant.copy(alpha = 0.5f))
-                Text("    |    ", style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant.copy(alpha = 0.2f))
-                Text("PRIVACY", style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant.copy(alpha = 0.5f))
-                Text("    |    ", style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant.copy(alpha = 0.2f))
-                Text("SUPPORT", style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant.copy(alpha = 0.5f))
+                Text("TERMS", style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                Text("    |    ", style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                Text("PRIVACY", style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                Text("    |    ", style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                Text("SUPPORT", style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
             }
         }
     }

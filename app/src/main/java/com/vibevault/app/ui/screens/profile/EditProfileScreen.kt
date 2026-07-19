@@ -34,7 +34,7 @@ fun EditProfileScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VibeBg)
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -44,10 +44,10 @@ fun EditProfileScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = VibeOnSurface)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
             }
             Spacer(Modifier.weight(1f))
-            Text("Edit Profile", style = MaterialTheme.typography.titleMedium, color = VibeOnSurface)
+            Text("Edit Profile", style = MaterialTheme.typography.titleMedium, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.size(48.dp))
         }
@@ -72,7 +72,7 @@ fun EditProfileScreen(
         Text(
             "Tap to change picture",
             style = MaterialTheme.typography.labelMedium,
-            color = VibePrimary,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
             modifier = Modifier.clickable { launcher.launch("image/*") }
         )
 
@@ -83,12 +83,12 @@ fun EditProfileScreen(
             onValueChange = viewModel::onUsernameChange,
             label = { Text("Username") },
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = VibeOnSurface,
-                unfocusedTextColor = VibeOnSurface,
-                focusedBorderColor = VibePrimary,
-                unfocusedBorderColor = VibeOutlineVariant,
-                focusedLabelColor = VibePrimary,
-                unfocusedLabelColor = VibeOnSurfaceVariant
+                focusedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant,
+                focusedLabelColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                unfocusedLabelColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
             ),
             modifier = Modifier.fillMaxWidth()
         )
@@ -99,7 +99,7 @@ fun EditProfileScreen(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = uiState.error!!,
-                color = VibeError,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -108,16 +108,16 @@ fun EditProfileScreen(
 
         Button(
             onClick = viewModel::saveProfile,
-            colors = ButtonDefaults.buttonColors(containerColor = VibePrimary),
+            colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary),
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)
         ) {
             if (uiState.isLoading) {
-                CircularProgressIndicator(color = VibeOnPrimary, modifier = Modifier.size(24.dp))
+                CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
             } else {
-                Text("Save Profile", color = VibeOnPrimary, style = MaterialTheme.typography.titleSmall)
+                Text("Save Profile", color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleSmall)
             }
         }
     }

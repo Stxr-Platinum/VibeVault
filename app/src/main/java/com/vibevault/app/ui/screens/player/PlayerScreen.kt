@@ -25,9 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.vibevault.app.ui.theme.VibeBg
-import com.vibevault.app.ui.theme.VibeOnSurfaceVariant
-import com.vibevault.app.ui.theme.VibePrimary
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +74,7 @@ fun PlayerScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showAddToPlaylistDialog = false }) {
-                    Text("Close", color = VibePrimary)
+                    Text("Close", color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                 }
             },
             containerColor = Color(0xFF282828)
@@ -91,21 +88,24 @@ fun PlayerScreen(
     }
 
     if (currentTrack == null) {
-        Box(modifier = Modifier.fillMaxSize().background(VibeBg), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = VibePrimary)
+        Box(modifier = Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
         }
         return
     }
 
     val track = currentTrack!!
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(VibeBg)
-            .padding(horizontal = 16.dp)
-            .padding(top = 8.dp, bottom = 16.dp)
-    ) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp)
+        ) {
         // Top Bar
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
@@ -165,7 +165,7 @@ fun PlayerScreen(
                 Text(
                     text = track.artist,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = VibeOnSurfaceVariant,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -174,7 +174,7 @@ fun PlayerScreen(
                 Icon(
                     if (track.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     contentDescription = "Like",
-                    tint = if (track.isLiked) VibePrimary else Color.White
+                    tint = if (track.isLiked) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.White
                 )
             }
             var isAddAnimating by remember { mutableStateOf(false) }
@@ -228,8 +228,8 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatTime(displayPosition.toLong()), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
-            Text(formatTime(safeDuration.toLong()), style = MaterialTheme.typography.labelSmall, color = VibeOnSurfaceVariant)
+            Text(formatTime(displayPosition.toLong()), style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatTime(safeDuration.toLong()), style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         Spacer(Modifier.weight(0.5f))
@@ -250,7 +250,7 @@ fun PlayerScreen(
                 modifier = Modifier
                     .size(64.dp)
                     .clip(CircleShape)
-                    .background(VibePrimary)
+                    .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
                     .clickable { viewModel.togglePlayPause() },
                 contentAlignment = Alignment.Center
             ) {
@@ -276,7 +276,7 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.AutoMirrored.Filled.VolumeDown, "Volume Down", tint = VibeOnSurfaceVariant)
+            Icon(Icons.AutoMirrored.Filled.VolumeDown, "Volume Down", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(8.dp))
             Slider(
                 value = volume,
@@ -289,7 +289,7 @@ fun PlayerScreen(
                 )
             )
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.AutoMirrored.Filled.VolumeUp, "Volume Up", tint = VibeOnSurfaceVariant)
+            Icon(Icons.AutoMirrored.Filled.VolumeUp, "Volume Up", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
         }
         
         Spacer(Modifier.weight(1f))
@@ -300,8 +300,9 @@ fun PlayerScreen(
             horizontalArrangement = Arrangement.End
         ) {
             IconButton(onClick = { showQueueSheet = true }) {
-                Icon(Icons.Default.QueueMusic, "Queue", tint = VibeOnSurfaceVariant)
+                Icon(Icons.Default.QueueMusic, "Queue", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
         }
     }
 
