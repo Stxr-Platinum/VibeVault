@@ -72,7 +72,7 @@ fun VibeVaultTheme(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val (darkModePref) = rememberEnumPreference(DarkModeKey, DarkMode.AUTO)
+    val (darkModePref) = rememberEnumPreference(DarkModeKey, DarkMode.ON)
     val (pureBlackPref) = rememberPreference(PureBlackKey, defaultValue = false)
     val (dynamicBackgroundPref) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
     val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = DefaultThemeColor.toArgb())
