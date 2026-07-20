@@ -109,6 +109,39 @@ fun AppNavHost(
                     playerViewModel.playTrack(trackId, context)
                     navController.navigate(Screen.Player.createRoute(trackId))
                 },
+                onNavigateToOnlineSearch = { query ->
+                    navController.navigate(Screen.OnlineSearch.createRoute(query))
+                },
+                onPlaylistClick = { playlistId ->
+                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
+                }
+            )
+        }
+        
+        composable(
+            route = Screen.OnlineSearch.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("query") {
+                    type = androidx.navigation.NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val rawQuery = backStackEntry.arguments?.getString("query") ?: ""
+            val query = try {
+                java.net.URLDecoder.decode(rawQuery, "UTF-8")
+            } catch (e: Exception) {
+                rawQuery
+            }
+            com.vibevault.app.ui.screens.search.OnlineSearchScreen(
+                query = query,
+                onBack = { navController.popBackStack() },
+                onTrackClick = { trackId, tracks ->
+                    playerViewModel.playTrack(trackId, tracks)
+                    navController.navigate(Screen.Player.createRoute(trackId))
+                },
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
                 },

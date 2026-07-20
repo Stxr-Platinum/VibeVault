@@ -146,11 +146,11 @@ fun SearchScreen(
                             )
                         }
                         items(suggestionViewState.suggestions) { suggestion ->
+                            val decodedSuggestion = suggestion.replace("+", " ")
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val decodedSuggestion = suggestion.replace("+", " ")
                                         viewModel.onQueryChange(decodedSuggestion)
                                         suggestionViewModel.query.value = decodedSuggestion
                                         onNavigateToOnlineSearch(decodedSuggestion)
@@ -160,7 +160,7 @@ fun SearchScreen(
                             ) {
                                 Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF9E9E9E))
                                 Spacer(Modifier.width(16.dp))
-                                Text(text = suggestion, color = Color.White, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Text(text = decodedSuggestion, color = Color.White, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                                 Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color(0xFF9E9E9E), modifier = Modifier.rotate(45f))
                             }
                         }

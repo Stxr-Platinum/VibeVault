@@ -75,7 +75,7 @@ fun VibeVaultTheme(
     val (darkModePref) = rememberEnumPreference(DarkModeKey, DarkMode.ON)
     val (pureBlackPref) = rememberPreference(PureBlackKey, defaultValue = false)
     val (dynamicBackgroundPref) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
-    val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = DefaultThemeColor.toArgb())
+    val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = 0x00000001)
 
     val isSystemDark = isSystemInDarkTheme()
     val isDarkTheme = when (darkModePref) {

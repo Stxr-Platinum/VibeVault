@@ -19,6 +19,10 @@ sealed class Screen(
     data object Search : Screen("search", "Search", Icons.Filled.Search, Icons.Outlined.Search)
     data object Library : Screen("library", "Your Library", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic)
 
+    data object OnlineSearch : Screen("search/{query}", "Online Search") {
+        fun createRoute(query: String) = "search/${java.net.URLEncoder.encode(query, "UTF-8")}"
+    }
+
     data object Player : Screen("player/{trackId}", "Now Playing") {
         fun createRoute(trackId: String) = "player/${android.net.Uri.encode(trackId)}"
     }
@@ -38,7 +42,7 @@ sealed class Screen(
     data object EditProfile : Screen("edit_profile", "Edit Profile")
     data object ListenTogether : Screen("listen_together", "Listen Together")
 
-        data object Settings : Screen("settings", "Settings")
+    data object Settings : Screen("settings", "Settings")
     data object AppearanceSettings : Screen("settings/appearance", "Appearance")
     data object PlayerSettings : Screen("settings/player", "Player & Audio")
     data object ContentSettings : Screen("settings/content", "Content")

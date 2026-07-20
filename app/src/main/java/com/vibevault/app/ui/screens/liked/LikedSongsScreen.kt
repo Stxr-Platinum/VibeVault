@@ -45,10 +45,10 @@ fun LikedSongsScreen(
                 Modifier.fillMaxWidth().height(240.dp)
                     .background(Brush.verticalGradient(listOf(androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(0.5f), androidx.compose.material3.MaterialTheme.colorScheme.background)))
             ) {
-                IconButton(onClick = onBack, Modifier.padding(16.dp)) {
+                IconButton(onClick = onBack, Modifier.statusBarsPadding().padding(16.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
                 }
-                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.align(Alignment.Center).statusBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Favorite, "Liked", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
                     Spacer(Modifier.height(12.dp))
                     Text("Liked Songs", style = MaterialTheme.typography.headlineMedium, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
