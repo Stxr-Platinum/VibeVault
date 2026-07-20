@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +32,8 @@ import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.ui.theme.*
 
+import com.vibevault.app.ui.screens.search.suggestions.OnlineSearchSuggestionViewModel
+
 /**
  * SearchScreen — Matches Stitch "Search / Browse Categories"
  * and "Search / Active Results".
@@ -39,13 +42,16 @@ import com.vibevault.app.ui.theme.*
 @Composable
 fun SearchScreen(
     onTrackClick: (String, List<Track>) -> Unit,
+    onNavigateToOnlineSearch: (String) -> Unit,
     onPlaylistClick: (String) -> Unit = {},
     onArtistClick: (String) -> Unit = {},
-    viewModel: SearchViewModel = hiltViewModel()
+    viewModel: SearchViewModel = hiltViewModel(),
+    suggestionViewModel: OnlineSearchSuggestionViewModel = hiltViewModel()
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val searchResult by viewModel.searchResult.collectAsStateWithLifecycle()
     val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
+    val suggestionViewState by suggestionViewModel.viewState.collectAsStateWithLifecycle()
     
     var selectedFilter by remember { mutableStateOf("Songs") }
 
@@ -69,7 +75,18 @@ fun SearchScreen(
         // ── Search Bar ─────────────────────────────────────
         TextField(
             value = query,
-            onValueChange = viewModel::onQueryChange,
+            onValueChange = { 
+                viewModel.onQueryChange(it)
+                suggestionViewModel.query.value = it
+            },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = androidx.compose.ui.text.input.ImeAction.Search
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onSearch = { 
+                    if (query.isNotBlank()) onNavigateToOnlineSearch(query)
+                }
+            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -85,7 +102,10 @@ fun SearchScreen(
             },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { viewModel.onQueryChange("") }) {
+                    IconButton(onClick = { 
+                        viewModel.onQueryChange("")
+                        suggestionViewModel.query.value = ""
+                    }) {
                         Icon(Icons.Default.Close, "Clear", tint = Color(0xFF9E9E9E))
                     }
                 }
@@ -115,103 +135,92 @@ fun SearchScreen(
                 LazyColumn(
                     contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
-                    searchResult?.let { result ->
-                        // Filter Pills
+                    // Suggestions
+                    if (suggestionViewState.suggestions.isNotEmpty()) {
                         item {
+                            Text(
+                                text = "Suggestions",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        items(suggestionViewState.suggestions) { suggestion ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    .clickable {
+                                        val decodedSuggestion = suggestion.replace("+", " ")
+                                        viewModel.onQueryChange(decodedSuggestion)
+                                        suggestionViewModel.query.value = decodedSuggestion
+                                        onNavigateToOnlineSearch(decodedSuggestion)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                FilterChip(
-                                    selected = selectedFilter == "Songs",
-                                    onClick = { selectedFilter = "Songs" },
-                                    label = { Text("Songs", color = if (selectedFilter == "Songs") Color.Black else Color.White) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                                        containerColor = Color.DarkGray
-                                    ),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                                FilterChip(
-                                    selected = selectedFilter == "Albums",
-                                    onClick = { selectedFilter = "Albums" },
-                                    label = { Text("Albums", color = if (selectedFilter == "Albums") Color.Black else Color.White) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                                        containerColor = Color.DarkGray
-                                    ),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                                FilterChip(
-                                    selected = selectedFilter == "Artists",
-                                    onClick = { selectedFilter = "Artists" },
-                                    label = { Text("Artists", color = if (selectedFilter == "Artists") Color.Black else Color.White) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                                        containerColor = Color.DarkGray
-                                    ),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
+                                Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF9E9E9E))
+                                Spacer(Modifier.width(16.dp))
+                                Text(text = suggestion, color = Color.White, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color(0xFF9E9E9E), modifier = Modifier.rotate(45f))
                             }
                         }
-
-                        if (selectedFilter == "Songs") {
-                            // Songs Section
-                            if (result.tracks.isNotEmpty()) {
-                                items(result.tracks) { track ->
-                                    SearchResultRow(
-                                        title = track.title,
-                                        subtitle = "${track.artist} • ${track.album}",
-                                        imageUrl = track.albumImageUrl,
-                                        onClick = { onTrackClick(track.id, listOf(track)) },
-                                        onActionClick = { /* Handle add song action */ }
-                                    )
-                                }
-                            }
-                        } else if (selectedFilter == "Albums") {
-                            // Albums Section
-                            if (result.albums.isNotEmpty()) {
-                                items(result.albums) { album ->
-                                    SearchResultRow(
-                                        title = album.album,
-                                        subtitle = "Album • ${album.artist}",
-                                        imageUrl = album.albumImageUrl,
-                                        onClick = { onPlaylistClick("album:${album.album}::${album.artist}") },
-                                        onActionClick = { /* Handle add album action */ }
-                                    )
-                                }
-                            }
-                        } else if (selectedFilter == "Artists") {
-                            // Artists Section
-                            if (result.artists.isNotEmpty()) {
-                                items(result.artists) { artist ->
-                                    SearchResultRow(
-                                        title = artist.name,
-                                        subtitle = "Artist",
-                                        imageUrl = artist.imageUrl,
-                                        onClick = { onArtistClick(artist.name) },
-                                        isCircular = true
-                                    )
-                                }
-                            }
-                        }
+                        item { Spacer(Modifier.height(8.dp)) }
                     }
 
-                    if (searchResult == null || (searchResult?.tracks?.isEmpty() == true && searchResult?.albums?.isEmpty() == true && searchResult?.artists?.isEmpty() == true)) {
+                    // Top Result
+                    if (suggestionViewState.items.isNotEmpty()) {
                         item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(48.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "No results found for \"$query\"",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Text(
+                                text = "Top result",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        items(suggestionViewState.items) { item ->
+                            when (item) {
+                                is com.music.innertube.models.SongItem -> {
+                                    val track = com.vibevault.app.domain.model.Track(
+                                        id = item.id,
+                                        title = item.title,
+                                        artist = item.artists.joinToString(", ") { it.name },
+                                        album = item.album?.name ?: "",
+                                        durationMs = (item.duration ?: 0) * 1000L,
+                                        albumImageUrl = item.thumbnail
+                                    )
+                                    val subtitleText = if (item.isVideoSong) "Video" else "Song"
+                                    SearchResultRow(
+                                        title = item.title,
+                                        subtitle = "$subtitleText • ${item.artists.joinToString(", ") { it.name }}",
+                                        imageUrl = item.thumbnail,
+                                        onClick = { onTrackClick(track.id, listOf(track)) }
+                                    )
+                                }
+                                is com.music.innertube.models.AlbumItem -> {
+                                    SearchResultRow(
+                                        title = item.title,
+                                        subtitle = "Album • ${item.artists?.joinToString(", ") { it.name } ?: "Unknown"}",
+                                        imageUrl = item.thumbnail,
+                                        onClick = { onPlaylistClick("album:${item.id}") }
+                                    )
+                                }
+                                is com.music.innertube.models.ArtistItem -> {
+                                    SearchResultRow(
+                                        title = item.title,
+                                        subtitle = "Artist",
+                                        imageUrl = item.thumbnail,
+                                        isCircular = true,
+                                        onClick = { onArtistClick(item.title) }
+                                    )
+                                }
+                                is com.music.innertube.models.PlaylistItem -> {
+                                    SearchResultRow(
+                                        title = item.title,
+                                        subtitle = "Playlist • ${item.author?.name ?: "Unknown"}",
+                                        imageUrl = item.thumbnail,
+                                        onClick = { onPlaylistClick("playlist:${item.id}") }
+                                    )
+                                }
                             }
                         }
                     }
@@ -262,7 +271,11 @@ fun SearchScreen(
                             .height(110.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(category.color)
-                            .clickable { viewModel.onQueryChange(category.name) }
+                            .clickable { 
+                                viewModel.onQueryChange(category.name)
+                                suggestionViewModel.query.value = category.name
+                                onNavigateToOnlineSearch(category.name)
+                            }
                     ) {
                         Text(
                             text = category.name,
@@ -303,7 +316,7 @@ private fun SectionHeader(title: String) {
 }
 
 @Composable
-private fun SearchResultRow(
+fun SearchResultRow(
     title: String,
     subtitle: String,
     imageUrl: String?,
