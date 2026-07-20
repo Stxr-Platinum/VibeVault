@@ -97,17 +97,7 @@ fun AppNavHost(
             }
         }
         
-        composable("settings/integrations/listen_together") {
-            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
-                androidx.compose.material3.Text("Listen Together Settings coming soon!", modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.Center))
-                androidx.compose.material3.TextButton(
-                    onClick = { navController.popBackStack() },
-                    modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopStart)
-                ) {
-                    androidx.compose.material3.Text("Back")
-                }
-            }
-        }
+
         composable(Screen.EditProfile.route) {
             com.vibevault.app.ui.screens.profile.EditProfileScreen(
                 onBack = { navController.popBackStack() }
@@ -222,6 +212,12 @@ fun AppNavHost(
         composable(Screen.ThemeSettings.route) {
             com.vibevault.app.ui.screens.settings.ThemeScreen(
                 navController = navController
+            )
+        }
+        composable(Screen.ListenTogetherSettings.route) {
+            com.vibevault.app.ui.screens.settings.ListenTogetherSettings(
+                navController = navController,
+                scrollBehavior = androidx.compose.material3.TopAppBarDefaults.pinnedScrollBehavior()
             )
         }
     }

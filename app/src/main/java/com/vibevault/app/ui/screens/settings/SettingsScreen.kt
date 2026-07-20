@@ -71,7 +71,7 @@ fun SettingsScreen(
                         Material3SettingsItem(
                             icon = rememberVectorPainter(Icons.Filled.Group),
                             title = { Text("Listen Together") },
-                            onClick = { navController.navigate(Screen.ListenTogether.route) },
+                            onClick = { navController.navigate(Screen.ListenTogetherSettings.route) },
                             isExpressive = true
                         )
                     )

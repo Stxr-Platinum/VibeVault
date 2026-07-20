@@ -126,6 +126,7 @@ fun ProfileScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+            .systemBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
         // ── Top Bar ────────────────────────────────────────
