@@ -349,7 +349,8 @@ class PlayerViewModel @Inject constructor(
     // ── Internal Playback Execution ────────────────────────
 
     private fun stopAllPlayback() {
-        player?.pause()
+        player?.stop()
+        queueManager.clearQueue()
         player?.clearMediaItems()
         _isPlaying.value = false
         currentlyPlayingTrackId = null
@@ -530,6 +531,10 @@ class PlayerViewModel @Inject constructor(
             musicRepository.toggleLike(track.id)
             queueManager.syncExternalTrack(track.copy(isLiked = !track.isLiked))
         }
+    }
+
+    fun stopPlayback() {
+        stopAllPlayback()
     }
 
     val playlists = musicRepository.getPlaylists()

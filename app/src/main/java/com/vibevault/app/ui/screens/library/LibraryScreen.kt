@@ -282,7 +282,7 @@ fun LibraryScreen(
                     title = "New Episodes",
                     subtitle = "Updated yesterday",
                     icon = Icons.Default.NotificationAdd,
-                    iconTint = Color(0xFF1DB954),
+                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                     onClick = {}
                 )
             }

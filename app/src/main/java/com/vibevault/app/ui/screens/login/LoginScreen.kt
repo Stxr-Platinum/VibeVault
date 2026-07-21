@@ -76,12 +76,16 @@ fun LoginScreen(
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(ApiException::class.java)
-            account?.idToken?.let { idToken ->
+            val idToken = account?.idToken
+            if (idToken != null) {
                 viewModel.onGoogleIdTokenReceived(idToken, onLoginSuccess)
+            } else {
+                Log.w("LoginScreen", "Google ID token was null, falling back to Supabase Google OAuth")
+                viewModel.signInWithGoogleDirect(onLoginSuccess)
             }
         } catch (e: ApiException) {
-            Log.e("LoginScreen", "Google sign in failed", e)
-            viewModel.onError("Google sign in failed: ${e.statusCode} ${e.message}")
+            Log.w("LoginScreen", "Native Google sign in failed (status ${e.statusCode}), falling back to Supabase Google OAuth", e)
+            viewModel.signInWithGoogleDirect(onLoginSuccess)
         }
     }
 

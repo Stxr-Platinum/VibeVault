@@ -1,7 +1,9 @@
 package com.vibevault.app.ui.theme
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.os.Build
+import androidx.palette.graphics.Palette
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -9,6 +11,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -28,6 +31,8 @@ import com.vibevault.app.utils.rememberEnumPreference
 import com.vibevault.app.utils.rememberPreference
 
 val DefaultThemeColor = Color(0xFFED5564)
+
+val LocalSolidColorScheme = staticCompositionLocalOf { darkColorScheme() }
 
 val VibeVaultColorScheme = darkColorScheme(
     background              = VibeBg,
@@ -69,13 +74,14 @@ val VibeVaultColorScheme = darkColorScheme(
 
 @Composable
 fun VibeVaultTheme(
+    themeColor: Color? = null,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
     val (darkModePref) = rememberEnumPreference(DarkModeKey, DarkMode.ON)
     val (pureBlackPref) = rememberPreference(PureBlackKey, defaultValue = false)
     val (dynamicBackgroundPref) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
-    val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = 0x00000001)
+    val (selectedThemeColorInt) = rememberPreference(SelectedThemeColorKey, defaultValue = 0xFF1E88E5.toInt())
 
     val isSystemDark = isSystemInDarkTheme()
     val isDarkTheme = when (darkModePref) {
@@ -84,7 +90,7 @@ fun VibeVaultTheme(
         DarkMode.AUTO -> isSystemDark
     }
     
-    val selectedThemeColor = Color(selectedThemeColorInt)
+    val selectedThemeColor = themeColor ?: Color(selectedThemeColorInt)
     
     val initialColorScheme = if (selectedThemeColorInt == 0x00000001) {
         VibeVaultColorScheme
@@ -132,6 +138,22 @@ fun VibeVaultTheme(
             baseScheme
         }
     }
+    
+    val solidScheme = remember(initialColorScheme, pureBlackPref, isDarkTheme) {
+        if (isDarkTheme && pureBlackPref) {
+            initialColorScheme.copy(
+                background = Color.Black,
+                surface = Color.Black,
+                surfaceContainer = Color.Black,
+                surfaceContainerLowest = Color.Black,
+                surfaceContainerLow = Color.Black,
+                surfaceContainerHigh = Color.Black,
+                surfaceContainerHighest = Color.Black
+            )
+        } else {
+            initialColorScheme
+        }
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -146,11 +168,15 @@ fun VibeVaultTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = VibeTypography,
-        content = content
-    )
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalSolidColorScheme provides solidScheme
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = VibeTypography,
+            content = content
+        )
+    }
 }
 
 @Composable
@@ -161,4 +187,10 @@ fun vivimusicTheme(
     content: @Composable () -> Unit,
 ) {
     VibeVaultTheme(content = content)
+}
+
+fun Bitmap.extractThemeColor(): Color {
+    val palette = Palette.from(this).maximumColorCount(8).generate()
+    val swatch = palette.dominantSwatch ?: palette.vibrantSwatch ?: palette.mutedSwatch
+    return swatch?.rgb?.let { Color(it) } ?: Color(0xFF1E88E5)
 }

@@ -79,4 +79,16 @@ class LoginViewModel @Inject constructor(
             )
         }
     }
+
+    fun signInWithGoogleDirect(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            authRepository.signInWithGoogle().fold(
+                onSuccess = { onSuccess() },
+                onFailure = { e ->
+                    _uiState.update { it.copy(isLoading = false, error = e.message ?: "Google sign-in failed") }
+                }
+            )
+        }
+    }
 }

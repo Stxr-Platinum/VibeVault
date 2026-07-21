@@ -18,7 +18,7 @@ import com.music.innertube.models.IpVersion
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
 val EnableDynamicIconKey = booleanPreferencesKey("enableDynamicIcon")
 val EnableHighRefreshRateKey = booleanPreferencesKey("enableHighRefreshRate")
-val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
+val DynamicThemeKey = booleanPreferencesKey("dynamicTheme_v2")
 val SelectedThemeColorKey = intPreferencesKey("selectedThemeColor")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
@@ -479,6 +479,12 @@ val DeeplFormalityKey = stringPreferencesKey("deeplFormality")
 val LyricsGlowEffectKey = booleanPreferencesKey("lyricsGlowEffect")
 val AppleMusicLyricsBlurKey = booleanPreferencesKey("appleMusicLyricsBlur")
 val LyricsStandardBlurKey = booleanPreferencesKey("lyricsStandardBlur")
+
+enum class LyricsPosition {
+    LEFT,
+    CENTER,
+    RIGHT
+}
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
 enum class LyricsAnimationStyle {

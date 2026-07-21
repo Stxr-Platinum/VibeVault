@@ -112,7 +112,7 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFF1DB954))
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
                             .clickable { uriHandler.openUri(authViewModel.getSpotifyAuthUrl()) }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
@@ -134,14 +134,14 @@ fun HomeScreen(
                         Icon(
                             imageVector = androidx.compose.material.icons.Icons.Default.CheckCircle,
                             contentDescription = "Spotify Connected",
-                            tint = Color(0xFF1DB954),
+                            tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text = "Spotify Connected",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFF1DB954)
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -322,7 +322,7 @@ fun HomeFeed(
             Text(
                 text = "Good afternoon",
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)
             )
         }
@@ -401,7 +401,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
         modifier = modifier.padding(horizontal = 20.dp, vertical = 14.dp)
     )
 }
@@ -527,7 +527,7 @@ fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit, onSwipeToQue
         enableDismissFromStartToEnd = false,
         backgroundContent = {
             val color by animateColorAsState(
-                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) Color(0xFF1DB954) else Color.Transparent,
+                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.Transparent,
                 label = "swipeBgColor"
             )
             Box(
@@ -730,7 +730,7 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onSwipeToQueue: () -> Un
         enableDismissFromStartToEnd = false,
         backgroundContent = {
             val color by animateColorAsState(
-                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) Color(0xFF1DB954) else Color.Transparent,
+                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.Transparent,
                 label = "swipeBgColor"
             )
             Box(

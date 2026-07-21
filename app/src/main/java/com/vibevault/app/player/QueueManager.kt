@@ -226,4 +226,12 @@ class QueueManager @Inject constructor() {
             _queueState.value = currentQueue.toList()
         }
     }
+
+    fun clearQueue() {
+        originalQueue.clear()
+        currentQueue.clear()
+        _currentIndex.value = -1
+        _currentTrack.value = null
+        _queueState.value = emptyList()
+    }
 }

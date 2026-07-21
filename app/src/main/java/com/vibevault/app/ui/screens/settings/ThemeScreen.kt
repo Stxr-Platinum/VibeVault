@@ -19,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,7 +94,6 @@ data class ThemePalette(
 )
 
 val PaletteColors = listOf(
-    ThemePalette(R.string.palette_vibevault, Color(0x00000001)), // Sentinel for VibeVault custom hardcoded theme
     ThemePalette(R.string.palette_dynamic, Color.Transparent), // Sentinel for System/Dynamic colors
     ThemePalette(R.string.palette_crimson, Color(0xFFEC5464)), // Slightly shifted from DefaultThemeColor (0xFFED5564) to avoid conflict
     ThemePalette(R.string.palette_rose, Color(0xFFD81B60)),
@@ -135,7 +135,7 @@ fun ThemeScreen(
     }
     val (selectedThemeColorInt, onSelectedThemeColorChange) = rememberPreference(
         SelectedThemeColorKey,
-        0x00000001
+        0xFF1E88E5.toInt()
     )
     val (_, onDynamicThemeChange) = rememberPreference(DynamicThemeKey, defaultValue = true)
 
@@ -146,10 +146,6 @@ fun ThemeScreen(
     // Helper function to handle color selection with dynamic theme toggle
     val handleColorSelection: (Color) -> Unit = { color ->
         onSelectedThemeColorChange(color.toArgb())
-        // Enable dynamic theme only when selecting the default/dynamic color
-        // Disable it when selecting any other color
-        val isDynamicColor = color == DefaultThemeColor
-        onDynamicThemeChange(isDynamicColor)
     }
 
     Scaffold(
@@ -331,7 +327,9 @@ fun ThemeControls(
             )
             
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {

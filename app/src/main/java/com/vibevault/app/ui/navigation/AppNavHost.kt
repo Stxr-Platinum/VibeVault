@@ -8,6 +8,12 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.vibevault.app.ui.screens.artist.ArtistScreen
@@ -30,7 +36,7 @@ fun AppNavHost(
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
+        modifier = Modifier.fillMaxSize()
     ) {
         composable(Screen.Login.route) {
             LoginScreen(
@@ -184,7 +190,13 @@ fun AppNavHost(
                 }
             )
         }
-        composable(Screen.Player.route) { backStackEntry ->
+        composable(
+            route = Screen.Player.route,
+            enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Up, animationSpec = tween(400)) },
+            exitTransition = { fadeOut(animationSpec = tween(400)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(400)) },
+            popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Down, animationSpec = tween(400)) }
+        ) { backStackEntry ->
             val trackId = backStackEntry.arguments?.getString("trackId")
             PlayerScreen(
                 trackId = trackId,

@@ -31,7 +31,7 @@ fun VibeBottomBar(
 
     NavigationBar(
         modifier = modifier,
-        containerColor = if (dynamicBackground) Color.Transparent else Color(0xFF121212),
+        containerColor = com.vibevault.app.ui.theme.LocalSolidColorScheme.current.surfaceContainer,
         contentColor = Color.White
     ) {
         Screen.bottomNavItems.forEach { screen ->

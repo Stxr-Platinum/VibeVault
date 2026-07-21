@@ -273,7 +273,7 @@ fun PlaylistScreen(
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(Color(0xFF1DB954)) // Spotify Green
+                                .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
                                 .clickable {
                                     if (tracks.isNotEmpty()) {
                                         viewModel.recordPlayed()

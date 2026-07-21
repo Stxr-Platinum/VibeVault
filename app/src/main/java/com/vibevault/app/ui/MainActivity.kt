@@ -27,6 +27,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -34,9 +37,11 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,11 +52,16 @@ import com.vibevault.app.ui.navigation.AppNavHost
 import com.vibevault.app.ui.navigation.Screen
 import com.vibevault.app.ui.navigation.VibeBottomBar
 import com.vibevault.app.constants.DynamicBackgroundKey
+import com.vibevault.app.constants.DynamicThemeKey
 import com.vibevault.app.utils.rememberPreference
 import com.vibevault.app.ui.theme.VibePrimary
 import com.vibevault.app.ui.theme.VibeVaultTheme
+import com.vibevault.app.ui.theme.extractThemeColor
 import com.vibevault.app.ui.viewmodel.MainViewModel
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.CachePolicy
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -103,11 +113,50 @@ class MainActivity : ComponentActivity() {
         
         enableEdgeToEdge()
         setContent {
-            VibeVaultTheme {
+            val playerViewModel: PlayerViewModel = hiltViewModel()
+            val currentTrack by playerViewModel.currentTrack.collectAsStateWithLifecycle()
+            val (enableDynamicTheme) = rememberPreference(DynamicThemeKey, defaultValue = true)
+            var themeColor by remember { androidx.compose.runtime.mutableStateOf<Color?>(null) }
+            val context = LocalContext.current
+
+            androidx.compose.runtime.LaunchedEffect(currentTrack, enableDynamicTheme) {
+                if (!enableDynamicTheme) {
+                    themeColor = null
+                    return@LaunchedEffect
+                }
+                val url = currentTrack?.albumImageUrl
+                if (url != null) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val request = ImageRequest.Builder(context)
+                                .data(url)
+                                .allowHardware(false)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .networkCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(false)
+                                .build()
+                            val result = context.imageLoader.execute(request)
+                            val bitmap = result.drawable?.toBitmap()
+                            if (bitmap != null) {
+                                val color = bitmap.extractThemeColor()
+                                themeColor = color
+                            } else {
+                                android.util.Log.d("DynamicTheme", "Failed to extract bitmap")
+                                themeColor = null
+                            }
+                        } catch (e: Exception) {
+                            themeColor = null
+                        }
+                    }
+                } else {
+                    themeColor = null
+                }
+            }
+
+            VibeVaultTheme(themeColor = themeColor) {
                 val navController = rememberNavController()
-                val playerViewModel: PlayerViewModel = hiltViewModel()
                 val startDestination by mainViewModel.startDestination.collectAsStateWithLifecycle()
-                val currentTrack by playerViewModel.currentTrack.collectAsStateWithLifecycle()
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route

@@ -124,8 +124,9 @@ import com.vibevault.app.ui.components.EnumDialog
 import androidx.compose.material3.IconButton
 import com.vibevault.app.ui.components.Material3SettingsGroup
 import com.vibevault.app.ui.components.Material3SettingsItem
-//
 import com.vibevault.app.ui.components.SquigglySlider
+import com.vibevault.app.ui.components.WavySlider
+import com.vibevault.app.ui.components.PlayerSliderTrack
 //
 import com.vibevault.app.ui.theme.DefaultThemeColor
 import com.vibevault.app.ui.theme.PlayerSliderColors
@@ -180,7 +181,7 @@ fun AppearanceSettings(
     )
     val (selectedThemeColorInt) = rememberPreference(
         SelectedThemeColorKey,
-        defaultValue = DefaultThemeColor.toArgb()
+        defaultValue = 0xFF1E88E5.toInt()
     )
     // Check if user has selected a custom color (not the default/dynamic color)
     val isUsingCustomColor = selectedThemeColorInt != DefaultThemeColor.toArgb()
@@ -895,7 +896,7 @@ fun AppearanceSettings(
                             .padding(12.dp)
                     ) {
                         val sliderValue = 0.5f
-                        /* WavySlider(
+                        WavySlider(
                             value = sliderValue,
                             valueRange = 0f..1f,
                             onValueChange = { /* preview only */ },
@@ -903,7 +904,7 @@ fun AppearanceSettings(
                             modifier = Modifier.weight(1f),
                             isPlaying = true,
                             enabled = false
-                        ) */
+                        )
                         Text(
                             text = stringResource(R.string.wavy),
                             style = MaterialTheme.typography.labelSmall,
@@ -941,10 +942,10 @@ fun AppearanceSettings(
                             onValueChange = { /* preview only */ },
                             thumb = { Spacer(modifier = Modifier.size(0.dp)) },
                             track = { sliderState ->
-                                /* PlayerSliderTrack(
+                                PlayerSliderTrack(
                                     sliderState = sliderState,
                                     colors = sliderPreviewColors
-                                ) */
+                                )
                             },
                             colors = sliderPreviewColors,
                             enabled = false,

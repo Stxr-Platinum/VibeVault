@@ -50,7 +50,7 @@ fun PremiumScreen(onBack: () -> Unit) {
             accounts = "1 account",
             price = "₹9.99 / month",
             note = "After trial period.",
-            accentGradient = listOf(Color(0xFF1DB954), Color(0xFF53E076))
+            accentGradient = listOf(androidx.compose.material3.MaterialTheme.colorScheme.primary, androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer)
         ),
         PremiumPlan(
             name = "Chintu Special",
@@ -85,8 +85,8 @@ fun PremiumScreen(onBack: () -> Unit) {
                         .background(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    Color(0xFF1DB954),
-                                    Color(0xFF0D7A35),
+                                    androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                    androidx.compose.material3.MaterialTheme.colorScheme.secondary,
                                     androidx.compose.material3.MaterialTheme.colorScheme.background
                                 )
                             )

@@ -181,3 +181,4 @@ tasks.register("unitTestClasses") {
     dependsOn("compileDebugUnitTestSources")
 }
 
+dependencies { implementation("androidx.palette:palette-ktx:1.0.0") }
