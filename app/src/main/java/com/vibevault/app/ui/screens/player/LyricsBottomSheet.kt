@@ -69,6 +69,8 @@ fun LyricsBottomSheet(
                 )
 
                 val lyricsList by viewModel.lyricsList.collectAsState()
+                val isLoadingLyrics by viewModel.isLoadingLyrics.collectAsState()
+                val lyricsOffset by viewModel.lyricsOffset.collectAsState()
                 val currentPosition by viewModel.currentPosition.collectAsState()
 
                 Box(
@@ -82,7 +84,10 @@ fun LyricsBottomSheet(
                         currentPosition = currentPosition,
                         onSeek = { seekTime ->
                             viewModel.seekTo(seekTime)
-                        }
+                        },
+                        isLoading = isLoadingLyrics,
+                        lyricsOffset = lyricsOffset,
+                        onOffsetChange = { viewModel.setLyricsOffset(it) }
                     )
                 }
             } else {

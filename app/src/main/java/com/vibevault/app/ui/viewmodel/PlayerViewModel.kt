@@ -20,6 +20,8 @@ import com.vibevault.app.player.media.AudioFocusManager
 import com.vibevault.app.player.service.PlaybackService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
@@ -77,6 +79,20 @@ class PlayerViewModel @Inject constructor(
     
     private val _lyricsList = MutableStateFlow<List<com.vibevault.app.data.lyrics.LyricsEntry>>(emptyList())
     val lyricsList: StateFlow<List<com.vibevault.app.data.lyrics.LyricsEntry>> = _lyricsList.asStateFlow()
+
+    private val _isLoadingLyrics = MutableStateFlow(false)
+    val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
+
+    private val _lyricsOffset = MutableStateFlow(0L)
+    val lyricsOffset: StateFlow<Long> = _lyricsOffset.asStateFlow()
+
+    fun setLyricsOffset(offsetMs: Long) {
+        _lyricsOffset.value = offsetMs.coerceIn(-10000L, 10000L)
+    }
+
+    fun adjustLyricsOffset(deltaMs: Long) {
+        _lyricsOffset.value = (_lyricsOffset.value + deltaMs).coerceIn(-10000L, 10000L)
+    }
 
     // ── ListenTogether Bridge State ───────────────────────
     private val _isMuted = MutableStateFlow(false)
@@ -142,7 +158,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
-        // 1. Observe QueueManager's currentTrack to trigger playback
+        // 1. Observe QueueManager's currentTrack to trigger playback and lyrics fetch
         viewModelScope.launch {
             queueManager.currentTrack.collect { track ->
                 if (track != null && track.id != currentlyPlayingTrackId) {
@@ -152,19 +168,11 @@ class PlayerViewModel @Inject constructor(
                     stopAllPlayback()
                 }
 
-                // Fetch lyrics
                 if (track != null) {
-                    _lyricsList.value = emptyList()
-                    try {
-                        val durationMs = track.durationMs
-                        val durationSec = (durationMs / 1000).toInt()
-                        val result = lyricsHelper.getLyrics(track.id, track.title, track.artist, durationSec, track.album)
-                        val parsed = LyricsUtils.parseLyrics(result.lyrics)
-                        _lyricsList.value = parsed
-                    } catch (e: Exception) {
-                        Log.e("PlayerViewModel", "Failed to fetch lyrics", e)
-                    }
+                    fetchLyrics(track)
                 } else {
+                    lastFetchedLyricsTrackId = null
+                    cancelFetchLyrics()
                     _lyricsList.value = emptyList()
                 }
             }
@@ -600,8 +608,49 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    private var fetchLyricsJob: Job? = null
+    private var lastFetchedLyricsTrackId: String? = null
+
+    private fun cancelFetchLyrics() {
+        fetchLyricsJob?.cancel()
+        fetchLyricsJob = null
+        _isLoadingLyrics.value = false
+    }
+
+    private fun fetchLyrics(track: Track) {
+        if (track.id == lastFetchedLyricsTrackId && _lyricsList.value.isNotEmpty()) {
+            _isLoadingLyrics.value = false
+            return // Skip redundant fetching for the same track
+        }
+
+        cancelFetchLyrics()
+        _isLoadingLyrics.value = true
+        fetchLyricsJob = viewModelScope.launch(Dispatchers.IO) {
+            _lyricsList.value = emptyList()
+            lastFetchedLyricsTrackId = track.id
+            try {
+                val durationSec = (track.durationMs / 1000).toInt()
+                val result = lyricsHelper.getLyrics(track.id, track.title, track.artist, durationSec, track.album)
+                val parsed = LyricsUtils.parseLyrics(result.lyrics)
+                if (lastFetchedLyricsTrackId == track.id) {
+                    _lyricsList.value = parsed
+                }
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Failed to fetch lyrics for track: ${track.title}", e)
+                if (lastFetchedLyricsTrackId == track.id) {
+                    _lyricsList.value = emptyList()
+                }
+            } finally {
+                if (lastFetchedLyricsTrackId == track.id) {
+                    _isLoadingLyrics.value = false
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        cancelFetchLyrics()
         audioFocusManager.abandonFocus()
         player?.release()
     }

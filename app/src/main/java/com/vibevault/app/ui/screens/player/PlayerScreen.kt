@@ -92,6 +92,9 @@ fun PlayerScreen(
     val shuffleModeEnabled by viewModel.shuffleModeEnabled.collectAsStateWithLifecycle()
     val repeatMode by viewModel.repeatMode.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val lyricsList by viewModel.lyricsList.collectAsStateWithLifecycle()
+    val isLoadingLyrics by viewModel.isLoadingLyrics.collectAsStateWithLifecycle()
+    val lyricsOffset by viewModel.lyricsOffset.collectAsStateWithLifecycle()
 
     // Preferences
     val (useNewPlayerDesign) = rememberPreference(UseNewPlayerDesignKey, defaultValue = false)
@@ -310,6 +313,10 @@ fun PlayerScreen(
                                 track = track,
                                 positionMs = position,
                                 onSeekTo = { viewModel.seekTo(it) },
+                                lyricsEntries = lyricsList,
+                                isLoading = isLoadingLyrics,
+                                lyricsOffset = lyricsOffset,
+                                onOffsetChange = { viewModel.setLyricsOffset(it) },
                                 activeLyricColor = dynamicActiveLyricColor,
                                 inactiveLyricColor = dynamicInactiveLyricColor
                             )
