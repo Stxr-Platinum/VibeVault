@@ -424,13 +424,10 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun toggleLike(trackId: String) {
         val current = likedSongDao.getLikedSong(trackId)
-        
         if (current != null) {
-            // Toggle soft-delete
             val newState = !current.isDeleted
             likedSongDao.insertLikedSong(current.copy(isDeleted = newState, isSynced = false, clientTimestamp = System.currentTimeMillis()))
         } else {
-            // Check if we have history metadata for this track
             val history = historyDao.getHistoryForTrack(trackId)
             if (history != null) {
                 val entity = LikedSongEntity(
@@ -446,27 +443,45 @@ class MusicRepositoryImpl @Inject constructor(
                     clientTimestamp = System.currentTimeMillis()
                 )
                 likedSongDao.insertLikedSong(entity)
-            } else {
-                // Last resort: fetch from Spotify
-                spotifyApi.getTrack(trackId).onSuccess { dto ->
-                    val id = dto.id ?: return@onSuccess
-                    val entity = LikedSongEntity(
-                        id = id,
-                        title = dto.name,
-                        artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                        album = dto.album?.name ?: "Unknown",
-                        albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                        audioUrl = dto.previewUrl ?: "",
-                        durationMs = dto.durationMs,
-                        isSynced = false,
-                        isDeleted = false,
-                        clientTimestamp = System.currentTimeMillis()
-                    )
-                    likedSongDao.insertLikedSong(entity)
-                }
             }
         }
-        syncScheduler.syncNow()
+        try {
+            syncScheduler.syncNow()
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    override suspend fun toggleLikeTrack(track: Track) {
+        val allLiked = likedSongDao.getAllLikedSongs().firstOrNull() ?: emptyList()
+        val current = allLiked.find { 
+            it.id == track.id || 
+            (it.title.equals(track.title, ignoreCase = true) && it.artist.equals(track.artist, ignoreCase = true))
+        }
+
+        if (current != null) {
+            val newState = !current.isDeleted
+            likedSongDao.insertLikedSong(current.copy(isDeleted = newState, isSynced = false, clientTimestamp = System.currentTimeMillis()))
+        } else {
+            val entity = LikedSongEntity(
+                id = track.id,
+                title = track.title,
+                artist = track.artist,
+                album = track.album,
+                albumImageUrl = track.albumImageUrl,
+                audioUrl = track.audioUrl ?: "",
+                durationMs = track.durationMs,
+                isSynced = false,
+                isDeleted = false,
+                clientTimestamp = System.currentTimeMillis()
+            )
+            likedSongDao.insertLikedSong(entity)
+        }
+        try {
+            syncScheduler.syncNow()
+        } catch (e: Exception) {
+            // Ignore
+        }
     }
 
     override suspend fun recordPlay(track: Track) {

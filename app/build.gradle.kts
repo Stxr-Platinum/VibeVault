@@ -58,6 +58,14 @@ android {
         compose = true
         buildConfig = true
     }
+
+    packaging {
+        resources {
+            excludes += "META-INF/NOTICE.md"
+            excludes += "META-INF/CONTRIBUTORS.md"
+            excludes += "META-INF/LICENSE.md"
+        }
+    }
 }
 
 configurations.all {
@@ -140,6 +148,13 @@ dependencies {
     implementation(libs.protobuf.javalite)
     implementation(libs.protobuf.kotlin.lite)
     implementation(project(":innertube"))
+    implementation(project(":lrclib"))
+    implementation(project(":kugou"))
+    implementation(project(":betterlyrics"))
+    implementation(project(":simpmusic"))
+    implementation(project(":youlyplus"))
+    implementation(project(":paxsenixlyrics"))
+    implementation(project(":musixmatch"))
 
     // ── Coroutines ─────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
@@ -174,6 +189,10 @@ dependencies {
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     implementation("com.jakewharton.timber:timber:5.0.1")
+
+    // ── Romanization ─────────────────────────────────────────
+    implementation(libs.kuromoji.ipadic)
+    implementation(libs.tinypinyin)
 }
 
 

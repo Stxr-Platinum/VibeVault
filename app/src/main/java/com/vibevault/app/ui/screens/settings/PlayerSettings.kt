@@ -218,14 +218,14 @@ fun PlayerSettings(
                 onAudioQualityChange(it)
                 showAudioQualityDialog = false
             },
-            title = stringResource(R.string.audio_quality),
+            title = "",
             current = audioQuality,
             values = AudioQuality.values().toList(),
             valueText = {
                 when (it) {
-                    AudioQuality.AUTO -> stringResource(R.string.audio_quality_auto)
-                    AudioQuality.HIGH -> stringResource(R.string.audio_quality_high)
-                    AudioQuality.LOW -> stringResource(R.string.audio_quality_low)
+                    AudioQuality.AUTO -> ""
+                    AudioQuality.HIGH -> ""
+                    AudioQuality.LOW -> ""
                 }
             }
         )
@@ -237,10 +237,10 @@ fun PlayerSettings(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.player_and_audio)) },
+                title = { Text("") },
                 navigationIcon = {
                     IconButton(onClick = navController::navigateUp) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                        Icon(painterResource(android.R.drawable.ic_menu_gallery), contentDescription = null)
                     }
                 }
             )
@@ -257,20 +257,20 @@ fun PlayerSettings(
         if (showCrossfadeBetaDialog) {
             DefaultDialog(
                 onDismiss = { showCrossfadeBetaDialog = false },
-                title = { Text(stringResource(R.string.crossfade_beta_title)) },
+                title = { Text("") },
                 buttons = {
                     TextButton(onClick = { showCrossfadeBetaDialog = false }) {
-                        Text(stringResource(R.string.cancel))
+                        Text("")
                     }
                     TextButton(onClick = {
                         showCrossfadeBetaDialog = false
                         onCrossfadeEnabledChange(true)
                     }) {
-                        Text(stringResource(R.string.enable))
+                        Text("")
                     }
                 }
             ) {
-                Text(stringResource(R.string.crossfade_beta_message))
+                Text("")
             }
         }
 
@@ -283,17 +283,17 @@ fun PlayerSettings(
         )
 
         Material3SettingsGroup(
-            title = stringResource(R.string.player),
+            title = "",
             items = buildList {
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text(stringResource(R.string.audio_quality)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     description = {
                         Text(
                             when (audioQuality) {
-                                AudioQuality.AUTO -> stringResource(R.string.audio_quality_auto)
-                                AudioQuality.HIGH -> stringResource(R.string.audio_quality_high)
-                                AudioQuality.LOW -> stringResource(R.string.audio_quality_low)
+                                AudioQuality.AUTO -> ""
+                                AudioQuality.HIGH -> ""
+                                AudioQuality.LOW -> ""
                             }
                         )
                     },
@@ -302,14 +302,14 @@ fun PlayerSettings(
                 ))
                 // JioSaavn settings navigation
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text(stringResource(R.string.jiosaavn_settings)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     description = {
                         Text(
                             if (saavnEnabled) {
                                 saavnQuality.toLabel()
                             } else {
-                                stringResource(R.string.jiosaavn_streaming_disabled)
+                                ""
                             }
                         )
                     },
@@ -318,16 +318,16 @@ fun PlayerSettings(
                 ))
                 // YouTube Extractor Settings
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.info),
-                    title = { Text(stringResource(R.string.youtube_decryption_settings)) },
-                    description = { Text(stringResource(R.string.enabled)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     onClick = { navController.navigate("settings/player/cipher") },
                     isExpressive = true
                 ))
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.linear_scale),
-                    title = { Text(stringResource(R.string.crossfade)) },
-                    description = { Text(stringResource(R.string.crossfade_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     showBadge = true,
                     trailingContent = {
                         Switch(
@@ -362,8 +362,8 @@ fun PlayerSettings(
                 ))
                 if (crossfadeEnabled) {
                     add(Material3SettingsItem(
-                        icon = painterResource(R.drawable.timer),
-                        title = { Text(stringResource(R.string.crossfade_duration)) },
+                        icon = painterResource(android.R.drawable.ic_menu_gallery),
+                        title = { Text("") },
                         description = {
                             Column {
                                 Text(pluralStringResource(R.plurals.seconds, crossfadeDuration.toInt(), crossfadeDuration.toInt()))
@@ -379,9 +379,9 @@ fun PlayerSettings(
                         descriptionBelow = true
                     ))
                     add(Material3SettingsItem(
-                        icon = painterResource(R.drawable.album),
-                        title = { Text(stringResource(R.string.crossfade_gapless)) },
-                        description = { Text(stringResource(R.string.crossfade_gapless_desc)) },
+                        icon = painterResource(android.R.drawable.ic_menu_gallery),
+                        title = { Text("") },
+                        description = { Text("") },
                         trailingContent = {
                             Switch(
                                 checked = crossfadeGapless,
@@ -403,8 +403,8 @@ fun PlayerSettings(
                     ))
                 }
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.history),
-                    title = { Text(stringResource(R.string.history_duration)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     description = {
                         Column {
                             Text(historyDuration.roundToInt().toString())
@@ -419,9 +419,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ))
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.fast_forward),
-                    title = { Text(stringResource(R.string.skip_silence)) },
-                    description = { Text(stringResource(R.string.skip_silence_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = skipSilence,
@@ -442,9 +442,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ))
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.skip_next),
-                    title = { Text(stringResource(R.string.skip_silence_instant)) },
-                    description = { Text(stringResource(R.string.skip_silence_instant_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = skipSilenceInstant,
@@ -466,8 +466,8 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ))
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.volume_up),
-                    title = { Text(stringResource(R.string.audio_normalization)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = audioNormalization,
@@ -487,12 +487,12 @@ fun PlayerSettings(
                     isExpressive = true
                 ))
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.graphic_eq),
-                    title = { Text(stringResource(R.string.audio_offload)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     description = {
                         Text(
-                            if (crossfadeEnabled) stringResource(R.string.audio_offload_disabled_by_crossfade)
-                            else stringResource(R.string.audio_offload_description)
+                            if (crossfadeEnabled) ""
+                            else ""
                         )
                     },
                     trailingContent = {
@@ -518,9 +518,9 @@ fun PlayerSettings(
                 // Only show Cast setting in GMS builds (not in F-Droid/FOSS)
                 if (false) {
                     add(Material3SettingsItem(
-                        icon = painterResource(R.drawable.cast),
-                        title = { Text(stringResource(R.string.google_cast)) },
-                        description = { Text(stringResource(R.string.google_cast_description)) },
+                        icon = painterResource(android.R.drawable.ic_menu_gallery),
+                        title = { Text("") },
+                        description = { Text("") },
                         trailingContent = {
                             Switch(
                                 checked = enableGoogleCast,
@@ -542,9 +542,9 @@ fun PlayerSettings(
                     ))
                 }
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.arrow_forward),
-                    title = { Text(stringResource(R.string.seek_seconds_addup)) },
-                    description = { Text(stringResource(R.string.seek_seconds_addup_description)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = seekExtraSeconds,
@@ -565,9 +565,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ))
                 add(Material3SettingsItem(
-                    icon = painterResource(R.drawable.viviequlizer),
-                    title = { Text(stringResource(R.string.vivi_equalizer)) },
-                    description = { Text(stringResource(R.string.vivi_equalizer_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     onClick = { navController.navigate("settings/equalizer") },
                     isExpressive = true,
                     descriptionBelow = true
@@ -578,12 +578,12 @@ fun PlayerSettings(
         Spacer(modifier = Modifier.height(27.dp))
 
         Material3SettingsGroup(
-            title = stringResource(R.string.queue),
+            title = "",
             items = listOf(
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.queue_music),
-                    title = { Text(stringResource(R.string.persistent_queue)) },
-                    description = { Text(stringResource(R.string.persistent_queue_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = persistentQueue,
@@ -604,9 +604,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.playlist_add),
-                    title = { Text(stringResource(R.string.auto_load_more)) },
-                    description = { Text(stringResource(R.string.auto_load_more_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = autoLoadMore,
@@ -627,9 +627,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.repeat),
-                    title = { Text(stringResource(R.string.disable_load_more_when_repeat_all)) },
-                    description = { Text(stringResource(R.string.disable_load_more_when_repeat_all_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = disableLoadMoreWhenRepeatAll,
@@ -650,9 +650,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.download),
-                    title = { Text(stringResource(R.string.auto_download_on_like)) },
-                    description = { Text(stringResource(R.string.auto_download_on_like_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = autoDownloadOnLike,
@@ -673,9 +673,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.similar),
-                    title = { Text(stringResource(R.string.enable_similar_content)) },
-                    description = { Text(stringResource(R.string.similar_content_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = similarContentEnabled,
@@ -696,9 +696,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.shuffle),
-                    title = { Text(stringResource(R.string.persistent_shuffle_title)) },
-                    description = { Text(stringResource(R.string.persistent_shuffle_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = persistentShuffleAcrossQueues,
@@ -719,9 +719,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.shuffle),
-                    title = { Text(stringResource(R.string.remember_shuffle_and_repeat)) },
-                    description = { Text(stringResource(R.string.remember_shuffle_and_repeat_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = rememberShuffleAndRepeat,
@@ -742,9 +742,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.shuffle),
-                    title = { Text(stringResource(R.string.shuffle_playlist_first)) },
-                    description = { Text(stringResource(R.string.shuffle_playlist_first_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = shufflePlaylistFirst,
@@ -765,9 +765,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.queue_music),
-                    title = { Text(stringResource(R.string.prevent_duplicate_tracks_in_queue)) },
-                    description = { Text(stringResource(R.string.prevent_duplicate_tracks_in_queue_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = preventDuplicateTracksInQueue,
@@ -788,9 +788,9 @@ fun PlayerSettings(
                     descriptionBelow = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.skip_next),
-                    title = { Text(stringResource(R.string.auto_skip_next_on_error)) },
-                    description = { Text(stringResource(R.string.auto_skip_next_on_error_desc)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
+                    description = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = autoSkipNextOnError,
@@ -816,11 +816,11 @@ fun PlayerSettings(
         Spacer(modifier = Modifier.height(27.dp))
 
         Material3SettingsGroup(
-            title = stringResource(R.string.misc),
+            title = "",
             items = listOf(
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.clear_all),
-                    title = { Text(stringResource(R.string.stop_music_on_task_clear)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = stopMusicOnTaskClear,
@@ -840,8 +840,8 @@ fun PlayerSettings(
                     isExpressive = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.volume_off_pause),
-                    title = { Text(stringResource(R.string.pause_music_when_media_is_muted)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = pauseOnMute,
@@ -861,8 +861,8 @@ fun PlayerSettings(
                     isExpressive = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.bluetooth),
-                    title = { Text(stringResource(R.string.resume_on_bluetooth_connect)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = resumeOnBluetoothConnect,
@@ -882,8 +882,8 @@ fun PlayerSettings(
                     isExpressive = true
                 ),
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.screenshot),
-                    title = { Text(stringResource(R.string.keep_screen_on_when_player_is_expanded)) },
+                    icon = painterResource(android.R.drawable.ic_menu_gallery),
+                    title = { Text("") },
                     trailingContent = {
                         Switch(
                             checked = keepScreenOn,

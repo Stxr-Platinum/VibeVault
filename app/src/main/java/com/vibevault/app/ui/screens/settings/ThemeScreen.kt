@@ -94,26 +94,26 @@ data class ThemePalette(
 )
 
 val PaletteColors = listOf(
-    ThemePalette(R.string.palette_dynamic, Color.Transparent), // Sentinel for System/Dynamic colors
-    ThemePalette(R.string.palette_crimson, Color(0xFFEC5464)), // Slightly shifted from DefaultThemeColor (0xFFED5564) to avoid conflict
-    ThemePalette(R.string.palette_rose, Color(0xFFD81B60)),
-    ThemePalette(R.string.palette_purple, Color(0xFF8E24AA)),
-    ThemePalette(R.string.palette_monochrome, Color(0xFF000000)),
-    ThemePalette(R.string.palette_deep_purple, Color(0xFF5E35B1)),
-    ThemePalette(R.string.palette_indigo, Color(0xFF3949AB)),
-    ThemePalette(R.string.palette_blue, Color(0xFF1E88E5)),
-    ThemePalette(R.string.palette_sky_blue, Color(0xFF039BE5)),
-    ThemePalette(R.string.palette_cyan, Color(0xFF00ACC1)),
-    ThemePalette(R.string.palette_teal, Color(0xFF00897B)),
-    ThemePalette(R.string.palette_light_green, Color(0xFF7CB342)),
-    ThemePalette(R.string.palette_lime, Color(0xFFC0CA33)),
-    ThemePalette(R.string.palette_yellow, Color(0xFFFDD835)),
-    ThemePalette(R.string.palette_amber, Color(0xFFFFB300)),
-    ThemePalette(R.string.palette_orange, Color(0xFFFB8C00)),
-    ThemePalette(R.string.palette_deep_orange, Color(0xFFF4511E)),
-    ThemePalette(R.string.palette_brown, Color(0xFF6D4C41)),
-    ThemePalette(R.string.palette_grey, Color(0xFF757575)),
-    ThemePalette(R.string.palette_blue_grey, Color(0xFF546E7A)),
+    ThemePalette(0, Color.Transparent), // Sentinel for System/Dynamic colors
+    ThemePalette(0, Color(0xFFEC5464)), // Slightly shifted from DefaultThemeColor (0xFFED5564) to avoid conflict
+    ThemePalette(0, Color(0xFFD81B60)),
+    ThemePalette(0, Color(0xFF8E24AA)),
+    ThemePalette(0, Color(0xFF000000)),
+    ThemePalette(0, Color(0xFF5E35B1)),
+    ThemePalette(0, Color(0xFF3949AB)),
+    ThemePalette(0, Color(0xFF1E88E5)),
+    ThemePalette(0, Color(0xFF039BE5)),
+    ThemePalette(0, Color(0xFF00ACC1)),
+    ThemePalette(0, Color(0xFF00897B)),
+    ThemePalette(0, Color(0xFF7CB342)),
+    ThemePalette(0, Color(0xFFC0CA33)),
+    ThemePalette(0, Color(0xFFFDD835)),
+    ThemePalette(0, Color(0xFFFFB300)),
+    ThemePalette(0, Color(0xFFFB8C00)),
+    ThemePalette(0, Color(0xFFF4511E)),
+    ThemePalette(0, Color(0xFF6D4C41)),
+    ThemePalette(0, Color(0xFF757575)),
+    ThemePalette(0, Color(0xFF546E7A)),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,12 +151,12 @@ fun ThemeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.theme_colors)) },
+                title = { Text("") },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = stringResource(R.string.cd_back)
+                            painter = painterResource(android.R.drawable.ic_menu_gallery),
+                            contentDescription = ""
                         )
                     }
                 },
@@ -321,7 +321,7 @@ fun ThemeControls(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = stringResource(R.string.theme_mode),
+                text = "",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -411,7 +411,7 @@ fun ThemeControls(
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = stringResource(R.string.color_palette),
+                text = "",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -493,10 +493,10 @@ fun ModeCircle(
     val interactionSource = remember { MutableInteractionSource() }
     
     val contentDesc = when {
-        targetPureBlack -> stringResource(R.string.cd_pure_black_mode)
-        targetMode == DarkMode.OFF -> stringResource(R.string.cd_light_mode)
-        targetMode == DarkMode.ON -> stringResource(R.string.cd_dark_mode)
-        else -> stringResource(R.string.cd_system_mode)
+        targetPureBlack -> ""
+        targetMode == DarkMode.OFF -> ""
+        targetMode == DarkMode.ON -> ""
+        else -> ""
     }
     
     // Outer card container similar to ReadYou's SelectableMiniPalette
@@ -546,7 +546,7 @@ fun ModeCircle(
             when {
                 showIcon -> {
                     Icon(
-                        painter = painterResource(R.drawable.sync),
+                        painter = painterResource(android.R.drawable.ic_menu_gallery),
                         contentDescription = null,
                         tint = modeColorScheme.onSurface,
                         modifier = Modifier.size(20.dp)
@@ -576,7 +576,7 @@ fun ModeCircle(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.check),
+                                painter = painterResource(android.R.drawable.ic_menu_gallery),
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.size(14.dp)
@@ -664,7 +664,7 @@ fun DynamicBackgroundModeCircle(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.check),
+                        painter = painterResource(android.R.drawable.ic_menu_gallery),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(14.dp)
@@ -706,7 +706,7 @@ fun PaletteItem(
     
     val interactionSource = remember { MutableInteractionSource() }
     val paletteName = stringResource(palette.nameRes)
-    val contentDesc = stringResource(R.string.cd_palette_item, paletteName)
+    val contentDesc = stringResource(0, paletteName)
     
     // Outer card container similar to ReadYou's SelectableMiniPalette
     Box(
@@ -737,7 +737,7 @@ fun PaletteItem(
         if (palette.seedColor == Color.Transparent) {
             // Draw Dynamic/System icon using Material Design icon directly in the center
             Icon(
-                painter = painterResource(R.drawable.palette),
+                painter = painterResource(android.R.drawable.ic_menu_gallery),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(24.dp)
@@ -766,7 +766,7 @@ fun PaletteItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.check),
+                        painter = painterResource(android.R.drawable.ic_menu_gallery),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(14.dp)
@@ -826,7 +826,7 @@ fun PaletteItem(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.check),
+                            painter = painterResource(android.R.drawable.ic_menu_gallery),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(14.dp)

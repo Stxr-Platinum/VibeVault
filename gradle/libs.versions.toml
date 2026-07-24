@@ -35,6 +35,11 @@ brotli = "0.1.2"
 desugaring = "2.1.5"
 newpipeextractor = "v0.25.2"
 
+# Romanization
+kuromojiIpadic = "0.9.0"
+tinypinyin = "2.0.3"
+timber = "5.0.1"
+
 # Coroutines
 coroutines = "1.9.0"
 
@@ -113,6 +118,7 @@ supabase-functions = { group = "io.github.jan-tennert.supabase", name = "functio
 
 # Ktor (engine for supabase-kt)
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
 ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
@@ -141,6 +147,11 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
 protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
+
+# Romanization
+kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
+tinypinyin = { module = "com.github.promeG:tinypinyin", version.ref = "tinypinyin" }
+timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 
 # WorkManager
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntime" }

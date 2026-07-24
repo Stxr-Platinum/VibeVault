@@ -411,7 +411,7 @@ fun ListenTogetherScreen(
             // Settings link
             item {
                 SettingsLinkCard(
-                    onClick = { navController.navigate("settings/integrations/listen_together") }
+                    onClick = { navController.navigate(com.vibevault.app.ui.navigation.Screen.ListenTogetherSettings.route) }
                 )
             }
         }

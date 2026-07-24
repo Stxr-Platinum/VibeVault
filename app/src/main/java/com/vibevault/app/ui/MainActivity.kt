@@ -163,19 +163,18 @@ class MainActivity : ComponentActivity() {
                 
                 val (dynamicBackground) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
 
-                // Auto-navigate to Now Playing screen when guest receives a track change
+                // Handle guest track change from host: pop up PlayerScreen if not open, or update in-place if already open
                 val listenTogetherVm: com.vibevault.app.ui.viewmodels.ListenTogetherViewModel = hiltViewModel()
                 val guestTrackId by listenTogetherVm.guestTrackChanged.collectAsStateWithLifecycle()
                 
                 androidx.compose.runtime.LaunchedEffect(guestTrackId) {
                     guestTrackId?.let { trackId ->
-                        android.util.Log.d("VibeVault", "Guest received track change: $trackId, auto-navigating")
+                        android.util.Log.d("VibeVault", "Guest received track change: $trackId")
                         val current = navController.currentBackStackEntry?.destination?.route
-                        // Only navigate if not already on the Player screen
-                        if (current?.startsWith("player_screen") != true) {
+                        if (current?.startsWith("player") != true) {
                             navController.navigate(Screen.Player.createRoute(trackId))
                         }
-                        // Clear the state so it doesn't re-trigger on configuration change
+                        // Clear the state so it doesn't re-trigger
                         listenTogetherVm.clearGuestTrackChanged()
                     }
                 }

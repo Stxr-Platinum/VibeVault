@@ -1,6 +1,7 @@
 package com.vibevault.app
 
 import android.app.Application
+import kotlin.OptIn
 import dagger.hilt.android.HiltAndroidApp
 
 import androidx.work.Configuration
@@ -18,6 +19,7 @@ class VibeVaultApp : Application(), Configuration.Provider {
             .setMinimumLoggingLevel(android.util.Log.INFO)
             .build()
             
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
         

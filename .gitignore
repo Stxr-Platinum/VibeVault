@@ -4,10 +4,8 @@
 local.properties
 /.idea/
 .DS_Store
-/build
-/app/build
-/innertube/build
-/jiosaavn/build
+**/build
+build_log.txt
 /captures
 .externalNativeBuild
 .cxx

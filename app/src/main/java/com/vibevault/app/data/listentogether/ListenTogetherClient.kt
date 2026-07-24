@@ -836,7 +836,6 @@ class ListenTogetherClient @Inject constructor(
                         return
                     }
 
-                    _pendingJoinRequests.value += payload
                     log(LogLevel.INFO, "Join request received", "User: ${payload.username}")
                     
                     // Check if auto-approval is enabled
@@ -848,13 +847,14 @@ class ListenTogetherClient @Inject constructor(
                             log(LogLevel.INFO, "Auto-approving join request", "User: ${payload.username}")
                             approveJoin(payload.userId)
                         } else {
+                            _pendingJoinRequests.value += payload
                             // Notify host with Approve/Reject actions
                             if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                                 showJoinRequestNotification(payload)
                             }
+                            scope.launch { _events.emit(ListenTogetherEvent.JoinRequestReceived(payload.userId, payload.username)) }
                         }
                     }
-                    scope.launch { _events.emit(ListenTogetherEvent.JoinRequestReceived(payload.userId, payload.username)) }
                 }
                 
                 MessageTypes.JOIN_APPROVED -> {
@@ -961,7 +961,7 @@ class ListenTogetherClient @Inject constructor(
                         PlaybackActions.CHANGE_TRACK -> {
                             _roomState.value = _roomState.value?.copy(
                                 currentTrack = payload.trackInfo,
-                                isPlaying = false,
+                                isPlaying = true,
                                 position = 0
                             )
                         }
@@ -1287,6 +1287,7 @@ class ListenTogetherClient @Inject constructor(
             log(LogLevel.ERROR, "Cannot approve join", "Not host")
             return
         }
+        _pendingJoinRequests.value = _pendingJoinRequests.value.filter { it.userId != userId }
         sendMessage(MessageTypes.APPROVE_JOIN, ApproveJoinPayload(userId))
         
         // Dismiss notification immediately when approved from UI

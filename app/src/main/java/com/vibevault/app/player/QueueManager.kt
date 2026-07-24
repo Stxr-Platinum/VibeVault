@@ -166,6 +166,11 @@ class QueueManager @Inject constructor() {
     fun syncExternalTrack(track: Track) {
         val index = currentQueue.indexOfFirst { it.id == track.id }
         if (index >= 0) {
+            currentQueue[index] = track
+            val origIdx = originalQueue.indexOfFirst { it.id == track.id }
+            if (origIdx >= 0) {
+                originalQueue[origIdx] = track
+            }
             _currentIndex.value = index
             updateState() // CRITICAL: Actually emit the new track to the UI!
         } else {

@@ -41,6 +41,7 @@ interface MusicRepository {
 
     /** Toggle like status for a track. */
     suspend fun toggleLike(trackId: String)
+    suspend fun toggleLikeTrack(track: Track)
 
     /** Record that a track was played. */
     suspend fun recordPlay(track: Track)

@@ -40,7 +40,14 @@ fun VibeBottomBar(
             NavigationBarItem(
                 selected = isSelected,
                 onClick = {
-                    if (currentRoute != screen.route) {
+                    if (screen == Screen.Home) {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) {
+                                inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                    } else if (currentRoute != screen.route) {
                         navController.navigate(screen.route) {
                             // Pop up to start destination to avoid stacking
                             popUpTo(Screen.Home.route) { saveState = true }

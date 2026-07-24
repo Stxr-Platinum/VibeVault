@@ -985,12 +985,14 @@ class ListenTogetherManager @Inject constructor(
                         // Notify UI to auto-open the Now Playing screen
                         _guestTrackChanged.value = track.id
                         
+                        val shouldPlay = roomState.value?.isPlaying != false
+                        
                         // If we have a queue, use it! This is the "smart" sync path.
                         if (action.queue != null && action.queue.isNotEmpty()) {
                             val queueTitle = action.queueTitle
                             applyPlaybackState(
                                 currentTrack = track,
-                                isPlaying = false, // Will be updated by subsequent PLAY or pending sync
+                                isPlaying = shouldPlay,
                                 position = 0,
                                 queue = action.queue,
                                 queueTitle = queueTitle,
@@ -999,7 +1001,7 @@ class ListenTogetherManager @Inject constructor(
                         } else {
                             // Fallback to old behavior (network fetch) if no queue provided
                             bufferingTrackId = track.id
-                            syncToTrack(track, false, 0)
+                            syncToTrack(track, shouldPlay, 0)
                         }
                     }
                 }
@@ -1274,31 +1276,19 @@ class ListenTogetherManager @Inject constructor(
                 }
                 
                 if (bypassBuffer) {
-                    // Manual sync/reconnect: apply play/pause immediately, no buffer protocol
-                    Timber.tag(TAG).d("Bypass buffer: immediately applying play=$isPlaying at pos=$position")
+                    // Immediate sync: apply play/pause immediately without artificial polling delay
+                    val pending = pendingSyncState
+                    val finalIsPlaying = pending?.isPlaying ?: isPlaying
+                    val finalPos = pending?.position ?: position
                     
-                    // Wait for player to be ready before seek/play
-                    var attempts = 0
-                    while (player.playbackState != Player.STATE_READY && attempts < 100) {
-                        delay(50)
-                        attempts++
-                    }
-                    if (player.playbackState == Player.STATE_READY) {
-                        val pending = pendingSyncState
-                        val finalIsPlaying = pending?.isPlaying ?: isPlaying
-                        val finalPos = pending?.position ?: position
-                        
-                        Timber.tag(TAG).d("Player ready after ${attempts * 50}ms, seeking to $finalPos, play=$finalIsPlaying")
-                        player.seekTo(finalPos)
-                        if (finalIsPlaying) {
-                            connection.play()
-                            Timber.tag(TAG).d("Bypass: PLAY issued")
-                        } else {
-                            connection.pause()
-                            Timber.tag(TAG).d("Bypass: PAUSE issued")
-                        }
+                    Timber.tag(TAG).d("Bypass buffer: immediately applying play=$finalIsPlaying at pos=$finalPos")
+                    player.seekTo(finalPos)
+                    if (finalIsPlaying) {
+                        connection.play()
+                        Timber.tag(TAG).d("Bypass: PLAY issued")
                     } else {
-                        Timber.tag(TAG).w("Player not ready after 5s timeout during bypass sync")
+                        connection.pause()
+                        Timber.tag(TAG).d("Bypass: PAUSE issued")
                     }
                     
                     // Clear sync state
@@ -1380,33 +1370,6 @@ class ListenTogetherManager @Inject constructor(
                         }
                         connection.allowInternalSync = false
                         
-                        // Wait for player to be ready - monitor actual player state
-                        var waitCount = 0
-                        while (waitCount < 40) { // Max 2 seconds (40 * 50ms)
-                            // Check generation again while waiting
-                            if (currentTrackGeneration != generation) {
-                                Timber.tag(TAG).d("Generation changed while waiting for player ready - aborting sync for ${track.id}")
-                                isSyncing = false
-                                return@launch
-                            }
-                            try {
-                                val player = connection.player
-                                if (player.playbackState == Player.STATE_READY) {
-                                    Timber.tag(TAG).d("Player ready after ${waitCount * 50}ms")
-                                    break
-                                }
-                            } catch (e: Exception) {
-                                Timber.tag(TAG).e(e, "Error checking player state")
-                                break
-                            }
-                            delay(50)
-                            waitCount++
-                        }
-
-                        // Do NOT seek here; defer the exact seek until after the server signals buffer-complete
-                        // Ensure paused state before signaling ready
-                        connection.pause()
-
                         // Store pending sync (guest will apply seek + play/pause after BufferComplete)
                         pendingSyncState = SyncStatePayload(
                             currentTrack = track,
@@ -1414,6 +1377,12 @@ class ListenTogetherManager @Inject constructor(
                             position = position,
                             lastUpdate = System.currentTimeMillis()
                         )
+
+                        if (shouldPlay) {
+                            connection.play()
+                        } else {
+                            connection.pause()
+                        }
 
                         // Apply immediately if buffer-complete already arrived
                         applyPendingSyncIfReady()

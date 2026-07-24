@@ -34,9 +34,17 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
     }
 }
 
 rootProject.name = "VibeVault"
 include(":app")
 include(":innertube")
+include(":lrclib")
+include(":kugou")
+include(":betterlyrics")
+include(":simpmusic")
+include(":youlyplus")
+include(":paxsenixlyrics")
+include(":musixmatch")

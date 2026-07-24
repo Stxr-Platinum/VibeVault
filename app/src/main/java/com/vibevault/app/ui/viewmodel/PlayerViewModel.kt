@@ -34,6 +34,10 @@ import com.vibevault.app.extensions.toMediaItem
  * PlayerViewModel — Bridges Media3 MediaController to the Compose UI,
  * using QueueManager as the single source of truth for playlist state.
  */
+import com.vibevault.app.data.lyrics.LyricsHelper
+import com.vibevault.app.data.lyrics.LyricsWithProvider
+import com.vibevault.app.data.lyrics.LyricsUtils
+
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -41,7 +45,8 @@ class PlayerViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
     private val audioFocusManager: AudioFocusManager,
     private val sessionManager: SessionManager,
-    private val listenTogetherManager: ListenTogetherManager
+    private val listenTogetherManager: ListenTogetherManager,
+    private val lyricsHelper: LyricsHelper
 ) : ViewModel() {
 
     // ── Playback State (Delegated to QueueManager) ──────────
@@ -66,6 +71,12 @@ class PlayerViewModel @Inject constructor(
 
     private val _spotifyError = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val spotifyError: SharedFlow<String> = _spotifyError.asSharedFlow()
+
+    private val _currentLyrics = MutableStateFlow<com.vibevault.app.data.lyrics.LyricsEntry?>(null)
+    val currentLyrics: StateFlow<com.vibevault.app.data.lyrics.LyricsEntry?> = _currentLyrics.asStateFlow()
+    
+    private val _lyricsList = MutableStateFlow<List<com.vibevault.app.data.lyrics.LyricsEntry>>(emptyList())
+    val lyricsList: StateFlow<List<com.vibevault.app.data.lyrics.LyricsEntry>> = _lyricsList.asStateFlow()
 
     // ── ListenTogether Bridge State ───────────────────────
     private val _isMuted = MutableStateFlow(false)
@@ -112,6 +123,25 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
+        // 0b. Observe liked tracks to keep track.isLiked status synchronized with database
+        viewModelScope.launch {
+            combine(queueManager.currentTrack, musicRepository.getLikedTracks()) { track, likedTracks ->
+                if (track != null) {
+                    val isLikedInDb = likedTracks.any { 
+                        it.id == track.id || 
+                        (it.title.equals(track.title, ignoreCase = true) && it.artist.equals(track.artist, ignoreCase = true))
+                    }
+                    if (track.isLiked != isLikedInDb) {
+                        track.copy(isLiked = isLikedInDb)
+                    } else null
+                } else null
+            }.collect { updatedTrack ->
+                if (updatedTrack != null) {
+                    queueManager.syncExternalTrack(updatedTrack)
+                }
+            }
+        }
+
         // 1. Observe QueueManager's currentTrack to trigger playback
         viewModelScope.launch {
             queueManager.currentTrack.collect { track ->
@@ -120,6 +150,22 @@ class PlayerViewModel @Inject constructor(
                     musicRepository.recordPlay(track)
                 } else if (track == null) {
                     stopAllPlayback()
+                }
+
+                // Fetch lyrics
+                if (track != null) {
+                    _lyricsList.value = emptyList()
+                    try {
+                        val durationMs = track.durationMs
+                        val durationSec = (durationMs / 1000).toInt()
+                        val result = lyricsHelper.getLyrics(track.id, track.title, track.artist, durationSec, track.album)
+                        val parsed = LyricsUtils.parseLyrics(result.lyrics)
+                        _lyricsList.value = parsed
+                    } catch (e: Exception) {
+                        Log.e("PlayerViewModel", "Failed to fetch lyrics", e)
+                    }
+                } else {
+                    _lyricsList.value = emptyList()
                 }
             }
         }
@@ -171,10 +217,16 @@ class PlayerViewModel @Inject constructor(
         // 2. Progress ticker
         viewModelScope.launch {
             while (isActive) {
-                if (player?.isPlaying == true) {
-                    _currentPosition.value = player?.currentPosition?.coerceAtLeast(0) ?: 0L
+                player?.let { p ->
+                    if (p.isPlaying || p.playWhenReady) {
+                        _currentPosition.value = p.currentPosition.coerceAtLeast(0)
+                        val dur = p.duration.coerceAtLeast(0)
+                        if (dur > 0) {
+                            _duration.value = dur
+                        }
+                    }
                 }
-                delay(500)
+                delay(250)
             }
         }
     }
@@ -185,9 +237,16 @@ class PlayerViewModel @Inject constructor(
                 _isPlaying.value = playWhenReady
             }
 
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _isPlaying.value = isPlaying
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
-                    _duration.value = player?.duration?.coerceAtLeast(0) ?: 0L
+                    val dur = player?.duration?.coerceAtLeast(0) ?: 0L
+                    if (dur > 0) {
+                        _duration.value = dur
+                    }
                 } else if (playbackState == Player.STATE_ENDED) {
                     // Entire ExoPlayer playlist finished. 
                     queueManager.next()
@@ -197,47 +256,41 @@ class PlayerViewModel @Inject constructor(
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 super.onMediaItemTransition(mediaItem, reason)
                 
-                // We must also handle PLAYLIST_CHANGED to catch ListenTogether track changes!
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
-                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ||
-                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
-                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                val newId = mediaItem?.mediaId
+                if (newId != null) {
+                    val isNewTrack = newId != currentlyPlayingTrackId
+                    currentlyPlayingTrackId = newId
+                    sessionManager.lastPlayedTrackId = newId
                     
-                    val newId = mediaItem?.mediaId
-                    if (newId != null && newId != currentlyPlayingTrackId) {
-                        Log.d("PlaybackDebug", "Transitioned to: $newId (reason: $reason)")
-                        currentlyPlayingTrackId = newId
-                        sessionManager.lastPlayedTrackId = newId
-                        
+                    val tagMetadata = mediaItem.localConfiguration?.tag as? com.vibevault.app.models.MediaMetadata
+                    val md = mediaItem.mediaMetadata
+                    val durFromTag = tagMetadata?.duration?.let { if (it > 0) it * 1000L else null }
+                    val durFromPlayer = player?.duration?.coerceAtLeast(0)
+                    val durationMs = durFromTag ?: (if (durFromPlayer != null && durFromPlayer > 0) durFromPlayer else 0L)
+                    
+                    if (durationMs > 0) {
+                        _duration.value = durationMs
+                    }
+                    
+                    val existingTrack = queueManager.queueState.value.find { it.id == newId }
+                    val externalTrack = existingTrack ?: com.vibevault.app.domain.model.Track(
+                        id = mediaItem.mediaId,
+                        title = md.title?.toString() ?: "Unknown",
+                        artist = md.artist?.toString() ?: "Unknown",
+                        album = md.albumTitle?.toString() ?: "",
+                        albumImageUrl = md.artworkUri?.toString() ?: tagMetadata?.thumbnailUrl ?: "",
+                        durationMs = durationMs
+                    )
+                    
+                    queueManager.syncExternalTrack(externalTrack)
+                    
+                    if (isNewTrack) {
                         viewModelScope.launch {
-                            val track = queueManager.queueState.value.find { it.id == newId }
-                            if (track != null) {
-                                musicRepository.recordPlay(track)
-                            }
+                            musicRepository.recordPlay(externalTrack)
                         }
-                        
-                        val existingTrack = queueManager.queueState.value.find { it.id == newId }
-                        if (existingTrack != null) {
-                            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-                                queueManager.next() // Auto-advance playlist
-                            } else {
-                                queueManager.syncExternalTrack(existingTrack) // ListenTogether or external action jumped to a queue item
-                            }
-                        } else {
-                            // Track not in queue! Must be from ListenTogether!
-                            // Sync it so the Compose UI updates and shows the mini-player
-                            val md = mediaItem.mediaMetadata
-                            val externalTrack = com.vibevault.app.domain.model.Track(
-                                id = mediaItem.mediaId,
-                                title = md.title?.toString() ?: "Unknown",
-                                artist = md.artist?.toString() ?: "Unknown",
-                                album = md.albumTitle?.toString() ?: "",
-                                albumImageUrl = md.artworkUri?.toString() ?: "",
-                                durationMs = 0L
-                            )
-                            queueManager.syncExternalTrack(externalTrack)
+                        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && existingTrack != null) {
+                            queueManager.next()
                         }
-                        
                         ensureUpcomingTracks()
                     }
                 }
@@ -528,8 +581,9 @@ class PlayerViewModel @Inject constructor(
     fun toggleLike() {
         viewModelScope.launch {
             val track = currentTrack.value ?: return@launch
-            musicRepository.toggleLike(track.id)
-            queueManager.syncExternalTrack(track.copy(isLiked = !track.isLiked))
+            val newLiked = !track.isLiked
+            queueManager.syncExternalTrack(track.copy(isLiked = newLiked))
+            musicRepository.toggleLikeTrack(track)
         }
     }
 

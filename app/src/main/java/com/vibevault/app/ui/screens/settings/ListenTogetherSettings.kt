@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
@@ -329,191 +330,190 @@ fun ListenTogetherSettings(
         )
     }
 
-    Column(
-        Modifier
-            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-    ) {
-        Spacer(
-            Modifier.windowInsetsPadding(
-                WindowInsets.systemBars.only(WindowInsetsSides.Top)
-            )
-        )
-        
-        // Settings section
-        val selectedServer = remember(serverUrl) { ListenTogetherServers.findByUrl(serverUrl) }
-        
-        Material3SettingsGroup(
-            title = stringResource(R.string.settings),
-            items = listOf(
-                Material3SettingsItem(
-                    isExpressive = true,
-                    icon = painterResource(R.drawable.person),
-                    title = { Text(stringResource(R.string.listen_together_blocked_users)) },
-                    description = {
-                        Text(
-                            if (blockedUsernames.isNotEmpty())
-                                stringResource(R.string.listen_together_blocked_users_count, blockedUsernames.size)
-                            else
-                                stringResource(R.string.listen_together_no_blocked_users)
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.listen_together)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
                         )
-                    },
-                    onClick = if (blockedUsernames.isNotEmpty()) {
-                        { showBlockedUsersDialog = true }
-                    } else null
-                ),
-                Material3SettingsItem(
-                    isExpressive = true,
-                    icon = painterResource(R.drawable.error),
-                    title = { Text(stringResource(R.string.listen_together_server_url)) },
-                    description = {
-                        Text(
-                            selectedServer?.let { server ->
-                                "${server.name} - ${server.location}"
-                            } ?: serverUrl,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    onClick = { showServerUrlDialog = true }
-                ),
-                Material3SettingsItem(
-                    isExpressive = true,
-                    icon = painterResource(R.drawable.person),
-                    title = { Text(stringResource(R.string.listen_together_username)) },
-                    description = {
-                        Text(username.ifEmpty { stringResource(R.string.not_set) })
-                    },
-                    onClick = if (roomState == null) {
-                        { showUsernameDialog = true }
-                    } else {
-                        { Toast.makeText(context, context.getString(R.string.listen_together_cannot_edit_username_in_room), Toast.LENGTH_SHORT).show() }
                     }
-                ),
-                Material3SettingsItem(
-                    isExpressive = true,
-                    descriptionBelow = true,
-                    icon = painterResource(R.drawable.check),
-                    title = { Text(stringResource(R.string.listen_together_auto_approval)) },
-                    description = {
-                        Text(stringResource(R.string.listen_together_auto_approval_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = autoApproval,
-                            onCheckedChange = { autoApproval = it },
-                            enabled = roomState == null || role != RoomRole.GUEST,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (autoApproval) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            }
-                        )
-                    },
-                    onClick = { if (roomState == null || role != RoomRole.GUEST) autoApproval = !autoApproval }
-                ),
-                Material3SettingsItem(
-                    isExpressive = true,
-                    descriptionBelow = true,
-                    icon = painterResource(R.drawable.volume_up),
-                    title = { Text(stringResource(R.string.listen_together_sync_volume)) },
-                    description = {
-                        Text(stringResource(R.string.listen_together_sync_volume_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = syncHostVolume,
-                            onCheckedChange = { syncHostVolume = it },
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (syncHostVolume) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            }
-                        )
-                    },
-                    onClick = { syncHostVolume = !syncHostVolume }
-                ),
-                Material3SettingsItem(
-                    isExpressive = true,
-                    descriptionBelow = true,
-                    icon = painterResource(R.drawable.wifi_proxy),
-                    title = { Text(stringResource(R.string.listen_together_smart_resync)) },
-                    description = {
-                        Text(stringResource(R.string.listen_together_smart_resync_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = smartResync,
-                            onCheckedChange = { smartResync = it },
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (smartResync) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            }
-                        )
-                    },
-                    onClick = { smartResync = !smartResync }
-                ),
-                Material3SettingsItem(
-                    isExpressive = true,
-                    descriptionBelow = true,
-                    icon = painterResource(R.drawable.bug_report),
-                    title = { Text(stringResource(R.string.listen_together_view_logs)) },
-                    description = {
-                        Text(stringResource(R.string.listen_together_view_logs_desc))
-                    },
-                    onClick = { showLogsDialog = true }
-                )
-            )
-        )
-
-        Row(
-            modifier = Modifier.padding(top = 16.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.info),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-            Text(
-                text = stringResource(R.string.listen_together_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                }
             )
         }
+    ) { innerPadding ->
+        Column(
+            Modifier
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+        ) {
+            // Settings section
+            val selectedServer = remember(serverUrl) { ListenTogetherServers.findByUrl(serverUrl) }
+            
+            Material3SettingsGroup(
+                title = stringResource(R.string.settings),
+                items = listOf(
+                    Material3SettingsItem(
+                        isExpressive = true,
+                        icon = painterResource(R.drawable.person),
+                        title = { Text(stringResource(R.string.listen_together_blocked_users)) },
+                        description = {
+                            Text(
+                                if (blockedUsernames.isNotEmpty())
+                                    stringResource(R.string.listen_together_blocked_users_count, blockedUsernames.size)
+                                else
+                                    stringResource(R.string.listen_together_no_blocked_users)
+                            )
+                        },
+                        onClick = if (blockedUsernames.isNotEmpty()) {
+                            { showBlockedUsersDialog = true }
+                        } else null
+                    ),
+                    Material3SettingsItem(
+                        isExpressive = true,
+                        icon = painterResource(R.drawable.error),
+                        title = { Text(stringResource(R.string.listen_together_server_url)) },
+                        description = {
+                            Text(
+                                selectedServer?.let { server ->
+                                    "${server.name} - ${server.location}"
+                                } ?: serverUrl,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        onClick = { showServerUrlDialog = true }
+                    ),
+                    Material3SettingsItem(
+                        isExpressive = true,
+                        icon = painterResource(R.drawable.person),
+                        title = { Text(stringResource(R.string.listen_together_username)) },
+                        description = {
+                            Text(username.ifEmpty { stringResource(R.string.not_set) })
+                        },
+                        onClick = if (roomState == null) {
+                            { showUsernameDialog = true }
+                        } else {
+                            { Toast.makeText(context, context.getString(R.string.listen_together_cannot_edit_username_in_room), Toast.LENGTH_SHORT).show() }
+                        }
+                    ),
+                    Material3SettingsItem(
+                        isExpressive = true,
+                        descriptionBelow = true,
+                        icon = painterResource(R.drawable.check),
+                        title = { Text(stringResource(R.string.listen_together_auto_approval)) },
+                        description = {
+                            Text(stringResource(R.string.listen_together_auto_approval_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = autoApproval,
+                                onCheckedChange = { autoApproval = it },
+                                enabled = roomState == null || role != RoomRole.GUEST,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (autoApproval) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize),
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { if (roomState == null || role != RoomRole.GUEST) autoApproval = !autoApproval }
+                    ),
+                    Material3SettingsItem(
+                        isExpressive = true,
+                        descriptionBelow = true,
+                        icon = painterResource(R.drawable.volume_up),
+                        title = { Text(stringResource(R.string.listen_together_sync_volume)) },
+                        description = {
+                            Text(stringResource(R.string.listen_together_sync_volume_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = syncHostVolume,
+                                onCheckedChange = { syncHostVolume = it },
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (syncHostVolume) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize),
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { syncHostVolume = !syncHostVolume }
+                    ),
+                    Material3SettingsItem(
+                        isExpressive = true,
+                        descriptionBelow = true,
+                        icon = painterResource(R.drawable.wifi_proxy),
+                        title = { Text(stringResource(R.string.listen_together_smart_resync)) },
+                        description = {
+                            Text(stringResource(R.string.listen_together_smart_resync_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = smartResync,
+                                onCheckedChange = { smartResync = it },
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (smartResync) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize),
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { smartResync = !smartResync }
+                    ),
+                    Material3SettingsItem(
+                        isExpressive = true,
+                        descriptionBelow = true,
+                        icon = painterResource(R.drawable.bug_report),
+                        title = { Text(stringResource(R.string.listen_together_view_logs)) },
+                        description = {
+                            Text(stringResource(R.string.listen_together_view_logs_desc))
+                        },
+                        onClick = { showLogsDialog = true }
+                    )
+                )
+            )
 
-        Spacer(modifier = Modifier.height(36.dp))
-    }
-
-    TopAppBar(
-        title = { Text(stringResource(R.string.listen_together)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
+            Row(
+                modifier = Modifier.padding(top = 16.dp),
+                verticalAlignment = Alignment.Top
             ) {
                 Icon(
-                    painterResource(R.drawable.arrow_back),
+                    painter = painterResource(R.drawable.info),
                     contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Text(
+                    text = stringResource(R.string.listen_together_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            Spacer(modifier = Modifier.height(36.dp))
         }
-    )
+    }
 }
 
 @Composable

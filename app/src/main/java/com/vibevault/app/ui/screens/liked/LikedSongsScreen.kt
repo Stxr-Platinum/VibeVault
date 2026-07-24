@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,7 +46,7 @@ fun LikedSongsScreen(
                     .background(Brush.verticalGradient(listOf(androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(0.5f), androidx.compose.material3.MaterialTheme.colorScheme.background)))
             ) {
                 IconButton(onClick = onBack, Modifier.statusBarsPadding().padding(16.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
+                    Icon(Icons.Default.ArrowBack, "Back", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
                 }
                 Column(Modifier.align(Alignment.Center).statusBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Favorite, "Liked", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary, modifier = Modifier.size(56.dp))
