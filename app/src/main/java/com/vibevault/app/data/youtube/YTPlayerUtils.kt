@@ -25,7 +25,17 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB
 import com.music.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
+import com.music.innertube.models.WatchEndpoint
 import com.vibevault.app.constants.AudioQuality
+import com.music.jiosaavn.SaavnService
+import com.music.jiosaavn.SaavnSong
+import com.vibevault.app.constants.EnableSaavnStreamingKey
+import com.vibevault.app.constants.SaavnAudioQualityKey
+import com.vibevault.app.constants.SaavnAudioQuality
+import com.vibevault.app.utils.dataStore
+import com.vibevault.app.utils.get
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 
 
@@ -39,7 +49,6 @@ import com.vibevault.app.utils.sabr.EjsNTransformSolver
 import com.vibevault.app.utils.PlaybackLogLevel
 import com.vibevault.app.utils.PlaybackLogManager
 import com.music.innertube.models.IpVersion
-import com.music.innertube.models.WatchEndpoint
 
 import okhttp3.Dns
 import okhttp3.OkHttpClient
@@ -141,7 +150,125 @@ object YTPlayerUtils {
         context: android.content.Context? = null,
     ): Result<PlaybackData> {
 
-        // ── End JioSaavn intercept ───────────────────────────────────────────
+        // ── JioSaavn intercept ───────────────────────────────────────────────
+        if (context != null) {
+            val saavnEnabled = kotlinx.coroutines.runBlocking {
+                context.dataStore.get(EnableSaavnStreamingKey, false)
+            }
+            if (saavnEnabled) {
+                Timber.tag(logTag).d("JioSaavn streaming enabled — trying Saavn for videoId=$videoId")
+                val saavnResult = runCatching {
+                    val (currentSong, meta) = coroutineScope {
+                        val nextDeferred = async {
+                            val nextResult = YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull()
+                            nextResult?.items?.getOrNull(nextResult.currentIndex ?: 0)
+                                ?: nextResult?.items?.firstOrNull()
+                        }
+                        val metaDeferred = async {
+                            playerResponseForMetadata(videoId, playlistId).getOrNull()
+                        }
+                        nextDeferred.await() to metaDeferred.await()
+                    }
+
+                    val title = currentSong?.title ?: meta?.videoDetails?.title.orEmpty()
+                    val artistNames: List<String> = if (currentSong?.artists?.isNotEmpty() == true) {
+                        currentSong.artists.map { it.name }
+                    } else {
+                        listOf(meta?.videoDetails?.author.orEmpty().trim()).filter { it.isNotBlank() }
+                    }
+                    val artist = artistNames.joinToString(", ")
+
+                    if (title.isNotBlank()) {
+                        val expectedDuration = meta?.videoDetails?.lengthSeconds?.toIntOrNull()
+                        val albumName = currentSong?.album?.name.orEmpty()
+                        val wantedTitleLower = title.lowercase(java.util.Locale.US)
+                        val wantedArtistsLower = artistNames.map { it.lowercase(java.util.Locale.US) }
+
+                        val primaryQuery = if (albumName.isNotBlank()) "$albumName $title $artist" else "$title $artist"
+                        val fallbackQuery = "$title $artist"
+
+                        suspend fun findMatch(searchQuery: String): SaavnSong? {
+                            if (searchQuery.isBlank()) return null
+                            val rawSongs = SaavnService.searchSongs(searchQuery).getOrNull() ?: return null
+                            return rawSongs.firstOrNull { candidate ->
+                                val candidateTitleLower = candidate.name.lowercase(java.util.Locale.US)
+                                val candidateArtists = candidate.artists.primary.map { it.name.lowercase(java.util.Locale.US) }
+                                val titleMatches = candidateTitleLower == wantedTitleLower
+                                val artistMatches = candidateArtists.sorted() == wantedArtistsLower.sorted()
+                                val durationMatches = if (expectedDuration != null && candidate.duration != null) {
+                                    java.lang.Math.abs(expectedDuration - candidate.duration!!) <= 12
+                                } else {
+                                    true
+                                }
+                                titleMatches && artistMatches && durationMatches
+                            }
+                        }
+
+                        var bestSong = findMatch(primaryQuery)
+                        if (bestSong == null && primaryQuery != fallbackQuery) {
+                            bestSong = findMatch(fallbackQuery)
+                        }
+
+                        if (bestSong != null) {
+                            val qualityKey = kotlinx.coroutines.runBlocking {
+                                context.dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name)
+                            }
+                            val quality = runCatching { SaavnAudioQuality.valueOf(qualityKey) }
+                                .getOrDefault(SaavnAudioQuality.QUALITY_320)
+
+                            var streamUrl = SaavnService.selectBestUrl(bestSong.downloadUrl, quality.toApiValue())
+                            if (streamUrl.isNullOrBlank()) {
+                                streamUrl = SaavnService.getBestStreamUrl(bestSong.id, quality.toApiValue())
+                            }
+
+                            if (!streamUrl.isNullOrBlank()) {
+                                val contentLength = SaavnService.getContentLength(streamUrl)
+                                val saavnFormat = PlayerResponse.StreamingData.Format(
+                                    itag = when (quality) {
+                                        SaavnAudioQuality.QUALITY_320 -> 141
+                                        SaavnAudioQuality.QUALITY_160 -> 140
+                                        SaavnAudioQuality.QUALITY_96 -> 139
+                                    },
+                                    url = streamUrl,
+                                    mimeType = "audio/mp4; codecs=\"mp4a.40.2\"",
+                                    bitrate = when (quality) {
+                                        SaavnAudioQuality.QUALITY_320 -> 320000
+                                        SaavnAudioQuality.QUALITY_160 -> 160000
+                                        SaavnAudioQuality.QUALITY_96 -> 96000
+                                    },
+                                    width = null,
+                                    height = null,
+                                    contentLength = contentLength,
+                                    quality = quality.toApiValue(),
+                                    fps = null,
+                                    qualityLabel = null,
+                                    averageBitrate = null,
+                                    audioQuality = quality.toApiValue(),
+                                    approxDurationMs = null,
+                                    audioSampleRate = null,
+                                    audioChannels = null,
+                                    loudnessDb = null,
+                                    lastModified = null,
+                                    signatureCipher = null,
+                                    cipher = null,
+                                    audioTrack = null
+                                )
+                                PlaybackData(
+                                    audioConfig = meta?.playerConfig?.audioConfig,
+                                    videoDetails = meta?.videoDetails,
+                                    playbackTracking = meta?.playbackTracking,
+                                    format = saavnFormat,
+                                    streamUrl = streamUrl,
+                                    streamExpiresInSeconds = 3600,
+                                    isSaavnStream = true
+                                )
+                            } else null
+                        } else null
+                    } else null
+                }
+                saavnResult.getOrNull()?.let { return Result.success(it) }
+            }
+        }
 
         val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
         

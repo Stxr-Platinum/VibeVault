@@ -550,10 +550,14 @@ object LyricsUtils {
             text = text.replaceFirst(AGENT_REGEX, "")
         }
         
-        // Parse background marker {bg}
-        val isBackground = BACKGROUND_REGEX.containsMatchIn(text)
+        // Parse background marker {bg} or parenthesized backing vocal lines (e.g. "(oh)", "(background reverb)")
+        var isBackground = BACKGROUND_REGEX.containsMatchIn(text)
         if (isBackground) {
             text = text.replaceFirst(BACKGROUND_REGEX, "")
+        }
+        val trimmedText = text.trim()
+        if (trimmedText.startsWith("(") && trimmedText.endsWith(")")) {
+            isBackground = true
         }
 
         return timeMatchResults
@@ -576,10 +580,10 @@ object LyricsUtils {
     ): Int {
         for (index in lines.indices) {
             if (lines[index].time >= position + 300L) {
-                return index - 1
+                return (index - 1).coerceAtLeast(0)
             }
         }
-        return lines.lastIndex
+        return (lines.lastIndex).coerceAtLeast(0)
     }
 
     fun findActiveLineIndices(
@@ -591,14 +595,11 @@ object LyricsUtils {
 
         for (index in lines.indices) {
             val line = lines[index]
-            if (line.time > position) break // Past current position, stop early
+            if (line.time > position) break
 
-            // Determine this line's end time
             val lineEndMs: Long = if (!line.words.isNullOrEmpty()) {
-                // Use last word's endTime converted to ms
                 (line.words.last().endTime * 1000).toLong()
             } else {
-                // Fallback: next line's start time
                 if (index + 1 < lines.size) lines[index + 1].time else Long.MAX_VALUE
             }
 
@@ -608,7 +609,7 @@ object LyricsUtils {
         }
 
         if (!hasWordTimings && active.size > 1) {
-            val mainActive = active.filter { !it.let { lines[it].isBackground } }
+            val mainActive = active.filter { !lines[it].isBackground }
             if (mainActive.size > 1) {
                 val maxTime = mainActive.maxOf { lines[it].time }
                 active.removeAll { it in mainActive && lines[it].time < maxTime }

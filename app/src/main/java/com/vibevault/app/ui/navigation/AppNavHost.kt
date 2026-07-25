@@ -254,6 +254,11 @@ fun AppNavHost(
                 scrollBehavior = androidx.compose.material3.TopAppBarDefaults.pinnedScrollBehavior()
             )
         }
+        composable("settings/player/jio") {
+            com.vibevault.app.ui.screens.settings.JioSettings(
+                navController = navController
+            )
+        }
         composable(Screen.ThemeSettings.route) {
             com.vibevault.app.ui.screens.settings.ThemeScreen(
                 navController = navController

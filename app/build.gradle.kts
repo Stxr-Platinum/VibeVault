@@ -155,6 +155,7 @@ dependencies {
     implementation(project(":youlyplus"))
     implementation(project(":paxsenixlyrics"))
     implementation(project(":musixmatch"))
+    implementation(project(":jiosaavn"))
 
     // ── Coroutines ─────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)

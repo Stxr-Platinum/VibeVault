@@ -83,17 +83,6 @@ class PlayerViewModel @Inject constructor(
     private val _isLoadingLyrics = MutableStateFlow(false)
     val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
 
-    private val _lyricsOffset = MutableStateFlow(0L)
-    val lyricsOffset: StateFlow<Long> = _lyricsOffset.asStateFlow()
-
-    fun setLyricsOffset(offsetMs: Long) {
-        _lyricsOffset.value = offsetMs.coerceIn(-10000L, 10000L)
-    }
-
-    fun adjustLyricsOffset(deltaMs: Long) {
-        _lyricsOffset.value = (_lyricsOffset.value + deltaMs).coerceIn(-10000L, 10000L)
-    }
-
     // ── ListenTogether Bridge State ───────────────────────
     private val _isMuted = MutableStateFlow(false)
     private val _queueTitle = MutableStateFlow<String?>(null)
@@ -614,18 +603,16 @@ class PlayerViewModel @Inject constructor(
     private fun cancelFetchLyrics() {
         fetchLyricsJob?.cancel()
         fetchLyricsJob = null
-        _isLoadingLyrics.value = false
     }
 
     private fun fetchLyrics(track: Track) {
         if (track.id == lastFetchedLyricsTrackId && _lyricsList.value.isNotEmpty()) {
-            _isLoadingLyrics.value = false
             return // Skip redundant fetching for the same track
         }
 
         cancelFetchLyrics()
-        _isLoadingLyrics.value = true
         fetchLyricsJob = viewModelScope.launch(Dispatchers.IO) {
+            _isLoadingLyrics.value = true
             _lyricsList.value = emptyList()
             lastFetchedLyricsTrackId = track.id
             try {

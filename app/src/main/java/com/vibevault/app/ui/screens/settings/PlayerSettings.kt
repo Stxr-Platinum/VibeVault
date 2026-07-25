@@ -303,13 +303,13 @@ fun PlayerSettings(
                 // JioSaavn settings navigation
                 add(Material3SettingsItem(
                     icon = painterResource(android.R.drawable.ic_menu_gallery),
-                    title = { Text("") },
+                    title = { Text("JioSaavn Settings (via vivimusic)") },
                     description = {
                         Text(
                             if (saavnEnabled) {
                                 saavnQuality.toLabel()
                             } else {
-                                ""
+                                "Disabled"
                             }
                         )
                     },

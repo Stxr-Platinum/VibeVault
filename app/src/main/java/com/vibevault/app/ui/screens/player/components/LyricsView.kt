@@ -1,5 +1,6 @@
 package com.vibevault.app.ui.screens.player.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -8,10 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,32 +21,58 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vibevault.app.constants.LyricsAnimationStyle
-import com.vibevault.app.constants.LyricsAnimationStyleKey
-import com.vibevault.app.constants.LyricsPosition
-import com.vibevault.app.constants.LyricsTextPositionKey
 import com.vibevault.app.data.lyrics.LyricsEntry
-import com.vibevault.app.utils.rememberEnumPreference
 import kotlinx.coroutines.launch
+
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ElevatedButton
+import androidx.compose.material3.Icon
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 
 @Composable
 fun LyricsView(
     lyricsList: List<LyricsEntry>,
     currentPosition: Long,
     onSeek: (Long) -> Unit,
-    isLoading: Boolean = false,
-    lyricsOffset: Long = 0L,
-    onOffsetChange: (Long) -> Unit = {},
+    isLoadingLyrics: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val (lyricsTextPosition) = rememberEnumPreference(LyricsTextPositionKey, defaultValue = LyricsPosition.CENTER)
-    val (lyricsAnimationStyle) = rememberEnumPreference(LyricsAnimationStyleKey, defaultValue = LyricsAnimationStyle.VIVIMUSIC_1)
-    var showOffsetDialog by remember { mutableStateOf(false) }
-
-    val effectivePosition = currentPosition + lyricsOffset
-
-    if (isLoading) {
-        ShimmerLyricsLoading(lyricsTextPosition = lyricsTextPosition, modifier = modifier)
+    if (isLoadingLyrics) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            val shimmerAlpha by animateFloatAsState(
+                targetValue = 0.6f,
+                animationSpec = tween(durationMillis = 800),
+                label = "shimmerAlpha"
+            )
+            repeat(5) { index ->
+                val lineAlpha = (0.2f + (index % 3) * 0.2f) * shimmerAlpha
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(if (index % 2 == 0) 0.85f else 0.65f)
+                        .height(24.dp)
+                        .alpha(lineAlpha)
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                )
+            }
+        }
         return
     }
 
@@ -64,37 +89,45 @@ fun LyricsView(
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var isAutoScrollEnabled by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    isAutoScrollEnabled = false
+                }
+                return super.onPostScroll(consumed, available, source)
+            }
+        }
+    }
     
     // Find the currently active line
-    val activeIndex = remember(lyricsList, effectivePosition) {
-        val index = lyricsList.indexOfLast { it.time <= effectivePosition }
+    val activeIndex = remember(lyricsList, currentPosition) {
+        val index = lyricsList.indexOfLast { it.time <= currentPosition }
         if (index != -1) index else 0
     }
 
-    LaunchedEffect(activeIndex) {
-        if (activeIndex in lyricsList.indices) {
+    LaunchedEffect(activeIndex, isAutoScrollEnabled) {
+        if (isAutoScrollEnabled && activeIndex in lyricsList.indices) {
             coroutineScope.launch {
                 listState.animateScrollToItem(
                     index = activeIndex,
-                    scrollOffset = -300 // Center roughly in view
+                    scrollOffset = -300
                 )
             }
         }
     }
 
-    if (showOffsetDialog) {
-        LyricsOffsetDialog(
-            currentOffsetMs = lyricsOffset,
-            onOffsetChange = onOffsetChange,
-            onDismiss = { showOffsetDialog = false }
-        )
-    }
-
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 180.dp)
+            modifier = Modifier.fillMaxSize().nestedScroll(nestedScrollConnection),
+            contentPadding = PaddingValues(top = 200.dp, bottom = 260.dp)
         ) {
             itemsIndexed(lyricsList) { index, entry ->
                 val isActive = index == activeIndex
@@ -102,53 +135,63 @@ fun LyricsView(
                 MetroLyricsLine(
                     entry = entry,
                     nextEntryTime = lyricsList.getOrNull(index + 1)?.time,
-                    effectivePlaybackPosition = effectivePosition,
-                    getCurrentPosition = { effectivePosition },
-                    lyricsOffset = lyricsOffset,
+                    effectivePlaybackPosition = currentPosition,
+                    getCurrentPosition = { currentPosition },
                     isSynced = true,
                     isActive = isActive,
                     distanceFromCurrent = kotlin.math.abs(index - activeIndex),
                     textColor = Color.White,
-                    onClick = { onSeek((entry.time - lyricsOffset).coerceAtLeast(0L)) },
+                    onClick = {
+                        isAutoScrollEnabled = true
+                        onSeek(entry.time)
+                    },
                     isSelected = false,
                     isSelectionModeActive = false,
-                    isAutoScrollActive = true,
+                    isAutoScrollActive = isAutoScrollEnabled,
                     expressiveAccent = MaterialTheme.colorScheme.primary,
                     bgVisible = true,
-                    lyricsTextPosition = lyricsTextPosition.name,
-                    modifier = Modifier
+                    lyricsTextSize = if (entry.isBackground) 20f else 28f,
+                    lyricsLineSpacing = 1.3f
                 )
             }
         }
 
-        // Resync Badge Control Button
-        Surface(
-            onClick = { showOffsetDialog = true },
-            shape = RoundedCornerShape(20.dp),
-            color = Color.Black.copy(alpha = 0.5f),
-            contentColor = Color.White,
+        // Resync Button when scrolling manually
+        AnimatedVisibility(
+            visible = !isAutoScrollEnabled,
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut(),
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 8.dp, end = 16.dp)
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            ElevatedButton(
+                onClick = {
+                    isAutoScrollEnabled = true
+                    if (activeIndex in lyricsList.indices) {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(
+                                index = activeIndex,
+                                scrollOffset = -300
+                            )
+                        }
+                    }
+                },
+                shape = CircleShape,
+                colors = ButtonDefaults.elevatedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.Black
+                ),
+                elevation = ButtonDefaults.elevatedButtonElevation(defaultElevation = 6.dp)
             ) {
-                Icon(
-                    Icons.Default.FastForward,
-                    contentDescription = "Resync lyrics",
-                    modifier = Modifier.size(14.dp),
-                    tint = if (lyricsOffset != 0L) MaterialTheme.colorScheme.primary else Color.White
-                )
-                Text(
-                    text = if (lyricsOffset == 0L) "Resync" else "${if (lyricsOffset > 0) "+" else ""}${lyricsOffset}ms",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                    color = if (lyricsOffset != 0L) MaterialTheme.colorScheme.primary else Color.White
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = "Resync lyrics", modifier = Modifier.size(18.dp))
+                    Text(text = "Resync", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
             }
         }
     }
 }
-

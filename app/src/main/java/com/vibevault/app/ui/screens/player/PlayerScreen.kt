@@ -61,6 +61,7 @@ import com.vibevault.app.utils.rememberPreference
 import com.vibevault.app.utils.rememberEnumPreference
 import com.vibevault.app.ui.theme.PlayerColorExtractor
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
+import com.vibevault.app.ui.utils.resize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -94,7 +95,6 @@ fun PlayerScreen(
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val lyricsList by viewModel.lyricsList.collectAsStateWithLifecycle()
     val isLoadingLyrics by viewModel.isLoadingLyrics.collectAsStateWithLifecycle()
-    val lyricsOffset by viewModel.lyricsOffset.collectAsStateWithLifecycle()
 
     // Preferences
     val (useNewPlayerDesign) = rememberPreference(UseNewPlayerDesignKey, defaultValue = false)
@@ -314,9 +314,7 @@ fun PlayerScreen(
                                 positionMs = position,
                                 onSeekTo = { viewModel.seekTo(it) },
                                 lyricsEntries = lyricsList,
-                                isLoading = isLoadingLyrics,
-                                lyricsOffset = lyricsOffset,
-                                onOffsetChange = { viewModel.setLyricsOffset(it) },
+                                isLoadingLyrics = isLoadingLyrics,
                                 activeLyricColor = dynamicActiveLyricColor,
                                 inactiveLyricColor = dynamicInactiveLyricColor
                             )
@@ -1102,6 +1100,7 @@ fun FullPlayerBackgroundLayer(
                 }
             }
         }
+
         PlayerBackgroundStyle.APPLE_MUSIC -> {
             AnimatedContent(
                 targetState = thumbnailUrl,
@@ -1109,24 +1108,24 @@ fun FullPlayerBackgroundLayer(
                 label = "appleMusicBackground"
             ) { url ->
                 if (url != null) {
+                    val highResUrl = remember(url) { url.resize(1200, 1200) }
                     Box(modifier = Modifier.fillMaxSize()) {
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                             AsyncImage(
                                 model = ImageRequest.Builder(context)
-                                    .data(url)
-                                    .size(128, 128)
+                                    .data(highResUrl)
                                     .allowHardware(false)
                                     .build(),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .blur(150.dp)
+                                    .blur(120.dp)
                             )
                         }
 
                         val clearArtworkAlpha by animateFloatAsState(
-                            targetValue = if (showInlineLyrics) 0f else 1f,
+                            targetValue = if (showInlineLyrics) 0.0f else 1.0f,
                             animationSpec = tween(500),
                             label = "clearArtworkAlpha"
                         )
@@ -1134,7 +1133,7 @@ fun FullPlayerBackgroundLayer(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .fillMaxHeight(0.65f)
+                                .fillMaxHeight(0.72f)
                                 .alpha(clearArtworkAlpha)
                                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                                 .drawWithContent {
@@ -1143,8 +1142,8 @@ fun FullPlayerBackgroundLayer(
                                         brush = Brush.verticalGradient(
                                             colorStops = arrayOf(
                                                 0.00f to Color.Black,
-                                                0.75f to Color.Black,
-                                                0.92f to Color.Black.copy(alpha = 0.4f),
+                                                0.65f to Color.Black,
+                                                0.88f to Color.Black.copy(alpha = 0.4f),
                                                 1.00f to Color.Transparent,
                                             )
                                         ),
@@ -1154,8 +1153,8 @@ fun FullPlayerBackgroundLayer(
                         ) {
                             AsyncImage(
                                 model = ImageRequest.Builder(context)
-                                    .data(url)
-                                    .size(512)
+                                    .data(highResUrl)
+                                    .crossfade(true)
                                     .build(),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
@@ -1170,7 +1169,7 @@ fun FullPlayerBackgroundLayer(
                                     Brush.verticalGradient(
                                         listOf(
                                             Color.Black.copy(alpha = 0.05f),
-                                            Color.Black.copy(alpha = 0.4f)
+                                            Color.Black.copy(alpha = 0.45f)
                                         )
                                     )
                                 )
@@ -1313,5 +1312,19 @@ fun FullPlayerBackgroundLayer(
                     .background(Color(0xFF0F0F0F))
             )
         }
+    }
+
+    val lyricsOverlayAlpha by animateFloatAsState(
+        targetValue = if (showInlineLyrics) 0.50f else 0f,
+        animationSpec = tween(500),
+        label = "lyricsOverlayAlpha"
+    )
+
+    if (lyricsOverlayAlpha > 0f) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = lyricsOverlayAlpha))
+        )
     }
 }

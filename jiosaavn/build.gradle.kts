@@ -1,11 +1,12 @@
 plugins {
     id("com.android.library")
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "com.music.jiosaavn"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 26
@@ -13,13 +14,13 @@ android {
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
-}
 
-kotlin {
-    jvmToolchain(21)
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
 dependencies {
