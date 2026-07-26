@@ -156,6 +156,7 @@ dependencies {
     implementation(project(":paxsenixlyrics"))
     implementation(project(":musixmatch"))
     implementation(project(":jiosaavn"))
+    implementation(project(":spotify"))
 
     // ── Coroutines ─────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)

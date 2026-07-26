@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.music.innertube"
+    namespace = "com.music.spotify"
     compileSdk = 35
 
     defaultConfig {
@@ -13,7 +13,6 @@ android {
     }
 
     compileOptions {
-        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -30,8 +29,5 @@ dependencies {
     implementation(libs.ktor.serialization.json)
     implementation(libs.ktor.client.encoding)
     implementation(libs.brotli)
-    implementation(libs.newpipeextractor)
     testImplementation(libs.junit)
-
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 }

@@ -269,25 +269,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val authViewModel: AuthViewModel by viewModels()
-        Log.d("SpotifyDebug", "MainActivity: handleIntent called")
         val uri = intent?.data
-        Log.d("SpotifyDebug", "URI = $uri")
-
-        if (uri != null && uri.toString().startsWith("vibevault://spotify-auth-callback")) {
-            Log.d("SpotifyDebug", "Spotify callback received")
-            val code = uri.getQueryParameter("code")
-            val error = uri.getQueryParameter("error")
-
-            Log.d("SpotifyDebug", "AUTH CODE = $code")
-            if (error != null) Log.e("SpotifyDebug", "MainActivity: Auth Error = $error")
-
-            code?.let {
-                Log.d("SpotifyDebug", "MainActivity: Triggering callback handling in ViewModel")
-                authViewModel.handleSpotifyCallback(it)
-            }
-        } else {
-            Log.d("SpotifyDebug", "MainActivity: URI null or mismatch: $uri")
-        }
+        Log.d("SpotifyDebug", "MainActivity: handleIntent called, URI = $uri")
     }
 }

@@ -52,10 +52,10 @@ class SessionManager @Inject constructor(
         private const val KEY_SESSION_EXPIRY = "session_expiry"
 
         // Spotify Keys
+        private const val KEY_SPOTIFY_SP_DC = "spotify_sp_dc"
+        private const val KEY_SPOTIFY_SP_KEY = "spotify_sp_key"
         private const val KEY_SPOTIFY_ACCESS_TOKEN = "spotify_access_token"
-        private const val KEY_SPOTIFY_REFRESH_TOKEN = "spotify_refresh_token"
         private const val KEY_SPOTIFY_EXPIRY = "spotify_expiry"
-        private const val KEY_SPOTIFY_CODE_VERIFIER = "spotify_code_verifier"
 
         // Playback Keys
         private const val KEY_LAST_PLAYED_TRACK_ID = "last_played_track_id"
@@ -85,12 +85,14 @@ class SessionManager @Inject constructor(
         _userDisplayName.value = prefs.getString(KEY_USER_DISPLAY_NAME, null)
         _userAvatarUrl.value = prefs.getString(KEY_USER_AVATAR_URL, null)
         _isLoggedInFlow.value = prefs.getString(KEY_ACCESS_TOKEN, null) != null
-        _spotifyAccessTokenFlow.value = prefs.getString(KEY_SPOTIFY_ACCESS_TOKEN, null)
         
-        // The user is "connected" to Spotify if they have an active token OR a refresh token
-        // that can be used to silently get a new one.
-        val hasRefreshToken = prefs.getString(KEY_SPOTIFY_REFRESH_TOKEN, null) != null
-        _isSpotifyConnected.value = _spotifyAccessTokenFlow.value != null && (!isSpotifyExpired || hasRefreshToken)
+        val token = prefs.getString(KEY_SPOTIFY_ACCESS_TOKEN, null)
+        val spDc = prefs.getString(KEY_SPOTIFY_SP_DC, null)
+        _spotifyAccessTokenFlow.value = token
+        _isSpotifyConnected.value = !spDc.isNullOrBlank()
+        if (!token.isNullOrBlank() && !isSpotifyExpired) {
+            com.music.spotify.Spotify.accessToken = token
+        }
         
         _recentContextsFlow.value = getRecentContexts()
     }
@@ -153,24 +155,23 @@ class SessionManager @Inject constructor(
 
     // ── Spotify Session ────────────────────────────────────────
 
-    fun saveSpotifySession(accessToken: String, refreshToken: String?, expiresInSeconds: Int) {
-        val expiry = System.currentTimeMillis() + (expiresInSeconds * 1000L)
-        Log.d("SpotifyDebug", "SessionManager: Saving Spotify Session. AccessToken prefix: ${accessToken.take(10)}..., Expires in $expiresInSeconds s (at $expiry)")
+    fun saveSpotifyCookieSession(spDc: String, spKey: String = "", accessToken: String, expiresAtMs: Long) {
+        Log.d("SpotifyDebug", "SessionManager: Saving Spotify Cookie Session. AccessToken prefix: ${accessToken.take(10)}...")
         prefs.edit().apply {
+            putString(KEY_SPOTIFY_SP_DC, spDc)
+            putString(KEY_SPOTIFY_SP_KEY, spKey)
             putString(KEY_SPOTIFY_ACCESS_TOKEN, accessToken)
-            refreshToken?.let { 
-                Log.d("SpotifyDebug", "SessionManager: Saving RefreshToken prefix: ${it.take(10)}...")
-                putString(KEY_SPOTIFY_REFRESH_TOKEN, it) 
-            }
-            putLong(KEY_SPOTIFY_EXPIRY, expiry)
+            putLong(KEY_SPOTIFY_EXPIRY, expiresAtMs)
             apply()
         }
+        com.music.spotify.Spotify.accessToken = accessToken
         _spotifyAccessTokenFlow.value = accessToken
         _isSpotifyConnected.value = true
     }
 
+    val spotifySpDc: String? get() = prefs.getString(KEY_SPOTIFY_SP_DC, null)
+    val spotifySpKey: String? get() = prefs.getString(KEY_SPOTIFY_SP_KEY, null)
     val spotifyAccessToken: String? get() = prefs.getString(KEY_SPOTIFY_ACCESS_TOKEN, null)
-    val spotifyRefreshToken: String? get() = prefs.getString(KEY_SPOTIFY_REFRESH_TOKEN, null)
     val isSpotifyExpired: Boolean get() {
         val expiry = prefs.getLong(KEY_SPOTIFY_EXPIRY, 0L)
         val now = System.currentTimeMillis()
@@ -178,13 +179,6 @@ class SessionManager @Inject constructor(
         Log.d("SpotifyDebug", "SessionManager: isSpotifyExpired check. Now: $now, Expiry: $expiry, Expired: $expired")
         return expired
     }
-    
-    var spotifyCodeVerifier: String?
-        get() = prefs.getString(KEY_SPOTIFY_CODE_VERIFIER, null)
-        set(value) {
-            Log.d("SpotifyDebug", "SessionManager: Setting spotifyCodeVerifier = $value")
-            prefs.edit().putString(KEY_SPOTIFY_CODE_VERIFIER, value).apply()
-        }
 
     // ── Playback State ─────────────────────────────────────────
 
@@ -235,41 +229,26 @@ class SessionManager @Inject constructor(
     val isSessionExpired: Boolean get() = System.currentTimeMillis() > sessionExpiryMs
 
     /**
-     * Refreshes the Spotify access token using the stored refresh token.
-     * Calls the secure Supabase Edge Function to protect the Client Secret.
+     * Refreshes the Spotify access token using the stored sp_dc cookie.
      */
     suspend fun refreshSpotifyToken(): String? {
-        Log.d("SpotifyDebug", "SessionManager: refreshSpotifyToken called")
-        val currentRefresh = spotifyRefreshToken
-        Log.d("SpotifyDebug", "SessionManager: Current RefreshToken prefix: ${currentRefresh?.take(10)}...")
-        
-        if (currentRefresh == null) {
-            Log.e("SpotifyDebug", "SessionManager: ERROR - No refresh token available")
-            return null
-        }
+        Log.d("SpotifyDebug", "SessionManager: refreshSpotifyToken called using sp_dc cookie")
+        val spDc = spotifySpDc ?: return null
+        val spKey = spotifySpKey.orEmpty()
         
         return try {
-            Log.d("SpotifyDebug", "SessionManager: Invoking Edge Function 'spotify-token-refresh'...")
-            val response = functions.invoke(
-                function = "spotify-token-refresh",
-                body = TokenRefreshRequest(refresh_token = currentRefresh)
-            )
-            
-            Log.d("SpotifyDebug", "SessionManager: Refresh Status = ${response.status}")
-            val bodyText = response.bodyAsText()
-            Log.d("SpotifyDebug", "SessionManager: Refresh Response Body = $bodyText")
-            
-            if (response.status.value in 200..299) {
-                val tokenData = Json { ignoreUnknownKeys = true }.decodeFromString<SpotifyTokenResponse>(bodyText)
-                Log.d("SpotifyDebug", "SessionManager: Refresh Success. New AccessToken prefix: ${tokenData.accessToken.take(10)}...")
-                saveSpotifySession(
-                    accessToken = tokenData.accessToken,
-                    refreshToken = tokenData.refreshToken ?: currentRefresh,
-                    expiresInSeconds = tokenData.expiresIn
+            val result = com.music.spotify.SpotifyAuth.fetchAccessToken(spDc, spKey)
+            if (result.isSuccess) {
+                val internalToken = result.getOrThrow()
+                saveSpotifyCookieSession(
+                    spDc = spDc,
+                    spKey = spKey,
+                    accessToken = internalToken.accessToken,
+                    expiresAtMs = internalToken.accessTokenExpirationTimestampMs
                 )
-                tokenData.accessToken
+                internalToken.accessToken
             } else {
-                Log.e("SpotifyDebug", "SessionManager: Refresh failed. Status: ${response.status}, Body: $bodyText")
+                Log.e("SpotifyDebug", "SessionManager: Refresh failed", result.exceptionOrNull())
                 null
             }
         } catch (e: Exception) {
@@ -280,6 +259,7 @@ class SessionManager @Inject constructor(
 
     fun clearSession() {
         prefs.edit().clear().apply()
+        com.music.spotify.Spotify.accessToken = null
         _userDisplayName.value = null
         _userAvatarUrl.value = null
         _isLoggedInFlow.value = false
@@ -290,11 +270,13 @@ class SessionManager @Inject constructor(
     /** Clears only Spotify session while keeping the main user logged in. */
     fun clearSpotifySession() {
         prefs.edit().apply {
+            remove(KEY_SPOTIFY_SP_DC)
+            remove(KEY_SPOTIFY_SP_KEY)
             remove(KEY_SPOTIFY_ACCESS_TOKEN)
-            remove(KEY_SPOTIFY_REFRESH_TOKEN)
             remove(KEY_SPOTIFY_EXPIRY)
             apply()
         }
+        com.music.spotify.Spotify.accessToken = null
         _spotifyAccessTokenFlow.value = null
         _isSpotifyConnected.value = false
     }

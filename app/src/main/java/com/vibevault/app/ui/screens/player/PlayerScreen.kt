@@ -335,7 +335,7 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         AsyncImage(
-                            model = track.albumImageUrl,
+                            model = track.albumImageUrl.resize(544, 544),
                             contentDescription = null,
                             modifier = Modifier
                                 .size(48.dp)
@@ -430,9 +430,9 @@ fun PlayerScreen(
                         }
                     }
                 } else {
-                    // Standard Artwork View
+                    // Standard Artwork View (High Resolution 1200x1200px)
                     AsyncImage(
-                        model = track.albumImageUrl,
+                        model = track.albumImageUrl.resize(1200, 1200),
                         contentDescription = track.album,
                         modifier = Modifier
                             .fillMaxWidth()

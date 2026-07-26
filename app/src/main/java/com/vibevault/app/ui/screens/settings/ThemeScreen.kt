@@ -37,6 +37,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -155,8 +161,8 @@ fun ThemeScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
-                            painter = painterResource(android.R.drawable.ic_menu_gallery),
-                            contentDescription = ""
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
                         )
                     }
                 },
@@ -321,7 +327,7 @@ fun ThemeControls(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = "",
+                text = "Theme Mode",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -411,7 +417,7 @@ fun ThemeControls(
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = "",
+                text = "Color Palette",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -546,8 +552,8 @@ fun ModeCircle(
             when {
                 showIcon -> {
                     Icon(
-                        painter = painterResource(android.R.drawable.ic_menu_gallery),
-                        contentDescription = null,
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = "System Mode",
                         tint = modeColorScheme.onSurface,
                         modifier = Modifier.size(20.dp)
                     )
@@ -576,8 +582,8 @@ fun ModeCircle(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                painter = painterResource(android.R.drawable.ic_menu_gallery),
-                                contentDescription = null,
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Selected",
                                 tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.size(14.dp)
                             )
@@ -705,8 +711,8 @@ fun PaletteItem(
     )
     
     val interactionSource = remember { MutableInteractionSource() }
-    val paletteName = stringResource(palette.nameRes)
-    val contentDesc = stringResource(0, paletteName)
+    val paletteName = if (palette.nameRes != 0) stringResource(palette.nameRes) else "Default"
+    val contentDesc = "Theme palette $paletteName"
     
     // Outer card container similar to ReadYou's SelectableMiniPalette
     Box(
@@ -737,8 +743,8 @@ fun PaletteItem(
         if (palette.seedColor == Color.Transparent) {
             // Draw Dynamic/System icon using Material Design icon directly in the center
             Icon(
-                painter = painterResource(android.R.drawable.ic_menu_gallery),
-                contentDescription = null,
+                imageVector = Icons.Default.Palette,
+                contentDescription = "System Color Scheme",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(24.dp)
             )
@@ -766,8 +772,8 @@ fun PaletteItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(android.R.drawable.ic_menu_gallery),
-                        contentDescription = null,
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Selected",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(14.dp)
                     )
@@ -826,8 +832,8 @@ fun PaletteItem(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(android.R.drawable.ic_menu_gallery),
-                            contentDescription = null,
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Selected",
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(14.dp)
                         )

@@ -1,5 +1,12 @@
 package com.vibevault.app.ui.screens.home
 
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
@@ -62,6 +69,17 @@ fun HomeScreen(
     val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
 
     val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
+    var showSpotifyCookieDialog by remember { mutableStateOf(false) }
+
+    if (showSpotifyCookieDialog) {
+        SpotifyConnectDialog(
+            onDismiss = { showSpotifyCookieDialog = false },
+            onConnect = { spDc, spKey ->
+                authViewModel.connectWithCookies(spDc, spKey)
+                showSpotifyCookieDialog = false
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -113,7 +131,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
                             .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
-                            .clickable { uriHandler.openUri(authViewModel.getSpotifyAuthUrl()) }
+                            .clickable { showSpotifyCookieDialog = true }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
@@ -786,3 +804,107 @@ private fun TrackRow(track: Track, onClick: () -> Unit, onSwipeToQueue: () -> Un
         }
     }
 }
+
+@Composable
+fun SpotifyConnectDialog(
+    onDismiss: () -> Unit,
+    onConnect: (spDc: String, spKey: String) -> Unit
+) {
+    var captured by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .fillMaxHeight(0.80f)
+                .clip(RoundedCornerShape(24.dp)),
+            color = Color(0xFF1C1B20),
+            contentColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Spotify Login",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Log in below to connect your Spotify account:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.LightGray
+                )
+                Spacer(Modifier.height(12.dp))
+
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp)),
+                    factory = { context ->
+                        WebView(context).apply {
+                            val cookieManager = CookieManager.getInstance()
+                            cookieManager.setAcceptCookie(true)
+                            cookieManager.setAcceptThirdPartyCookies(this, true)
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; SM-S921U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36"
+
+                            webViewClient = object : WebViewClient() {
+                                private fun checkCookies(): Boolean {
+                                    if (captured) return true
+                                    cookieManager.flush()
+                                    val cookiesStr = cookieManager.getCookie("https://open.spotify.com") ?: ""
+                                    val cookies = cookiesStr.split(";").associate {
+                                        val parts = it.split("=")
+                                        val key = parts.firstOrNull()?.trim().orEmpty()
+                                        val valStr = parts.drop(1).joinToString("=").trim()
+                                        key to valStr
+                                    }
+                                    val spDc = cookies["sp_dc"].orEmpty()
+                                    if (spDc.isNotBlank()) {
+                                        captured = true
+                                        onConnect(spDc, cookies["sp_key"].orEmpty())
+                                        onDismiss()
+                                        return true
+                                    }
+                                    return false
+                                }
+
+                                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                                    return checkCookies()
+                                }
+
+                                override fun onPageFinished(view: WebView, url: String?) {
+                                    checkCookies()
+                                }
+                            }
+                            cookieManager.removeAllCookies(null)
+                            cookieManager.flush()
+                            loadUrl(com.music.spotify.SpotifyAuth.LOGIN_URL)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+

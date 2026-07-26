@@ -84,7 +84,6 @@ import com.vibevault.app.ui.viewmodel.HomeViewModel
 import com.vibevault.app.ui.viewmodel.QuickPickItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,10 +109,24 @@ fun ViviHomeScreen(
 
     var isRefreshing by remember { mutableStateOf(false) }
     var isRandomizing by remember { mutableStateOf(false) }
+    var refreshSeed by remember { mutableStateOf(0) }
     val pullRefreshState = rememberPullToRefreshState()
 
     var selectedChip by remember { mutableStateOf<String?>(null) }
     val categories = listOf("Podcasts", "Workout", "Commute", "Feel good", "Romance", "Focus", "Party")
+
+    val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
+    var showSpotifyConnectDialog by remember { mutableStateOf(false) }
+
+    if (showSpotifyConnectDialog) {
+        SpotifyConnectDialog(
+            onDismiss = { showSpotifyConnectDialog = false },
+            onConnect = { spDc, spKey ->
+                authViewModel.connectWithCookies(spDc, spKey)
+                showSpotifyConnectDialog = false
+            }
+        )
+    }
 
     PullToRefreshBox(
         state = pullRefreshState,
@@ -121,6 +134,7 @@ fun ViviHomeScreen(
         onRefresh = {
             scope.launch {
                 isRefreshing = true
+                refreshSeed++
                 viewModel.refresh()
                 delay(1000)
                 isRefreshing = false
@@ -178,11 +192,19 @@ fun ViviHomeScreen(
 
                         Spacer(Modifier.weight(1f))
 
-                        // Action Icons: Listen Together & Settings
+                        // Action Icons: Spotify, Listen Together & Settings
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            IconButton(onClick = { showSpotifyConnectDialog = true }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.spotify),
+                                    contentDescription = "Spotify Login",
+                                    tint = if (isSpotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
                             IconButton(onClick = onListenTogetherClick) {
                                 Icon(
                                     painter = painterResource(R.drawable.group),
@@ -242,8 +264,8 @@ fun ViviHomeScreen(
                     }
                 }
 
-                // ── 3. Speed dial Section (Exact 3x3 Grid with Pager & 5-Dot Dice Card) ──────────────────────────
-                if (quickPicks.isNotEmpty() || recentlyPlayed.isNotEmpty()) {
+                // ── 3. Speed dial Section (Personalized 60% Favorites / 40% Fresh Discoveries) ──────────────────────────
+                if (quickPicks.isNotEmpty() || recentlyPlayed.isNotEmpty() || trendingTracks.isNotEmpty()) {
                     item(key = "speed_dial_title") {
                         NavigationTitle(
                             title = "Speed dial"
@@ -251,13 +273,29 @@ fun ViviHomeScreen(
                     }
 
                     item(key = "speed_dial_pager") {
-                        // Combine available items for Speed Dial
-                        val speedDialItems = remember(quickPicks, recentlyPlayed) {
-                            val combined = mutableListOf<QuickPickItem>()
-                            combined.addAll(quickPicks)
+                        // Personalized Recommendation Algorithm for Speed Dial:
+                        // 60% Familiar Favorites & Similar Songs / 40% Fresh Discoveries, dynamically recalculated on refreshSeed
+                        val speedDialItems = remember(quickPicks, recentlyPlayed, trendingTracks, refreshSeed) {
+                            val familiarFavoritesPool = mutableListOf<QuickPickItem>()
+
+                            // Extract user's favorite artists and albums from history
+                            val favoriteArtists = (recentlyPlayed.map { it.artist } + quickPicks.mapNotNull { it.track?.artist })
+                                .filter { it.isNotBlank() }
+                                .toSet()
+
+                            val favoriteAlbums = (recentlyPlayed.map { it.album } + quickPicks.mapNotNull { it.track?.album })
+                                .filter { it.isNotBlank() }
+                                .toSet()
+
+                            // 1. Add direct familiar favorites (frequently played, history, liked)
+                            quickPicks.forEach { item ->
+                                if (familiarFavoritesPool.none { it.id == item.id }) {
+                                    familiarFavoritesPool.add(item)
+                                }
+                            }
                             recentlyPlayed.forEach { track ->
-                                if (combined.none { it.id == track.id }) {
-                                    combined.add(
+                                if (familiarFavoritesPool.none { it.id == track.id }) {
+                                    familiarFavoritesPool.add(
                                         QuickPickItem(
                                             id = track.id,
                                             title = track.title,
@@ -268,7 +306,71 @@ fun ViviHomeScreen(
                                     )
                                 }
                             }
-                            combined
+
+                            // 1b. Add Similar Songs (tracks by favorite artists or matching albums)
+                            trendingTracks.forEach { track ->
+                                val isSimilar = favoriteArtists.any { artist -> track.artist.contains(artist, ignoreCase = true) || artist.contains(track.artist, ignoreCase = true) } ||
+                                                favoriteAlbums.any { album -> track.album.equals(album, ignoreCase = true) }
+                                if (isSimilar && familiarFavoritesPool.none { it.id == track.id }) {
+                                    familiarFavoritesPool.add(
+                                        QuickPickItem(
+                                            id = track.id,
+                                            title = track.title,
+                                            coverUrl = track.albumImageUrl,
+                                            type = "track",
+                                            track = track
+                                        )
+                                    )
+                                }
+                            }
+
+                            // 2. Gather fresh discoveries (unseen tracks not in history or similar pools)
+                            val freshDiscoveriesPool = trendingTracks
+                                .filter { track -> familiarFavoritesPool.none { it.id == track.id } }
+                                .map { track ->
+                                    QuickPickItem(
+                                        id = track.id,
+                                        title = track.title,
+                                        coverUrl = track.albumImageUrl,
+                                        type = "track",
+                                        track = track
+                                    )
+                                }
+
+                            val rng = kotlin.random.Random(refreshSeed * 31 + 17)
+
+                            val shuffledFavorites = familiarFavoritesPool.shuffled(rng).toMutableList()
+                            val shuffledDiscoveries = freshDiscoveriesPool.shuffled(rng).toMutableList()
+
+                            val finalSelection = mutableListOf<QuickPickItem>()
+
+                            // Page 0: 60% Favorites (5 items) / 40% Fresh Discoveries (3 items)
+                            val targetFavCountPage0 = 5
+                            val targetDiscCountPage0 = 3
+
+                            repeat(targetFavCountPage0) {
+                                if (shuffledFavorites.isNotEmpty()) {
+                                    finalSelection.add(shuffledFavorites.removeAt(0))
+                                } else if (shuffledDiscoveries.isNotEmpty()) {
+                                    finalSelection.add(shuffledDiscoveries.removeAt(0))
+                                }
+                            }
+
+                            repeat(targetDiscCountPage0) {
+                                if (shuffledDiscoveries.isNotEmpty()) {
+                                    finalSelection.add(shuffledDiscoveries.removeAt(0))
+                                } else if (shuffledFavorites.isNotEmpty()) {
+                                    finalSelection.add(shuffledFavorites.removeAt(0))
+                                }
+                            }
+
+                            // Remaining items for extra pages
+                            while (shuffledFavorites.isNotEmpty() || shuffledDiscoveries.isNotEmpty()) {
+                                if (shuffledFavorites.isNotEmpty()) finalSelection.add(shuffledFavorites.removeAt(0))
+                                if (shuffledDiscoveries.isNotEmpty()) finalSelection.add(shuffledDiscoveries.removeAt(0))
+                            }
+
+                            finalSelection
                         }
 
                         val columns = 3
@@ -320,6 +422,7 @@ fun ViviHomeScreen(
                                                             onClick = {
                                                                 scope.launch {
                                                                     isRandomizing = true
+                                                                    refreshSeed++
                                                                     delay(800)
                                                                     isRandomizing = false
                                                                     if (speedDialItems.isNotEmpty()) {
