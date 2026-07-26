@@ -88,6 +88,7 @@ import com.vibevault.app.constants.LyricsAnimationStyle
 import com.vibevault.app.constants.LyricsAnimationStyleKey
 import com.vibevault.app.constants.LyricsStandardBlurKey
 import com.vibevault.app.constants.LyricsTextPositionKey
+import com.vibevault.app.constants.NewHomeScreenDesignKey
 import com.vibevault.app.constants.LyricsTextSizeKey
 import com.vibevault.app.constants.PlayerBackgroundStyle
 import com.vibevault.app.constants.PlayerBackgroundStyleKey
@@ -209,7 +210,11 @@ fun AppearanceSettings(
 
     val (useNewPlayerDesign, onUseNewPlayerDesignChange) = rememberPreference(
         UseNewPlayerDesignKey,
-        defaultValue = false
+        defaultValue = true
+    )
+    val (newHomeScreenDesign, onNewHomeScreenDesignChange) = rememberPreference(
+        NewHomeScreenDesignKey,
+        defaultValue = true
     )
     val (useExpressiveAlbumDesign, onUseExpressiveAlbumDesignChange) = rememberPreference(
         UseExpressiveAlbumDesignKey,
@@ -238,12 +243,12 @@ fun AppearanceSettings(
     val (playerBackground, onPlayerBackgroundChange) =
         rememberEnumPreference(
             PlayerBackgroundStyleKey,
-            defaultValue = PlayerBackgroundStyle.GRADIENT,
+            defaultValue = PlayerBackgroundStyle.LIVE_MESH,
         )
     val (miniPlayerBackground, onMiniPlayerBackgroundChange) =
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            defaultValue = PlayerBackgroundStyle.DEFAULT,
+            defaultValue = PlayerBackgroundStyle.GLOW_ANIMATED,
         )
 
     val (defaultOpenTab, onDefaultOpenTabChange) = rememberEnumPreference(
@@ -277,7 +282,7 @@ fun AppearanceSettings(
 
     val (sliderStyle, onSliderStyleChange) = rememberEnumPreference(
         SliderStyleKey,
-        defaultValue = SliderStyle.DEFAULT
+        defaultValue = SliderStyle.WAVY
     )
     val (squigglySlider, onSquigglySliderChange) = rememberPreference(
         SquigglySliderKey,
@@ -1242,6 +1247,27 @@ fun AppearanceSettings(
         Material3SettingsGroup(
             title = stringResource(R.string.player),
             items = listOfNotNull(
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.home_outlined),
+                    title = { Text("New Home Screen Design") },
+                    trailingContent = {
+                        Switch(
+                            checked = newHomeScreenDesign,
+                            onCheckedChange = onNewHomeScreenDesignChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (newHomeScreenDesign) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onNewHomeScreenDesignChange(!newHomeScreenDesign) },
+                    isExpressive = true
+                ),
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.palette),
                     title = { Text(stringResource(R.string.new_player_design)) },

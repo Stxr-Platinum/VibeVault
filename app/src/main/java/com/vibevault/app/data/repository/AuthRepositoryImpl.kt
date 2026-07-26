@@ -14,6 +14,7 @@ import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import kotlinx.coroutines.flow.Flow
+import okhttp3.MediaType.Companion.toMediaType
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -113,7 +114,8 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun signInWithGoogleIdToken(idToken: String): Result<String> {
-        return try {
+        // Attempt 1: Try native Supabase Kotlin client IDToken provider
+        try {
             auth.signInWith(io.github.jan.supabase.auth.providers.builtin.IDToken) {
                 this.idToken = idToken
                 this.provider = Google
@@ -138,16 +140,74 @@ class AuthRepositoryImpl @Inject constructor(
                     avatarUrl = avatar,
                     expiresAtEpochMs = (session.expiresAt?.epochSeconds ?: 0) * 1000
                 )
-                
-                // Fetch latest profile state from database
                 refreshProfile()
-                
-                Result.success(user.id)
-            } else {
-                Result.failure(Exception("Google sign-in succeeded but no user returned"))
+                return Result.success(user.id)
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            android.util.Log.w("AuthRepositoryImpl", "Supabase SDK IDToken signin failed, trying direct REST endpoint", e)
+        }
+
+        // Fallback: Direct REST call to Supabase auth API without redirect_to query parameter
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val jsonBody = org.json.JSONObject().apply {
+                    put("id_token", idToken)
+                    put("provider", "google")
+                }.toString()
+
+                val mediaType = "application/json".toMediaType()
+                val requestBody = okhttp3.RequestBody.create(mediaType, jsonBody)
+
+                val request = okhttp3.Request.Builder()
+                    .url("${com.vibevault.app.BuildConfig.SUPABASE_URL}/auth/v1/token?grant_type=id_token")
+                    .addHeader("apikey", com.vibevault.app.BuildConfig.SUPABASE_ANON_KEY)
+                    .addHeader("Content-Type", "application/json")
+                    .post(requestBody)
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+
+                if (response.isSuccessful && !responseBody.isNullOrBlank()) {
+                    val json = org.json.JSONObject(responseBody)
+                    val accessToken = json.optString("access_token")
+                    val refreshToken = json.optString("refresh_token")
+                    val expiresIn = json.optLong("expires_in", 3600L)
+                    val userObj = json.optJSONObject("user")
+                    val userId = userObj?.optString("id") ?: ""
+                    val email = userObj?.optString("email") ?: ""
+                    val userMetadata = userObj?.optJSONObject("user_metadata")
+                    val fullName = userMetadata?.optString("full_name") ?: userMetadata?.optString("name")
+                    val avatarUrl = userMetadata?.optString("avatar_url") ?: userMetadata?.optString("picture")
+
+                    sessionManager.saveSession(
+                        accessToken = accessToken,
+                        refreshToken = refreshToken,
+                        userId = userId,
+                        email = email,
+                        displayName = if (!fullName.isNullOrBlank()) fullName else email.substringBefore("@"),
+                        avatarUrl = avatarUrl,
+                        expiresAtEpochMs = System.currentTimeMillis() + (expiresIn * 1000)
+                    )
+                    refreshProfile()
+                    Result.success(userId)
+                } else {
+                    val errorMsg = if (!responseBody.isNullOrBlank()) {
+                        try {
+                            org.json.JSONObject(responseBody).optString("error_description", responseBody)
+                        } catch (_: Exception) { responseBody }
+                    } else "HTTP ${response.code}"
+                    Result.failure(Exception("Google Sign-In Error: $errorMsg"))
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AuthRepositoryImpl", "Direct REST signin failed", e)
+                Result.failure(Exception("Authentication failed: ${e.message ?: "Network error"}"))
+            }
         }
     }
 

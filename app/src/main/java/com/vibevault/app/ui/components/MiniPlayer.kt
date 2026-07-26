@@ -74,7 +74,7 @@ fun MiniPlayer(
     
     val (miniPlayerBackground) = rememberEnumPreference(
         com.vibevault.app.constants.MiniPlayerBackgroundStyleKey,
-        defaultValue = PlayerBackgroundStyle.DEFAULT
+        defaultValue = PlayerBackgroundStyle.GLOW_ANIMATED
     )
     
     val fallbackColor = com.vibevault.app.ui.theme.LocalSolidColorScheme.current.surfaceContainer.toArgb()

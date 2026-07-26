@@ -38,20 +38,20 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
-    private val tidalInstances = listOf(
-        "https://eu-central.monochrome.tf",
-        "https://us-west.monochrome.tf",
-        "https://api.monochrome.tf",
-        "https://monochrome-api.samidy.com"
-    )
+    lateinit var sleepTimer: com.vibevault.app.player.SleepTimer
+        private set
 
-    private val qobuzInstances = listOf(
-        "https://qobuz.kennyy.com.br",
-        "https://mono.scavengerfurs.net"
-    )
+    companion object {
+        var instance: PlaybackService? = null
+            private set
+    }
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
+        
+        sleepTimer = com.vibevault.app.player.SleepTimer(CoroutineScope(Dispatchers.Main), player)
+        player.addListener(sleepTimer)
         
         val callback = object : MediaSession.Callback {
             override fun onAddMediaItems(
@@ -109,6 +109,13 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        if (::sleepTimer.isInitialized) {
+            player.removeListener(sleepTimer)
+            sleepTimer.clear()
+        }
+        if (instance == this) {
+            instance = null
+        }
         mediaSession?.run {
             player.release()
             release()

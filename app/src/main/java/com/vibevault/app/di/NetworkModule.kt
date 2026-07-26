@@ -54,6 +54,7 @@ object NetworkModule {
             })
             httpEngine = OkHttp.create {
                 config {
+                    protocols(listOf(okhttp3.Protocol.HTTP_1_1, okhttp3.Protocol.HTTP_2))
                     pingInterval(20, java.util.concurrent.TimeUnit.SECONDS)
                     retryOnConnectionFailure(true)
                     connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -16,14 +17,17 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.vibevault.app.constants.NewHomeScreenDesignKey
 import com.vibevault.app.ui.screens.artist.ArtistScreen
 import com.vibevault.app.ui.screens.home.HomeScreen
+import com.vibevault.app.ui.screens.home.ViviHomeScreen
 import com.vibevault.app.ui.screens.library.LibraryScreen
 import com.vibevault.app.ui.screens.liked.LikedSongsScreen
 import com.vibevault.app.ui.screens.login.LoginScreen
 import com.vibevault.app.ui.screens.player.PlayerScreen
 import com.vibevault.app.ui.screens.search.SearchScreen
 import com.vibevault.app.ui.viewmodel.PlayerViewModel
+import com.vibevault.app.utils.rememberPreference
 
 @androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
@@ -48,28 +52,47 @@ fun AppNavHost(
             )
         }
         composable(Screen.Home.route) {
-            HomeScreen(
-                onTrackClick = { track ->
-                    // HomeScreen gives a Track, PlayerViewModel.playTrack expects (trackId, context)
-                    playerViewModel.playTrack(track.id, listOf(track))
-                    navController.navigate(Screen.Player.createRoute(track.id))
-                },
-                onPlaylistClick = { playlistId ->
-                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
-                },
-                onSwipeToQueue = { track ->
-                    playerViewModel.addToQueue(track)
-                },
-                onProfileClick = {
-                    navController.navigate(Screen.Profile.route)
-                },
-                onListenTogetherClick = {
-                    navController.navigate(Screen.ListenTogether.route)
-                },
-                onSettingsClick = {
-                    navController.navigate(Screen.Settings.route)
-                }
-            )
+            val (useViviDesign) = rememberPreference(NewHomeScreenDesignKey, false)
+
+            val onTrackClick: (com.vibevault.app.domain.model.Track) -> Unit = { track ->
+                playerViewModel.playTrack(track.id, listOf(track))
+                navController.navigate(Screen.Player.createRoute(track.id))
+            }
+            val onPlaylistClick: (String) -> Unit = { playlistId ->
+                navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+            }
+            val onSwipeToQueue: (com.vibevault.app.domain.model.Track) -> Unit = { track ->
+                playerViewModel.addToQueue(track)
+            }
+            val onProfileClick: () -> Unit = {
+                navController.navigate(Screen.Profile.route)
+            }
+            val onListenTogetherClick: () -> Unit = {
+                navController.navigate(Screen.ListenTogether.route)
+            }
+            val onSettingsClick: () -> Unit = {
+                navController.navigate(Screen.Settings.route)
+            }
+
+            if (useViviDesign) {
+                ViviHomeScreen(
+                    onTrackClick = onTrackClick,
+                    onPlaylistClick = onPlaylistClick,
+                    onSwipeToQueue = onSwipeToQueue,
+                    onProfileClick = onProfileClick,
+                    onListenTogetherClick = onListenTogetherClick,
+                    onSettingsClick = onSettingsClick
+                )
+            } else {
+                HomeScreen(
+                    onTrackClick = onTrackClick,
+                    onPlaylistClick = onPlaylistClick,
+                    onSwipeToQueue = onSwipeToQueue,
+                    onProfileClick = onProfileClick,
+                    onListenTogetherClick = onListenTogetherClick,
+                    onSettingsClick = onSettingsClick
+                )
+            }
         }
         composable(Screen.Profile.route) {
             com.vibevault.app.ui.screens.profile.ProfileScreen(

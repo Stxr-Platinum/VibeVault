@@ -83,6 +83,23 @@ class PlayerViewModel @Inject constructor(
     private val _isLoadingLyrics = MutableStateFlow(false)
     val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
 
+    private val _sleepTimerActive = MutableStateFlow(false)
+    val sleepTimerActive: StateFlow<Boolean> = _sleepTimerActive.asStateFlow()
+
+    fun startSleepTimer(minutes: Int) {
+        PlaybackService.instance?.sleepTimer?.let { timer ->
+            timer.start(minutes)
+            _sleepTimerActive.value = timer.isActive
+        }
+    }
+
+    fun clearSleepTimer() {
+        PlaybackService.instance?.sleepTimer?.let { timer ->
+            timer.clear()
+            _sleepTimerActive.value = false
+        }
+    }
+
     // ── ListenTogether Bridge State ───────────────────────
     private val _isMuted = MutableStateFlow(false)
     private val _queueTitle = MutableStateFlow<String?>(null)
@@ -223,6 +240,7 @@ class PlayerViewModel @Inject constructor(
                         }
                     }
                 }
+                _sleepTimerActive.value = PlaybackService.instance?.sleepTimer?.isActive == true
                 delay(250)
             }
         }

@@ -1,77 +1,87 @@
 package com.vibevault.app.ui.screens.player
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.vibevault.app.R
+import com.vibevault.app.ui.components.ActionPromptDialog
+import kotlin.math.roundToInt
 
 @Composable
 fun SleepTimerDialog(
     onDismiss: () -> Unit,
-    onSelectMinutes: (Int?) -> Unit
+    onConfirm: (Int) -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1E1E1E),
-        title = {
+    var sleepTimerValue by remember { mutableFloatStateOf(30f) }
+
+    ActionPromptDialog(
+        titleBar = {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color.White)
                 Text(
-                    text = "Sleep Timer",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    text = stringResource(R.string.sleep_timer),
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.headlineSmall,
                 )
             }
         },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                val options = listOf(
-                    "15 minutes" to 15,
-                    "30 minutes" to 30,
-                    "45 minutes" to 45,
-                    "60 minutes" to 60,
-                    "End of track" to -1,
-                    "Turn Off" to null
+        onDismiss = onDismiss,
+        onConfirm = {
+            onConfirm(sleepTimerValue.roundToInt())
+            onDismiss()
+        },
+        onCancel = onDismiss,
+        onReset = {
+            sleepTimerValue = 30f // Default value
+        },
+        content = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "${sleepTimerValue.roundToInt()} minutes",
+                    style = MaterialTheme.typography.bodyLarge,
                 )
 
-                options.forEach { (label, minutes) ->
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onSelectMinutes(minutes)
-                                onDismiss()
-                            },
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.Transparent
-                    ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (minutes == null) MaterialTheme.colorScheme.error else Color.White,
-                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)
-                        )
+                Spacer(Modifier.height(16.dp))
+
+                Slider(
+                    value = sleepTimerValue,
+                    onValueChange = { sleepTimerValue = it },
+                    valueRange = 5f..120f,
+                    steps = (120 - 5) / 5 - 1,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        onConfirm(-1) // End of song mode
+                        onDismiss()
                     }
+                ) {
+                    Text(stringResource(R.string.end_of_song))
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.White.copy(alpha = 0.7f))
             }
         }
     )

@@ -142,6 +142,7 @@ object YTPlayerUtils {
      * Metadata (audioConfig, playbackTracking) come from [METADATA_CLIENT] (WEB_REMIX)
      * when the user is logged in, to ensure remote history recording works correctly.
      */
+    @androidx.media3.common.util.UnstableApi
     suspend fun playerResponseForPlayback(
         videoId: String,
         playlistId: String? = null,
@@ -216,20 +217,19 @@ object YTPlayerUtils {
                             val quality = runCatching { SaavnAudioQuality.valueOf(qualityKey) }
                                 .getOrDefault(SaavnAudioQuality.QUALITY_320)
 
-                            var streamUrl = SaavnService.selectBestUrl(bestSong.downloadUrl, quality.toApiValue())
-                            if (streamUrl.isNullOrBlank()) {
-                                streamUrl = SaavnService.getBestStreamUrl(bestSong.id, quality.toApiValue())
-                            }
+                            val resolvedUrl = SaavnService.selectBestUrl(bestSong.downloadUrl, quality.toApiValue())
+                                ?: SaavnService.getBestStreamUrl(bestSong.id, quality.toApiValue())
 
-                            if (!streamUrl.isNullOrBlank()) {
-                                val contentLength = SaavnService.getContentLength(streamUrl)
+                            if (!resolvedUrl.isNullOrBlank()) {
+                                val nonNullStreamUrl: String = resolvedUrl
+                                val contentLength = SaavnService.getContentLength(nonNullStreamUrl)
                                 val saavnFormat = PlayerResponse.StreamingData.Format(
                                     itag = when (quality) {
                                         SaavnAudioQuality.QUALITY_320 -> 141
                                         SaavnAudioQuality.QUALITY_160 -> 140
                                         SaavnAudioQuality.QUALITY_96 -> 139
                                     },
-                                    url = streamUrl,
+                                    url = nonNullStreamUrl,
                                     mimeType = "audio/mp4; codecs=\"mp4a.40.2\"",
                                     bitrate = when (quality) {
                                         SaavnAudioQuality.QUALITY_320 -> 320000
@@ -258,7 +258,7 @@ object YTPlayerUtils {
                                     videoDetails = meta?.videoDetails,
                                     playbackTracking = meta?.playbackTracking,
                                     format = saavnFormat,
-                                    streamUrl = streamUrl,
+                                    streamUrl = nonNullStreamUrl,
                                     streamExpiresInSeconds = 3600,
                                     isSaavnStream = true
                                 )

@@ -95,11 +95,12 @@ fun PlayerScreen(
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val lyricsList by viewModel.lyricsList.collectAsStateWithLifecycle()
     val isLoadingLyrics by viewModel.isLoadingLyrics.collectAsStateWithLifecycle()
+    val sleepTimerActive by viewModel.sleepTimerActive.collectAsStateWithLifecycle()
 
     // Preferences
-    val (useNewPlayerDesign) = rememberPreference(UseNewPlayerDesignKey, defaultValue = false)
-    val (sliderStyle) = rememberEnumPreference(SliderStyleKey, SliderStyle.DEFAULT)
-    val (playerBackground) = rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.GRADIENT)
+    val (useNewPlayerDesign) = rememberPreference(UseNewPlayerDesignKey, defaultValue = true)
+    val (sliderStyle) = rememberEnumPreference(SliderStyleKey, SliderStyle.WAVY)
+    val (playerBackground) = rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.LIVE_MESH)
 
     val fallbackColor = com.vibevault.app.ui.theme.LocalSolidColorScheme.current.surfaceContainer.toArgb()
     val (gradientColors, onGradientColorsChange) = remember { mutableStateOf<List<Color>>(emptyList()) }
@@ -744,12 +745,13 @@ fun PlayerScreen(
                             Icon(Icons.Default.QueueMusic, "Queue", modifier = Modifier.size(iconSize))
                         }
                         
+                        val isSleepTimerActive = sleepTimerActive || showSleepTimerDialog
                         FilledIconButton(
                             onClick = { showSleepTimerDialog = true },
                             shape = bottomMiddleShape,
                             colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = if (showSleepTimerDialog) activeColor else bottomButtonColor,
-                                contentColor = if (showSleepTimerDialog) Color.Black else bottomIconColor
+                                containerColor = if (isSleepTimerActive) activeColor else bottomButtonColor,
+                                contentColor = if (isSleepTimerActive) Color.Black else bottomIconColor
                             ),
                             modifier = Modifier.size(buttonSize)
                         ) {
@@ -884,7 +886,9 @@ fun PlayerScreen(
     if (showSleepTimerDialog) {
         SleepTimerDialog(
             onDismiss = { showSleepTimerDialog = false },
-            onSelectMinutes = { /* Sleep timer selected */ }
+            onConfirm = { minutes ->
+                viewModel.startSleepTimer(minutes)
+            }
         )
     }
 
