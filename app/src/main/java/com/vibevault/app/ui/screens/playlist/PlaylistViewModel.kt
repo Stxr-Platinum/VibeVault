@@ -44,6 +44,7 @@ class PlaylistViewModel @Inject constructor(
                 _playlist.value = PlaylistEntity(
                     id = playlistId,
                     title = albumName,
+                    ownerName = artistName.ifBlank { "Album" },
                     createdAt = 0L,
                     trackCount = 0,
                     coverUrl = ""
@@ -98,6 +99,7 @@ class PlaylistViewModel @Inject constructor(
                     _playlist.value = PlaylistEntity(
                         id = sp.id,
                         title = sp.title,
+                        ownerName = sp.ownerName ?: "Spotify",
                         createdAt = 0L,
                         trackCount = sp.trackCount,
                         coverUrl = sp.coverUrl

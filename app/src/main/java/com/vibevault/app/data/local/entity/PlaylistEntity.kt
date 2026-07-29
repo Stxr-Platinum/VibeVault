@@ -13,6 +13,7 @@ data class PlaylistEntity(
     val title: String,
     val description: String? = null,
     val coverUrl: String? = null,
+    val ownerName: String? = null,
     val trackCount: Int = 0,
     val durationMs: Long = 0,
     val isPublic: Boolean = false,

@@ -21,7 +21,7 @@ import com.vibevault.app.data.local.entity.*
         HistoryEntity::class,
         LogEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

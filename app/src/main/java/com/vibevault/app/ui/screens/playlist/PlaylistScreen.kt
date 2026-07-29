@@ -249,7 +249,7 @@ fun PlaylistScreen(
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    text = "V • ${tracks.size} songs",
+                                    text = "${playlist?.ownerName?.ifBlank { "Spotify" } ?: "Spotify"} • ${tracks.size} songs",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color.White.copy(alpha = 0.7f)
                                 )

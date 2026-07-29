@@ -94,6 +94,7 @@ fun PlaylistEntity.toDomain(): Playlist = Playlist(
     title = title,
     description = description,
     coverUrl = coverUrl,
+    ownerName = ownerName,
     trackCount = trackCount
 )
 

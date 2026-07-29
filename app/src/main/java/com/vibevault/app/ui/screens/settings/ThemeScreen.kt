@@ -360,22 +360,18 @@ fun ThemeControls(
                         .height(32.dp)
                         .background(MaterialTheme.colorScheme.outlineVariant)
                 )
-                
-                // Manual modes (Light, Dark, Pure Black)
-                ModeCircle(
-                    darkMode = darkMode,
-                    pureBlack = pureBlack,
-                    dynamicBackground = dynamicBackground,
-                    targetMode = DarkMode.OFF,
-                    targetPureBlack = false,
+
+                // 2nd Position: Dynamic Background mode
+                DynamicBackgroundModeCircle(
+                    isSelected = dynamicBackground,
                     onClick = {
-                        onDarkModeChange(DarkMode.OFF)
-                        onPureBlackChange(false)
-                        onDynamicBackgroundChange(false)
-                    },
-                    showIcon = false
+                        onDarkModeChange(DarkMode.ON)
+                        onPureBlackChange(true)
+                        onDynamicBackgroundChange(true)
+                    }
                 )
-                
+
+                // Dark mode (Grey dark)
                 ModeCircle(
                     darkMode = darkMode,
                     pureBlack = pureBlack,
@@ -390,6 +386,7 @@ fun ThemeControls(
                     showIcon = false
                 )
                 
+                // Pure Black mode (Amoled black)
                 ModeCircle(
                     darkMode = darkMode,
                     pureBlack = pureBlack,
@@ -403,14 +400,20 @@ fun ThemeControls(
                     },
                     showIcon = false
                 )
-                
-                DynamicBackgroundModeCircle(
-                    isSelected = dynamicBackground,
+
+                // Last Position: White mode (Light)
+                ModeCircle(
+                    darkMode = darkMode,
+                    pureBlack = pureBlack,
+                    dynamicBackground = dynamicBackground,
+                    targetMode = DarkMode.OFF,
+                    targetPureBlack = false,
                     onClick = {
-                        onDarkModeChange(DarkMode.ON)
-                        onPureBlackChange(true)
-                        onDynamicBackgroundChange(true)
-                    }
+                        onDarkModeChange(DarkMode.OFF)
+                        onPureBlackChange(false)
+                        onDynamicBackgroundChange(false)
+                    },
+                    showIcon = false
                 )
             }
         }
@@ -670,8 +673,8 @@ fun DynamicBackgroundModeCircle(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(android.R.drawable.ic_menu_gallery),
-                        contentDescription = null,
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Selected",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(14.dp)
                     )

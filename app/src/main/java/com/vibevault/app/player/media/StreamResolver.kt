@@ -14,8 +14,6 @@ import javax.inject.Singleton
 
 import com.music.innertube.YouTube
 import com.music.innertube.models.SongItem
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @Singleton
 class StreamResolver @Inject constructor(
@@ -29,31 +27,33 @@ class StreamResolver @Inject constructor(
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
         val uri = dataSpec.uri
         if (uri.scheme == "vibevault" && uri.authority == "stream") {
-            val trackId = uri.getQueryParameter("id")
+            val rawTrackId = uri.getQueryParameter("id") ?: ""
+            val cleanTrackId = rawTrackId.split("/").lastOrNull()?.trim() ?: ""
             val title = uri.getQueryParameter("title") ?: ""
             val artist = uri.getQueryParameter("artist") ?: ""
-            val query = "$title $artist"
+            val query = "$title $artist".trim()
             
             val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
             return runBlocking {
                 try {
-                    val videoId = if (!trackId.isNullOrEmpty() && trackId.length == 11 && !trackId.contains(" ")) {
-                        Timber.d("StreamResolver using direct videoId: $trackId")
-                        trackId
+                    val videoId = if (cleanTrackId.length == 11 && !cleanTrackId.contains(" ") && !cleanTrackId.contains("/")) {
+                        Timber.d("StreamResolver using direct videoId: $cleanTrackId")
+                        cleanTrackId
                     } else {
-                        // Search YouTube for the video ID using innertube
-                        val searchResult = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                        val searchQuery = if (query.isNotBlank()) query else cleanTrackId
+                        Timber.d("StreamResolver searching YouTube for: $searchQuery")
+                        val searchResult = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG)
                         val searchItems = searchResult.getOrNull()?.items
                         val songItem = searchItems?.firstOrNull { it is SongItem } as? SongItem
-                            ?: searchItems?.firstOrNull() // Fallback if no SongItem found
+                            ?: searchItems?.firstOrNull() as? SongItem
                         
-                        songItem?.id ?: throw Exception("No video found for query: $query")
+                        songItem?.id ?: cleanTrackId.takeIf { it.isNotBlank() } ?: throw Exception("No video found for query: $searchQuery")
                     }
                     
                     Timber.d("StreamResolver resolving stream for videoId: $videoId")
 
-                    // 2. Resolve the stream URL using the actual video ID
+                    // Resolve the stream URL using the actual video ID
                     val result = YTPlayerUtils.playerResponseForPlayback(
                         videoId = videoId,
                         audioQuality = AudioQuality.HIGH,
@@ -68,7 +68,7 @@ class StreamResolver @Inject constructor(
                         dataSpec
                     }
                 } catch (e: Exception) {
-                    Timber.e(e, "Failed to resolve stream for $query")
+                    Timber.e(e, "Failed to resolve stream for id=$cleanTrackId, query=$query")
                     dataSpec
                 }
             }
