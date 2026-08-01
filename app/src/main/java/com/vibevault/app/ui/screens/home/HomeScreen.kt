@@ -205,7 +205,7 @@ fun HomeScreen(
                     quickPicks = quickPicks,
                     recentlyPlayed = recentlyPlayed,
                     trendingTracks = trendingTracks,
-                    onTrackClick = { viewModel.playTrack(it); onTrackClick(it) },
+                    onTrackClick = onTrackClick,
                     onPlaylistClick = onPlaylistClick,
                     onSearchClick = { /* Scroll to top or focus search */ },
                     onProfileClick = onProfileClick,

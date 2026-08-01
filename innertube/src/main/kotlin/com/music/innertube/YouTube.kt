@@ -1270,13 +1270,15 @@ object YouTube {
             endpoint.index,
             endpoint.params,
             continuation).body<NextResponse>()
+
+        val watchNextTab = response.contents?.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
+            ?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(0)?.tabRenderer?.content
+
         val playlistPanelRenderer = response.continuationContents?.playlistPanelContinuation
-            ?: response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
-                ?.watchNextTabbedResultsRenderer?.tabs?.get(0)?.tabRenderer?.content?.musicQueueRenderer
-                ?.content?.playlistPanelRenderer!!
-        val title = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
-            ?.watchNextTabbedResultsRenderer?.tabs?.get(0)?.tabRenderer?.content?.musicQueueRenderer
-            ?.header?.musicQueueHeaderRenderer?.subtitle?.runs?.firstOrNull()?.text
+            ?: watchNextTab?.musicQueueRenderer?.content?.playlistPanelRenderer
+            ?: throw IllegalStateException("Playlist panel renderer not found for videoId=${endpoint.videoId}")
+
+        val title = watchNextTab?.musicQueueRenderer?.header?.musicQueueHeaderRenderer?.subtitle?.runs?.firstOrNull()?.text
         val items = playlistPanelRenderer.contents.mapNotNull { content ->
             content.playlistPanelVideoRenderer
                 ?.let(NextPage::fromPlaylistPanelVideoRenderer)
@@ -1285,14 +1287,18 @@ object YouTube {
         val songs = items.map { it.first }
         val currentIndex = items.indexOfFirst { it.second }.takeIf { it != -1 }
 
+        val tabs = response.contents?.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs
+        val lyricsEndpoint = tabs?.getOrNull(1)?.tabRenderer?.endpoint?.browseEndpoint
+        val relatedEndpoint = tabs?.getOrNull(2)?.tabRenderer?.endpoint?.browseEndpoint
+
         // load automix items
         playlistPanelRenderer.contents.lastOrNull()?.automixPreviewVideoRenderer?.content?.automixPlaylistVideoRenderer?.navigationEndpoint?.watchPlaylistEndpoint?.let { watchPlaylistEndpoint ->
             return@runCatching next(watchPlaylistEndpoint).getOrThrow().let { result ->
                 result.copy(
                     title = title,
                     items = songs + result.items,
-                    lyricsEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(1)?.tabRenderer?.endpoint?.browseEndpoint,
-                    relatedEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(2)?.tabRenderer?.endpoint?.browseEndpoint,
+                    lyricsEndpoint = lyricsEndpoint,
+                    relatedEndpoint = relatedEndpoint,
                     currentIndex = currentIndex,
                     endpoint = watchPlaylistEndpoint
                 )
@@ -1302,8 +1308,8 @@ object YouTube {
             title = title,
             items = songs,
             currentIndex = currentIndex,
-            lyricsEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(1)?.tabRenderer?.endpoint?.browseEndpoint,
-            relatedEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(2)?.tabRenderer?.endpoint?.browseEndpoint,
+            lyricsEndpoint = lyricsEndpoint,
+            relatedEndpoint = relatedEndpoint,
             continuation = playlistPanelRenderer.continuations?.getContinuation(),
             endpoint = endpoint
         )

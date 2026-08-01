@@ -3,16 +3,26 @@ package com.vibevault.app.player
 import android.util.Log
 import androidx.media3.common.Player
 import com.vibevault.app.domain.model.Track
+import com.vibevault.app.player.queue.ListQueue
+import com.vibevault.app.player.queue.Queue
+import com.vibevault.app.player.queue.YouTubeQueue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class QueueManager @Inject constructor() {
+
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var activeQueue: Queue? = null
 
     private val originalQueue = mutableListOf<Track>()
     private val currentQueue = mutableListOf<Track>()
@@ -35,9 +45,31 @@ class QueueManager @Inject constructor() {
     private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
     val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
 
+    private val _isLoadingNextPage = MutableStateFlow(false)
+    val isLoadingNextPage: StateFlow<Boolean> = _isLoadingNextPage.asStateFlow()
+
+    fun setQueue(queue: Queue) {
+        activeQueue = queue
+        queue.preloadItem?.let { item ->
+            setQueueInternal(listOf(item), 0)
+        }
+        scope.launch {
+            try {
+                val status = queue.getInitialStatus()
+                setQueueInternal(status.items, status.mediaItemIndex)
+            } catch (e: Exception) {
+                Log.e("QueueManager", "Failed to load initial status for queue", e)
+            }
+        }
+    }
+
     fun setQueue(tracks: List<Track>, startIndex: Int) {
+        setQueue(ListQueue(items = tracks, startIndex = startIndex))
+    }
+
+    private fun setQueueInternal(tracks: List<Track>, startIndex: Int) {
         if (tracks.isEmpty()) return
-        
+
         val validIndex = startIndex.coerceIn(0, tracks.size - 1)
         val selectedTrack = tracks[validIndex]
 
@@ -58,6 +90,7 @@ class QueueManager @Inject constructor() {
         }
 
         updateState()
+        checkAndFetchNextPage()
         debugLog()
     }
 
@@ -67,17 +100,28 @@ class QueueManager @Inject constructor() {
         setQueue(context, index)
     }
 
+    fun playRadio(track: Track) {
+        setQueue(YouTubeQueue.radio(track))
+    }
+
     fun next() {
         if (currentQueue.isEmpty()) return
 
         val newIndex = _currentIndex.value + 1
         if (newIndex < currentQueue.size) {
             _currentIndex.value = newIndex
+            checkAndFetchNextPage()
         } else {
+            val queue = activeQueue
+            if (queue != null && queue.hasNextPage()) {
+                fetchNextPage {
+                    next()
+                }
+                return
+            }
             when (_repeatMode.value) {
                 Player.REPEAT_MODE_ALL -> _currentIndex.value = 0
                 else -> {
-                    // Queue ended, don't loop, trigger infinite radio
                     _queueEnded.tryEmit(Unit)
                     return
                 }
@@ -90,8 +134,6 @@ class QueueManager @Inject constructor() {
     fun previous(forcePrevious: Boolean = false) {
         if (currentQueue.isEmpty()) return
 
-        // Note: The 5-second rule will be checked by PlayerViewModel.
-        // QueueManager simply moves the index back.
         val newIndex = _currentIndex.value - 1
         if (newIndex >= 0) {
             _currentIndex.value = newIndex
@@ -122,7 +164,7 @@ class QueueManager @Inject constructor() {
             currentQueue.addAll(originalQueue)
             _currentIndex.value = currentQueue.indexOf(currentTrack).coerceAtLeast(0)
         }
-        
+
         _queueState.value = currentQueue.toList()
         debugLog()
     }
@@ -134,6 +176,35 @@ class QueueManager @Inject constructor() {
             else -> Player.REPEAT_MODE_OFF
         }
         debugLog()
+    }
+
+    private fun checkAndFetchNextPage() {
+        val queue = activeQueue ?: return
+        if (!queue.hasNextPage() || _isLoadingNextPage.value) return
+        val remaining = currentQueue.size - 1 - _currentIndex.value
+        if (remaining <= 3) {
+            fetchNextPage()
+        }
+    }
+
+    private fun fetchNextPage(onComplete: (() -> Unit)? = null) {
+        val queue = activeQueue ?: return
+        if (!queue.hasNextPage() || _isLoadingNextPage.value) return
+
+        _isLoadingNextPage.value = true
+        scope.launch {
+            try {
+                val newTracks = queue.nextPage()
+                if (newTracks.isNotEmpty()) {
+                    appendTracks(newTracks)
+                }
+            } catch (e: Exception) {
+                Log.e("QueueManager", "Failed to fetch next page of queue", e)
+            } finally {
+                _isLoadingNextPage.value = false
+                onComplete?.invoke()
+            }
+        }
     }
 
     private fun updateState() {
@@ -153,14 +224,15 @@ class QueueManager @Inject constructor() {
         Log.d("PlaybackDebug", "  Current Track ID = ${_currentTrack.value?.id ?: "null"}")
         Log.d("PlaybackDebug", "  Shuffle Enabled = ${_shuffleModeEnabled.value}")
         Log.d("PlaybackDebug", "  Repeat Mode = ${_repeatMode.value}")
-        
-        val nextIdx = _currentIndex.value + 1
-        val nextTrackId = if (nextIdx in currentQueue.indices) currentQueue[nextIdx].id else "end"
-        Log.d("PlaybackDebug", "  Next Track ID = $nextTrackId")
-        
-        val prevIdx = _currentIndex.value - 1
-        val prevTrackId = if (prevIdx >= 0) currentQueue[prevIdx].id else "start"
-        Log.d("PlaybackDebug", "  Previous Track ID = $prevTrackId")
+    }
+
+    fun onMediaItemTransition(index: Int) {
+        if (index in currentQueue.indices && index != _currentIndex.value) {
+            _currentIndex.value = index
+            updateState()
+            checkAndFetchNextPage()
+            debugLog()
+        }
     }
 
     fun syncExternalTrack(track: Track) {
@@ -172,10 +244,8 @@ class QueueManager @Inject constructor() {
                 originalQueue[origIdx] = track
             }
             _currentIndex.value = index
-            updateState() // CRITICAL: Actually emit the new track to the UI!
+            updateState()
         } else {
-            // If it's a completely external track, just update the current track state
-            // without breaking the queue
             _currentTrack.value = track
         }
         debugLog()
@@ -184,27 +254,29 @@ class QueueManager @Inject constructor() {
     fun appendTracks(tracks: List<Track>) {
         if (tracks.isEmpty()) return
 
-        originalQueue.addAll(tracks)
-        currentQueue.addAll(tracks)
+        val newUniqueTracks = tracks.filter { newTrack -> originalQueue.none { it.id == newTrack.id } }
+        if (newUniqueTracks.isEmpty()) return
+
+        originalQueue.addAll(newUniqueTracks)
+        currentQueue.addAll(newUniqueTracks)
         _queueState.value = currentQueue.toList()
         debugLog()
     }
 
     fun appendTrack(track: Track) {
         val wasEmpty = currentQueue.isEmpty()
-        
+
         if (wasEmpty) {
             originalQueue.add(track)
             currentQueue.add(track)
             _currentIndex.value = 0
             updateState()
         } else {
-            // Insert right after the currently playing track so it plays next
             val insertIndex = _currentIndex.value + 1
             originalQueue.add(insertIndex.coerceAtMost(originalQueue.size), track)
             currentQueue.add(insertIndex.coerceAtMost(currentQueue.size), track)
         }
-        
+
         _queueState.value = currentQueue.toList()
         debugLog()
     }
@@ -214,11 +286,10 @@ class QueueManager @Inject constructor() {
             val trackToRemove = currentQueue[index]
             currentQueue.removeAt(index)
             originalQueue.remove(trackToRemove)
-            
+
             if (index < _currentIndex.value) {
                 _currentIndex.value -= 1
             } else if (index == _currentIndex.value) {
-                // Currently playing track was removed!
                 if (currentQueue.isEmpty()) {
                     _currentIndex.value = -1
                     _currentTrack.value = null
@@ -227,7 +298,7 @@ class QueueManager @Inject constructor() {
                 }
                 updateState()
             }
-            
+
             _queueState.value = currentQueue.toList()
         }
     }
@@ -238,5 +309,6 @@ class QueueManager @Inject constructor() {
         _currentIndex.value = -1
         _currentTrack.value = null
         _queueState.value = emptyList()
+        activeQueue = null
     }
 }

@@ -428,7 +428,6 @@ fun ViviHomeScreen(
                                                                     if (speedDialItems.isNotEmpty()) {
                                                                         val randomItem = speedDialItems.random()
                                                                         if (randomItem.track != null) {
-                                                                            viewModel.playTrack(randomItem.track)
                                                                             onTrackClick(randomItem.track)
                                                                         } else if (randomItem.type == "playlist") {
                                                                             onPlaylistClick(randomItem.id)
@@ -450,7 +449,6 @@ fun ViviHomeScreen(
                                                             item = item,
                                                             onClick = {
                                                                 if (item.track != null) {
-                                                                    viewModel.playTrack(item.track)
                                                                     onTrackClick(item.track)
                                                                 } else if (item.type == "playlist") {
                                                                     onPlaylistClick(item.id)
@@ -503,7 +501,6 @@ fun ViviHomeScreen(
                             title = "Quick picks",
                             onPlayAllClick = {
                                 (quickPicks.mapNotNull { it.track } + recentlyPlayed).firstOrNull()?.let { first ->
-                                    viewModel.playTrack(first)
                                     onTrackClick(first)
                                 }
                             }
@@ -531,7 +528,6 @@ fun ViviHomeScreen(
                                 ViviSongListItem(
                                     track = track,
                                     onClick = {
-                                        viewModel.playTrack(track)
                                         onTrackClick(track)
                                     },
                                     modifier = Modifier.width(horizontalLazyGridItemWidth)
@@ -548,7 +544,6 @@ fun ViviHomeScreen(
                             title = "Trending",
                             onPlayAllClick = {
                                 trendingTracks.firstOrNull()?.let { first ->
-                                    viewModel.playTrack(first)
                                     onTrackClick(first)
                                 }
                             }
@@ -567,7 +562,6 @@ fun ViviHomeScreen(
                                 ViviTrackGridItem(
                                     track = track,
                                     onClick = {
-                                        viewModel.playTrack(track)
                                         onTrackClick(track)
                                     }
                                 )

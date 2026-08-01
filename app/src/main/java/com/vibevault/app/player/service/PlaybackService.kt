@@ -40,6 +40,9 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     lateinit var autoMediaBrowserTree: AutoMediaBrowserTree
 
+    @Inject
+    lateinit var queueManager: com.vibevault.app.player.QueueManager
+
     private var mediaLibrarySession: MediaLibrarySession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
@@ -57,6 +60,18 @@ class PlaybackService : MediaLibraryService() {
         
         sleepTimer = com.vibevault.app.player.SleepTimer(CoroutineScope(Dispatchers.Main), player)
         player.addListener(sleepTimer)
+        
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
+                    reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
+                    val currentIdx = player.currentMediaItemIndex
+                    if (currentIdx >= 0) {
+                        queueManager.onMediaItemTransition(currentIdx)
+                    }
+                }
+            }
+        })
         
         val callback = object : MediaLibrarySession.Callback {
 
@@ -222,7 +237,6 @@ class PlaybackService : MediaLibraryService() {
                             )
                             .build()
                     }
-
                     MediaItemsWithStartPosition(resolvedList, targetIndex, startPositionMs)
                 }
             }

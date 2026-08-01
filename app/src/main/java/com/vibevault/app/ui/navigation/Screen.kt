@@ -32,6 +32,9 @@ sealed class Screen(
     data object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Playlist") {
         fun createRoute(playlistId: String) = "playlist_detail/${android.net.Uri.encode(playlistId)}"
     }
+    data object Album : Screen("album/{albumId}", "Album") {
+        fun createRoute(albumId: String) = "album/${android.net.Uri.encode(albumId)}"
+    }
 
     data object Login : Screen("login", "Login")
     data object SpotifyLogin : Screen("spotify_login", "Connect Spotify")

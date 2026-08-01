@@ -52,14 +52,19 @@ fun AppNavHost(
             )
         }
         composable(Screen.Home.route) {
-            val (useViviDesign) = rememberPreference(NewHomeScreenDesignKey, false)
+            val (useViviDesign) = rememberPreference(NewHomeScreenDesignKey, true)
 
             val onTrackClick: (com.vibevault.app.domain.model.Track) -> Unit = { track ->
                 playerViewModel.playTrack(track.id, listOf(track))
                 navController.navigate(Screen.Player.createRoute(track.id))
             }
-            val onPlaylistClick: (String) -> Unit = { playlistId ->
-                navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+            val onPlaylistClick: (String) -> Unit = { id ->
+                if (id.startsWith("album:") || id.startsWith("MPREb_") || id.startsWith("OLAK5uy_")) {
+                    val albumId = id.removePrefix("album:")
+                    navController.navigate(Screen.Album.createRoute(albumId))
+                } else {
+                    navController.navigate(Screen.PlaylistDetail.createRoute(id))
+                }
             }
             val onSwipeToQueue: (com.vibevault.app.domain.model.Track) -> Unit = { track ->
                 playerViewModel.addToQueue(track)
@@ -201,6 +206,20 @@ fun AppNavHost(
                 }
             )
         }
+        composable(Screen.Album.route) { backStackEntry ->
+            val albumId = backStackEntry.arguments?.getString("albumId") ?: ""
+            com.vibevault.app.ui.screens.album.AlbumScreen(
+                albumId = albumId,
+                onBackClick = { navController.popBackStack() },
+                onTrackClick = { track ->
+                    playerViewModel.playTrack(track.id, listOf(track))
+                    navController.navigate(Screen.Player.createRoute(track.id))
+                },
+                onAlbumClick = { nextAlbumId ->
+                    navController.navigate(Screen.Album.createRoute(nextAlbumId))
+                }
+            )
+        }
         composable(Screen.PlaylistDetail.route) { backStackEntry ->
             val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
             // Will implement PlaylistScreen here
@@ -208,7 +227,7 @@ fun AppNavHost(
                 playlistId = playlistId,
                 onBackClick = { navController.popBackStack() },
                 onTrackClick = { trackId, context ->
-                    playerViewModel.playTrack(trackId, context)
+                    playerViewModel.playTrack(trackId, context, isAlbumOrPlaylist = true)
                     navController.navigate(Screen.Player.createRoute(trackId))
                 }
             )

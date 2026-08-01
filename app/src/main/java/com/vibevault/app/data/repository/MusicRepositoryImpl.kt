@@ -15,6 +15,8 @@ import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import com.vibevault.app.domain.model.*
+import com.vibevault.app.player.queue.filterDiverseCharacteristics
+import com.vibevault.app.extensions.toTrack
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,7 +50,15 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun getRecentlyPlayed(limit: Int): Flow<List<Track>> = 
         historyDao.getRecentHistory().map { entities ->
-            entities.distinctBy { it.trackId }.take(limit).map { entity ->
+            entities.distinctBy { entity ->
+                val cleanTitle = entity.title.trim().lowercase()
+                val cleanArtist = entity.artist.trim().lowercase()
+                if (cleanTitle.isNotEmpty() && cleanArtist.isNotEmpty()) {
+                    "$cleanTitle::$cleanArtist"
+                } else {
+                    entity.trackId
+                }
+            }.take(limit).map { entity ->
                 Track(
                     id = entity.trackId,
                     title = entity.title,
@@ -264,156 +274,54 @@ class MusicRepositoryImpl @Inject constructor(
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val trackId = track.id
             val likedIds = likedSongDao.getLikedSongIds().toSet()
-            
-            // 1. Try JioSaavn
-            try {
-                Log.d("MusicRepo", "Fetching JioSaavn suggestions for $trackId")
-                val url = java.net.URL("https://zmkvknwtqclvtijdoobh.supabase.co/functions/v1/listenfree-proxy/api/songs/${java.net.URLEncoder.encode(trackId, "UTF-8")}/suggestions")
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 8000
-                connection.readTimeout = 8000
 
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().readText()
-                    val json = org.json.JSONObject(response)
-                    val data = json.optJSONArray("data")
-                    
-                    val tracks = mutableListOf<Track>()
-                    
-                    if (data != null) {
-                        for (i in 0 until data.length()) {
-                            val song = data.getJSONObject(i)
-                            val downloadUrlArray = song.optJSONArray("downloadUrl")
-                            if (downloadUrlArray != null && downloadUrlArray.length() > 0) {
-                                val songId = song.optString("id", "jio-${System.currentTimeMillis()}")
-                                val title = song.optString("name", "Unknown Title")
-                                val primaryArtists = song.optJSONObject("artists")?.optJSONArray("primary")
-                                val artist = if (primaryArtists != null && primaryArtists.length() > 0) {
-                                    primaryArtists.getJSONObject(0).optString("name", "Unknown Artist")
-                                } else "Unknown Artist"
-                                
-                                val album = song.optJSONObject("album")?.optString("name", "") ?: ""
-                                val imageArray = song.optJSONArray("image")
-                                val coverUrl = if (imageArray != null && imageArray.length() > 0) {
-                                    imageArray.getJSONObject(imageArray.length() - 1).optString("url", "")
-                                } else ""
-                                
-                                val durationSecs = song.optInt("duration", 0)
-                                
-                                tracks.add(Track(
-                                    id = songId,
-                                    title = title,
-                                    artist = artist,
-                                    album = album,
-                                    albumImageUrl = coverUrl,
-                                    audioUrl = "", // Decided by PlaybackService
-                                    durationMs = durationSecs * 1000L,
-                                    isLiked = likedIds.contains(songId),
-                                    source = "jiosaavn"
-                                ))
-                            }
+            // 0. Primary: YouTube Related Endpoint (Matching vivi-music's acoustic & style similarity algorithm)
+            try {
+                val nextResult = com.music.innertube.YouTube.next(com.music.innertube.models.WatchEndpoint(videoId = trackId)).getOrNull()
+                val relatedEndpoint = nextResult?.relatedEndpoint
+                if (relatedEndpoint != null) {
+                    val relatedResult = com.music.innertube.YouTube.related(relatedEndpoint).getOrNull()
+                    if (relatedResult != null && relatedResult.songs.isNotEmpty()) {
+                        val tracks = relatedResult.songs.map { song ->
+                            Track(
+                                id = song.id,
+                                title = song.title,
+                                artist = song.artists.joinToString(", ") { it.name },
+                                album = song.album?.name ?: "",
+                                albumImageUrl = song.thumbnail,
+                                durationMs = (song.duration ?: 0) * 1000L,
+                                isLiked = likedIds.contains(song.id),
+                                source = "youtube"
+                            )
+                        }.filterDiverseCharacteristics(maxPerArtist = 2, currentlyPlayingTrackId = trackId)
+
+                        if (tracks.isNotEmpty()) {
+                            return@withContext Result.success(tracks)
                         }
                     }
+                }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "YouTube related songs failed, falling back", e)
+            }
+
+            try {
+                val watchEndpoint = com.music.innertube.models.WatchEndpoint(
+                    videoId = trackId,
+                    playlistId = "RDAMVM$trackId"
+                )
+                val nextResult = com.music.innertube.YouTube.next(watchEndpoint).getOrNull()
+                if (nextResult != null && nextResult.items.isNotEmpty()) {
+                    val tracks = nextResult.items.map { it.toTrack() }
+                        .filterDiverseCharacteristics(maxPerArtist = 1, currentlyPlayingTrackId = trackId)
                     if (tracks.isNotEmpty()) {
                         return@withContext Result.success(tracks)
                     }
                 }
             } catch (e: Exception) {
-                Log.e("MusicRepo", "JioSaavn suggestions failed, falling back to Tidal", e)
+                Log.e("MusicRepo", "YouTube fallback radio failed", e)
             }
 
-            // 2. Try Tidal Fallback
-            val numericId = trackId.toLongOrNull()
-            if (numericId != null) {
-                try {
-                    Log.d("MusicRepo", "Falling back to Tidal recommendations for id=$numericId")
-                    val baseInstances = listOf(
-                        "https://us-west.monochrome.tf",
-                        "https://eu-central.monochrome.tf",
-                        "https://api.monochrome.tf",
-                        "https://monochrome-api.samidy.com",
-                        "https://hifi-two.spotisaver.net"
-                    )
-
-                    val active = activeSearchInstance
-                    val API_INSTANCES = listOf(active) + baseInstances.filter { it != active }
-
-                    for (instance in API_INSTANCES) {
-                        try {
-                            val url = java.net.URL("$instance/recommendations/?id=$numericId")
-                            val connection = url.openConnection() as java.net.HttpURLConnection
-                            connection.requestMethod = "GET"
-                            connection.connectTimeout = 5000
-                            connection.readTimeout = 5000
-
-                            if (connection.responseCode == 200) {
-                                val response = connection.inputStream.bufferedReader().readText()
-                                val json = org.json.JSONObject(response)
-                                val items = json.optJSONArray("items") ?: org.json.JSONArray()
-                                val tracks = mutableListOf<Track>()
-
-                                for (i in 0 until items.length()) {
-                                    val itemObj = items.optJSONObject(i) ?: continue
-                                    val trackObj = itemObj.optJSONObject("track") ?: continue
-                                    val tidalId = trackObj.optString("id")
-                                    if (tidalId.isNullOrEmpty()) continue
-                                    
-                                    val title = trackObj.optString("title", "Unknown")
-                                    val durationSec = trackObj.optInt("duration", 0)
-                                    val artistObj = trackObj.optJSONObject("artist")
-                                    val artistName = artistObj?.optString("name", "Unknown") ?: "Unknown"
-                                    val albumObj = trackObj.optJSONObject("album")
-                                    val albumName = albumObj?.optString("title", "Unknown") ?: "Unknown"
-                                    
-                                    val coverUuid = albumObj?.optString("cover", "") ?: ""
-                                    val coverUrl = if (coverUuid.isNotEmpty()) {
-                                        "https://resources.tidal.com/images/${coverUuid.replace("-", "/")}/640x640.jpg"
-                                    } else ""
-                                    
-                                    tracks.add(Track(
-                                        id = tidalId,
-                                        title = title,
-                                        artist = artistName,
-                                        album = albumName,
-                                        albumImageUrl = coverUrl,
-                                        durationMs = durationSec * 1000L,
-                                        isLiked = likedIds.contains(tidalId),
-                                        source = "tidal"
-                                    ))
-                                }
-                                if (tracks.isNotEmpty()) {
-                                    activeSearchInstance = instance
-                                    return@withContext Result.success(tracks)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.w("MusicRepo", "Tidal fallback failed via $instance", e)
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("MusicRepo", "Tidal fallback failed entirely", e)
-                }
-            }
-
-            // 3. Fallback: Search Tidal by Artist (good for Spotify tracks)
-            try {
-                Log.d("MusicRepo", "Falling back to Tidal search by artist: ${track.artist}")
-                val searchRes = searchSpotifyAll(track.artist)
-                if (searchRes.isSuccess) {
-                    val searchTracks = searchRes.getOrNull()?.tracks
-                    if (!searchTracks.isNullOrEmpty()) {
-                        val similar = searchTracks.filter { it.id != track.id }.shuffled().take(15)
-                        if (similar.isNotEmpty()) {
-                            return@withContext Result.success(similar)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("MusicRepo", "Tidal search fallback failed", e)
-            }
-
-            Result.failure(Exception("Failed to get similar tracks from all providers"))
+            Result.success(emptyList())
         }
     }
 
@@ -741,7 +649,43 @@ class MusicRepositoryImpl @Inject constructor(
     }
     override fun getSpotifyRecentlyPlayed(): Flow<List<Track>> = flow { emit(emptyList()) }
 
-    override fun getFeaturedPlaylists(): Flow<List<Playlist>> = flow { emit(emptyList()) }
+    override fun getFeaturedPlaylists(): Flow<List<Playlist>> = flow {
+        val featured = listOf(
+            Playlist(
+                id = "RDCLAK5uy_kL21mX1f0b001n-071a9l9019",
+                title = "Global Top 50",
+                description = "The most played tracks right now across the globe.",
+                coverUrl = "https://lh3.googleusercontent.com/w4pS8M-a26",
+                ownerName = "YouTube Music",
+                trackCount = 50
+            ),
+            Playlist(
+                id = "RDCLAK5uy_n9FAC29uL9d4",
+                title = "Today's Hits",
+                description = "Biggest hit songs right now.",
+                coverUrl = "https://lh3.googleusercontent.com/v_18pL0m02",
+                ownerName = "VibeVault",
+                trackCount = 50
+            ),
+            Playlist(
+                id = "RDCLAK5uy_m-78_g3xX0",
+                title = "Pop Rising",
+                description = "The next generation of pop superstars.",
+                coverUrl = "https://lh3.googleusercontent.com/a-10xP0",
+                ownerName = "VibeVault",
+                trackCount = 50
+            ),
+            Playlist(
+                id = "RDCLAK5uy_l4309uX_0",
+                title = "Chill Vibes",
+                description = "Relaxing, acoustic and chill hits.",
+                coverUrl = "https://lh3.googleusercontent.com/b-20yQ1",
+                ownerName = "VibeVault",
+                trackCount = 50
+            )
+        )
+        emit(featured)
+    }
 
     override fun getNewReleases(): Flow<List<Track>> = flow { emit(emptyList()) }
 
@@ -782,6 +726,7 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getSpotifyPlaylistTracks(playlistId: String): List<Track> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val tracks = mutableListOf<Track>()
         try {
             val userId = sessionManager.userId
             if (userId != null) {
@@ -794,7 +739,7 @@ class MusicRepositoryImpl @Inject constructor(
                     }
                     .decodeList<com.vibevault.app.data.remote.dto.SupabaseSpotifyPlaylistTrackDto>()
                 
-                dtos.sortedBy { it.position }.map { dto ->
+                tracks.addAll(dtos.sortedBy { it.position }.map { dto ->
                     Track(
                         id = dto.spotifyTrackId,
                         title = dto.title,
@@ -803,13 +748,60 @@ class MusicRepositoryImpl @Inject constructor(
                         albumImageUrl = dto.coverUrl,
                         durationMs = dto.durationMs
                     )
-                }
-            } else {
-                emptyList()
+                })
             }
         } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+            Log.e("MusicRepo", "Failed fetching spotify tracks from Supabase, trying online YouTube playlist", e)
+        }
+
+        if (tracks.isEmpty()) {
+            try {
+                val ytPlaylist = com.music.innertube.YouTube.playlist(playlistId).getOrNull()
+                if (ytPlaylist != null && ytPlaylist.songs.isNotEmpty()) {
+                    val onlineTracks = ytPlaylist.songs.map { it.toTrack() }
+                    tracks.addAll(onlineTracks)
+                    cacheSpotifyPlaylist(
+                        playlistId = playlistId,
+                        title = ytPlaylist.playlist.title ?: "Playlist",
+                        coverUrl = ytPlaylist.playlist.thumbnail,
+                        tracks = onlineTracks
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "YouTube playlist fetch failed for $playlistId", e)
+            }
+        }
+
+        tracks
+    }
+
+    override suspend fun cacheSpotifyPlaylist(playlistId: String, title: String, coverUrl: String?, tracks: List<Track>) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val cleanTitle = title.ifBlank { "Playlist" }
+                val entity = PlaylistEntity(
+                    id = playlistId,
+                    title = cleanTitle,
+                    description = "Spotify Playlist",
+                    coverUrl = coverUrl ?: "",
+                    trackCount = tracks.size,
+                    durationMs = tracks.sumOf { it.durationMs },
+                    isPublic = true,
+                    isSynced = true,
+                    ownerName = "Spotify"
+                )
+                playlistDao.insertPlaylist(entity)
+
+                tracks.forEach { track ->
+                    try {
+                        likedSongDao.insertLikedSong(track.toLikedEntity().copy(isDeleted = true))
+                    } catch (e: Exception) {
+                        // ignore duplicate track insert
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "Failed caching Spotify playlist into Room DB", e)
+            }
         }
     }
 
@@ -1045,5 +1037,52 @@ class MusicRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Log.e("SpotifySync", "Error syncing tracks for $playlistId", e)
         }
+    }
+
+    override suspend fun getAlbumDetails(albumId: String): Result<com.vibevault.app.domain.model.AlbumDetails> = runCatching {
+        val cleanId = albumId.removePrefix("album:")
+        val targetBrowseId = if (cleanId.startsWith("MPREb_") || cleanId.startsWith("OLAK5uy_")) {
+            cleanId
+        } else {
+            val parts = cleanId.split("::")
+            val searchQuery = if (parts.size >= 2) "${parts[0]} ${parts[1]}" else cleanId
+            val searchResult = com.music.innertube.YouTube.search(searchQuery, com.music.innertube.YouTube.SearchFilter.FILTER_ALBUM).getOrNull()
+            val foundAlbum = searchResult?.items?.filterIsInstance<com.music.innertube.models.AlbumItem>()?.firstOrNull()
+            foundAlbum?.id ?: throw IllegalArgumentException("Could not resolve YouTube Music album ID for: $cleanId")
+        }
+
+        val albumPage = com.music.innertube.YouTube.album(targetBrowseId).getOrThrow()
+        val albumItem = albumPage.album
+        val tracks = albumPage.songs.map { song ->
+            Track(
+                id = song.id,
+                title = song.title,
+                artist = song.artists.joinToString(", ") { it.name },
+                album = albumItem.title,
+                albumImageUrl = albumItem.thumbnail,
+                durationMs = (song.duration ?: 0) * 1000L,
+                source = "youtube"
+            )
+        }
+        val otherVersions = albumPage.otherVersions.map { other ->
+            com.vibevault.app.domain.model.Album(
+                id = other.id,
+                title = other.title,
+                artist = other.artists?.joinToString(", ") { it.name } ?: "",
+                coverUrl = other.thumbnail,
+                releaseDate = other.year?.toString() ?: ""
+            )
+        }
+        com.vibevault.app.domain.model.AlbumDetails(
+            id = targetBrowseId,
+            title = albumItem.title,
+            artist = albumItem.artists?.joinToString(", ") { it.name } ?: "Unknown",
+            year = albumItem.year?.toString(),
+            albumImageUrl = albumItem.thumbnail,
+            playlistId = albumItem.playlistId,
+            tracks = tracks,
+            description = albumPage.description,
+            otherVersions = otherVersions
+        )
     }
 }

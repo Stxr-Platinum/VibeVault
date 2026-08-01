@@ -10,6 +10,7 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata.MEDIA_TYPE_MUSIC
 import com.music.innertube.models.SongItem
+import com.vibevault.app.domain.model.Track
 import com.vibevault.app.models.MediaMetadata
 import com.vibevault.app.models.toMediaMetadata
 
@@ -96,3 +97,13 @@ fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem = MediaItem.Bu
             .build()
     )
     .build()
+
+fun SongItem.toTrack(): Track = Track(
+    id = id,
+    title = title,
+    artist = artists.joinToString(", ") { it.name },
+    album = album?.name ?: "Unknown",
+    albumImageUrl = thumbnail,
+    durationMs = (duration ?: 0) * 1000L,
+    source = "youtube"
+)

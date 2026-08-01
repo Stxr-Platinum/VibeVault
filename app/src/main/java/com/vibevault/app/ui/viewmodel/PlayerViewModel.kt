@@ -505,22 +505,27 @@ class PlayerViewModel @Inject constructor(
 
     // ── Public API ─────────────────────────────────────────
 
-    fun playTrack(trackId: String, context: List<Track> = emptyList()) {
+    fun playTrack(trackId: String, context: List<Track> = emptyList(), isAlbumOrPlaylist: Boolean = false) {
         viewModelScope.launch {
-            val effectiveContext = if (context.isEmpty()) {
-                try {
-                    val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
-                    if (localTrackResult != null) listOf(localTrackResult) else emptyList()
+            val selectedTrack = context.find { it.id == trackId }
+                ?: try {
+                    musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
                 } catch (e: Exception) {
-                    emptyList()
-                }
-            } else {
-                context
-            }
+                    null
+                } ?: Track(
+                    id = trackId,
+                    title = "Playing",
+                    artist = "Unknown",
+                    album = "Unknown",
+                    albumImageUrl = "",
+                    durationMs = 0L
+                )
 
-            if (effectiveContext.isNotEmpty()) {
-                val index = effectiveContext.indexOfFirst { it.id == trackId }.coerceAtLeast(0)
-                queueManager.setQueue(effectiveContext, index)
+            if (isAlbumOrPlaylist && context.size > 1) {
+                val index = context.indexOfFirst { it.id == trackId }.coerceAtLeast(0)
+                queueManager.setQueue(context, index)
+            } else {
+                queueManager.playRadio(selectedTrack)
             }
         }
     }

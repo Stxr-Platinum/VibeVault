@@ -94,4 +94,10 @@ interface MusicRepository {
     fun getBrowseCategories(): Flow<List<com.vibevault.app.domain.model.Category>>
     suspend fun searchSpotifyAll(query: String): Result<com.vibevault.app.domain.model.SpotifySearchResult>
     fun getGlobalTop50(): Flow<List<Track>>
+
+    /** Fetch full album details via YouTube.album and cache offline. */
+    suspend fun getAlbumDetails(albumId: String): Result<com.vibevault.app.domain.model.AlbumDetails>
+
+    /** Cache Spotify playlist metadata and tracks into local Room DB for offline/DHU resilience. */
+    suspend fun cacheSpotifyPlaylist(playlistId: String, title: String, coverUrl: String?, tracks: List<Track>)
 }

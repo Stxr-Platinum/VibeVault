@@ -132,22 +132,32 @@ class AutoMediaBrowserTree @Inject constructor(
     private suspend fun getHomeItems(): List<MediaItem> {
         val items = mutableListOf<MediaItem>()
 
+        // 1. Recently Played Songs from user listening history
+        val recentlyPlayed = musicRepository.getRecentlyPlayed(8).firstOrNull() ?: emptyList()
+        recentlyPlayed.forEach { track ->
+            if (track.title.isNotBlank() && track.id.isNotBlank()) {
+                items.add(track.toMediaItem(path = HOME_ID, isGrid = true))
+            }
+        }
+
+        // 2. Personalized User & Spotify Playlists (Filtered for non-blank title and ID)
         val userPlaylists = musicRepository.getUserSpotifyPlaylists().firstOrNull() ?: emptyList()
         val localPlaylists = musicRepository.getPlaylists().firstOrNull() ?: emptyList()
 
-        localPlaylists.forEach { entity ->
+        localPlaylists.filter { it.title.isNotBlank() && it.id.isNotBlank() }.forEach { entity ->
             items.add(
                 createCategoryItem(
                     id = "$PLAYLIST_PREFIX${entity.id}",
                     title = entity.title,
                     subtitle = "Playlist",
+                    artworkUrl = entity.coverUrl,
                     mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
                     isGrid = true
                 )
             )
         }
 
-        userPlaylists.forEach { playlist ->
+        userPlaylists.filter { it.title.isNotBlank() && it.id.isNotBlank() }.forEach { playlist ->
             items.add(
                 createCategoryItem(
                     id = "$PLAYLIST_PREFIX${playlist.id}",
@@ -160,9 +170,12 @@ class AutoMediaBrowserTree @Inject constructor(
             )
         }
 
+        // 3. Recommended / Discovery Tracks based on listening history
         val discoveryTracks = musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
         discoveryTracks.take(10).forEach { track ->
-            items.add(track.toMediaItem(path = HOME_ID, isGrid = true))
+            if (track.title.isNotBlank() && track.id.isNotBlank()) {
+                items.add(track.toMediaItem(path = HOME_ID, isGrid = true))
+            }
         }
 
         return items
@@ -180,46 +193,56 @@ class AutoMediaBrowserTree @Inject constructor(
             else -> musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
         }
 
-        return resultTracks.map { it.toMediaItem(path = RECENTS_ID, isGrid = true) }
+        return resultTracks.filter { it.title.isNotBlank() && it.id.isNotBlank() }
+            .map { it.toMediaItem(path = RECENTS_ID, isGrid = true) }
     }
 
     private suspend fun getBrowseItems(): List<MediaItem> {
         val items = mutableListOf<MediaItem>()
+
+        // 1. Catalog of Available Playlists
+        val featuredPlaylists = musicRepository.getFeaturedPlaylists().firstOrNull() ?: emptyList()
+        featuredPlaylists.filter { it.title.isNotBlank() && it.id.isNotBlank() }.forEach { playlist ->
+            items.add(
+                createCategoryItem(
+                    id = "$PLAYLIST_PREFIX${playlist.id}",
+                    title = playlist.title,
+                    subtitle = playlist.description ?: playlist.ownerName ?: "Featured Catalog",
+                    artworkUrl = playlist.coverUrl,
+                    mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
+                    isGrid = true
+                )
+            )
+        }
+
+        // 2. Global Top Charts & New Releases Tracks
         val topCharts = musicRepository.getGlobalTop50().firstOrNull() ?: emptyList()
         val newReleases = musicRepository.getNewReleases().firstOrNull() ?: emptyList()
+        val catalogTracks = if (topCharts.isNotEmpty()) topCharts else newReleases
 
-        val resultTracks = if (topCharts.isNotEmpty()) topCharts else newReleases
-        resultTracks.mapTo(items) { it.toMediaItem(path = BROWSE_ID, isGrid = true) }
+        catalogTracks.filter { it.title.isNotBlank() && it.id.isNotBlank() }
+            .mapTo(items) { it.toMediaItem(path = BROWSE_ID, isGrid = true) }
+
         return items
     }
 
     private suspend fun getLibraryCategories(): List<MediaItem> {
-        val items = mutableListOf<MediaItem>()
-
-        items.add(
+        return listOf(
             createCategoryItem(
                 id = PLAYLISTS_ID,
                 title = "Playlists",
                 subtitle = "User & Spotify Playlists",
                 mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                isGrid = true
-            )
-        )
-
-        items.add(
+                isGrid = false
+            ),
             createCategoryItem(
                 id = LIKED_SONGS_ID,
                 title = "Liked Songs",
                 subtitle = "Favorite Tracks",
                 mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                isGrid = true
+                isGrid = false
             )
         )
-
-        val playlists = getPlaylistItems()
-        items.addAll(playlists)
-
-        return items
     }
 
     private suspend fun getPlaylistItems(): List<MediaItem> {
@@ -228,19 +251,19 @@ class AutoMediaBrowserTree @Inject constructor(
 
         val items = mutableListOf<MediaItem>()
 
-        localPlaylists.forEach { entity ->
+        localPlaylists.filter { it.title.isNotBlank() && it.id.isNotBlank() }.forEach { entity ->
             items.add(
                 createCategoryItem(
                     id = "$PLAYLIST_PREFIX${entity.id}",
                     title = entity.title,
                     subtitle = "VibeVault",
                     mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                    isGrid = true
+                    isGrid = false
                 )
             )
         }
 
-        spotifyPlaylists.forEach { playlist ->
+        spotifyPlaylists.filter { it.title.isNotBlank() && it.id.isNotBlank() }.forEach { playlist ->
             items.add(
                 createCategoryItem(
                     id = "$PLAYLIST_PREFIX${playlist.id}",
@@ -248,14 +271,14 @@ class AutoMediaBrowserTree @Inject constructor(
                     subtitle = playlist.ownerName ?: "VibeVault",
                     artworkUrl = playlist.coverUrl,
                     mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                    isGrid = true
+                    isGrid = false
                 )
             )
         }
 
         if (items.isEmpty()) {
             val featured = musicRepository.getFeaturedPlaylists().firstOrNull() ?: emptyList()
-            featured.forEach { playlist ->
+            featured.filter { it.title.isNotBlank() && it.id.isNotBlank() }.forEach { playlist ->
                 items.add(
                     createCategoryItem(
                         id = "$PLAYLIST_PREFIX${playlist.id}",
@@ -263,7 +286,7 @@ class AutoMediaBrowserTree @Inject constructor(
                         subtitle = playlist.ownerName ?: "Featured",
                         artworkUrl = playlist.coverUrl,
                         mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                        isGrid = true
+                        isGrid = false
                     )
                 )
             }
@@ -273,19 +296,22 @@ class AutoMediaBrowserTree @Inject constructor(
     }
 
     private suspend fun getPlaylistTrackItems(playlistId: String): List<MediaItem> {
-        val localTracks = musicRepository.getPlaylistTracks(playlistId).firstOrNull() ?: emptyList()
-        if (localTracks.isNotEmpty()) {
-            return localTracks.map { it.toMediaItem(path = "$PLAYLIST_PREFIX$playlistId", isGrid = true) }
-        }
-        val spotifyTracks = try {
+        val onlineTracks = try {
             musicRepository.getSpotifyPlaylistTracks(playlistId)
         } catch (e: Exception) {
             emptyList()
         }
-        val tracks = if (spotifyTracks.isNotEmpty()) spotifyTracks else {
-            musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
+        val localTracks = if (onlineTracks.isEmpty()) {
+            musicRepository.getPlaylistTracks(playlistId).firstOrNull() ?: emptyList()
+        } else emptyList()
+
+        val tracks = when {
+            onlineTracks.isNotEmpty() -> onlineTracks
+            localTracks.isNotEmpty() -> localTracks
+            else -> musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
         }
-        return tracks.map { it.toMediaItem(path = "$PLAYLIST_PREFIX$playlistId", isGrid = true) }
+        return tracks.filter { it.title.isNotBlank() && it.id.isNotBlank() }
+            .map { it.toMediaItem(path = "$PLAYLIST_PREFIX$playlistId", isGrid = true) }
     }
 
     private suspend fun getLikedSongItems(): List<MediaItem> {
