@@ -19,10 +19,15 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.vibevault.app.domain.repository.MusicRepository
 import com.vibevault.app.player.media.StreamResolver
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.media3.common.Player
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.launch
+import android.util.Log
+import com.vibevault.app.extensions.toMediaItem
+import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -43,6 +48,9 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     lateinit var queueManager: com.vibevault.app.player.QueueManager
 
+    @Inject
+    lateinit var sessionManager: com.vibevault.app.core.session.SessionManager
+
     private var mediaLibrarySession: MediaLibrarySession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
@@ -54,6 +62,50 @@ class PlaybackService : MediaLibraryService() {
             private set
     }
 
+    private fun isAutoController(controller: MediaSession.ControllerInfo): Boolean {
+        val pkg = controller.packageName.lowercase()
+        return pkg.contains("gearhead") || 
+               pkg.contains("car") || 
+               pkg.contains("projection") ||
+               pkg.contains("android.auto")
+    }
+
+    private fun triggerAutoPlayOnAndroidAuto(reason: String) {
+        serviceScope.launch(Dispatchers.Main) {
+            try {
+                if (player.isPlaying) {
+                    Log.d("PlaybackService", "Android Auto ($reason): Already playing.")
+                    return@launch
+                }
+
+                if (player.mediaItemCount > 0) {
+                    Log.d("PlaybackService", "Android Auto ($reason): Resuming existing queue.")
+                    player.playWhenReady = true
+                    player.play()
+                    return@launch
+                }
+
+                val lastTrack = sessionManager.lastPlayedTrack
+                    ?: musicRepository.getRecentlyPlayed(1).firstOrNull()?.firstOrNull()
+
+                if (lastTrack != null && lastTrack.id.isNotBlank()) {
+                    Log.d("PlaybackService", "Android Auto ($reason): Auto-playing last track ${lastTrack.title}")
+                    val pos = sessionManager.lastPlayedPositionMs.coerceAtLeast(0L)
+                    val mediaItem = lastTrack.toMediaItem()
+                    
+                    player.setMediaItem(mediaItem, pos)
+                    player.prepare()
+                    player.playWhenReady = true
+                    player.play()
+
+                    queueManager.syncExternalTrack(lastTrack)
+                }
+            } catch (e: Exception) {
+                Log.e("PlaybackService", "Android Auto ($reason): Failed to auto-play last track", e)
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -63,17 +115,46 @@ class PlaybackService : MediaLibraryService() {
         
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
-                    reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
-                    val currentIdx = player.currentMediaItemIndex
-                    if (currentIdx >= 0) {
-                        queueManager.onMediaItemTransition(currentIdx)
-                    }
+                if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    queueManager.next()
                 }
             }
         })
         
         val callback = object : MediaLibrarySession.Callback {
+
+            override fun onPlaybackResumption(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo
+            ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+                triggerAutoPlayOnAndroidAuto("PlaybackResumption")
+                return serviceScope.future {
+                    val lastTrack = sessionManager.lastPlayedTrack 
+                        ?: musicRepository.getRecentlyPlayed(1).firstOrNull()?.firstOrNull()
+                    
+                    if (lastTrack != null && lastTrack.id.isNotBlank()) {
+                        val mediaItem = lastTrack.toMediaItem()
+                        val pos = sessionManager.lastPlayedPositionMs.coerceAtLeast(0L)
+                        MediaSession.MediaItemsWithStartPosition(
+                            listOf(mediaItem),
+                            0,
+                            pos
+                        )
+                    } else {
+                        MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+                    }
+                }
+            }
+
+            override fun onConnect(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo
+            ): MediaSession.ConnectionResult {
+                if (isAutoController(controller)) {
+                    triggerAutoPlayOnAndroidAuto("onConnect")
+                }
+                return super.onConnect(session, controller)
+            }
 
             // 1. Root Request - Return Root MediaItem with isBrowsable = true
             override fun onGetLibraryRoot(
@@ -81,6 +162,10 @@ class PlaybackService : MediaLibraryService() {
                 browser: MediaSession.ControllerInfo,
                 params: LibraryParams?
             ): ListenableFuture<LibraryResult<MediaItem>> {
+                if (isAutoController(browser) || params?.isRecent == true) {
+                    triggerAutoPlayOnAndroidAuto("onGetLibraryRoot")
+                }
+
                 val rootItem = MediaItem.Builder()
                     .setMediaId(AutoMediaBrowserTree.ROOT_ID)
                     .setMediaMetadata(
@@ -256,11 +341,13 @@ class PlaybackService : MediaLibraryService() {
                             return@map item
                         }
                         
-                        val title = item.mediaMetadata.title?.toString() ?: ""
-                        val artist = item.mediaMetadata.artist?.toString() ?: ""
+                        val title = item.mediaMetadata.title?.toString()?.takeIf { it.isNotBlank() } ?: "Track $cleanId"
+                        val artist = item.mediaMetadata.artist?.toString()?.takeIf { it.isNotBlank() && it != "Unknown" } ?: "Unknown Artist"
+                        val album = item.mediaMetadata.albumTitle?.toString()?.takeIf { it.isNotBlank() } ?: "Unknown Album"
+                        val artUri = item.mediaMetadata.artworkUri
                         val isLiked = item.mediaMetadata.extras?.getBoolean("isLiked") ?: false
                         
-                        if (title.isNotBlank() && artist.isNotBlank()) {
+                        if (title.isNotBlank() && artist != "Unknown Artist") {
                             streamResolver.preResolve(title, artist)
                         }
                         
@@ -278,14 +365,46 @@ class PlaybackService : MediaLibraryService() {
                             .setUri(uri)
                             .setMediaMetadata(
                                 item.mediaMetadata.buildUpon()
-                                    .setExtras(Bundle().apply {
+                                    .setTitle(title)
+                                    .setSubtitle(artist)
+                                    .setArtist(artist)
+                                    .setAlbumTitle(album)
+                                    .setAlbumArtist(artist)
+                                    .setDisplayTitle(title)
+                                    .setArtworkUri(artUri)
+                                    .setExtras(Bundle(item.mediaMetadata.extras ?: Bundle()).apply {
                                         putBoolean("isLiked", isLiked)
+                                        artUri?.toString()?.let { putString("artwork_uri", it) }
                                     })
                                     .build()
                             )
                             .build()
                     }.toMutableList()
                 }
+            }
+
+            override fun onPlayerCommandRequest(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                playerCommand: Int
+            ): Int {
+                when (playerCommand) {
+                    Player.COMMAND_SEEK_TO_NEXT,
+                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
+                        serviceScope.launch(Dispatchers.Main) {
+                            queueManager.next()
+                        }
+                        return 0
+                    }
+                    Player.COMMAND_SEEK_TO_PREVIOUS,
+                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
+                        serviceScope.launch(Dispatchers.Main) {
+                            queueManager.previous()
+                        }
+                        return 0
+                    }
+                }
+                return super.onPlayerCommandRequest(session, controller, playerCommand)
             }
 
             override fun onCustomCommand(
@@ -351,7 +470,7 @@ class PlaybackService : MediaLibraryService() {
             )
             putInt(
                 MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
-                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
+                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
             )
         }
 

@@ -180,12 +180,38 @@ class SessionManager @Inject constructor(
         return expired
     }
 
+    private val gson = com.google.gson.Gson()
+
     // ── Playback State ─────────────────────────────────────────
 
     var lastPlayedTrackId: String?
         get() = prefs.getString(KEY_LAST_PLAYED_TRACK_ID, null)
         set(value) {
             prefs.edit().putString(KEY_LAST_PLAYED_TRACK_ID, value).apply()
+        }
+
+    var lastPlayedTrack: com.vibevault.app.domain.model.Track?
+        get() {
+            val json = prefs.getString("last_played_track_full", null) ?: return null
+            return try {
+                gson.fromJson(json, com.vibevault.app.domain.model.Track::class.java)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        set(value) {
+            if (value == null) {
+                prefs.edit().remove("last_played_track_full").apply()
+            } else {
+                prefs.edit().putString("last_played_track_full", gson.toJson(value)).apply()
+                lastPlayedTrackId = value.id
+            }
+        }
+
+    var lastPlayedPositionMs: Long
+        get() = prefs.getLong("last_played_position_ms", 0L)
+        set(value) {
+            prefs.edit().putLong("last_played_position_ms", value).apply()
         }
 
     fun addRecentContext(id: String, type: String, title: String, coverUrl: String) {

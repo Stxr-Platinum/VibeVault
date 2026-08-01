@@ -123,12 +123,38 @@ class QueueManager @Inject constructor() {
                 Player.REPEAT_MODE_ALL -> _currentIndex.value = 0
                 else -> {
                     _queueEnded.tryEmit(Unit)
+                    autoPlaySimilarSongs()
                     return
                 }
             }
         }
         updateState()
         debugLog()
+    }
+
+    private fun autoPlaySimilarSongs() {
+        val seedTrack = _currentTrack.value ?: currentQueue.lastOrNull() ?: originalQueue.lastOrNull() ?: return
+        Log.d("QueueManager", "Playlist ended. Auto-filling queue with similar songs based on: ${seedTrack.title}")
+        
+        scope.launch {
+            try {
+                val radioQueue = YouTubeQueue.radio(seedTrack)
+                val status = radioQueue.getInitialStatus()
+                val similarTracks = status.items.filter { newTrack -> 
+                    currentQueue.none { it.id == newTrack.id } && newTrack.id != seedTrack.id 
+                }
+                if (similarTracks.isNotEmpty()) {
+                    activeQueue = radioQueue
+                    originalQueue.addAll(similarTracks)
+                    currentQueue.addAll(similarTracks)
+                    _currentIndex.value = _currentIndex.value + 1
+                    updateState()
+                    debugLog()
+                }
+            } catch (e: Exception) {
+                Log.e("QueueManager", "Failed auto-filling queue with similar songs", e)
+            }
+        }
     }
 
     fun previous(forcePrevious: Boolean = false) {

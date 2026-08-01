@@ -19,91 +19,152 @@ val MediaItem.metadata: MediaMetadata?
     get() = localConfiguration?.tag as? MediaMetadata
 
 
-fun SongItem.toMediaItem() = MediaItem.Builder()
-    .setMediaId(id)
-    .setUri(id)
-    .setCustomCacheKey(id)
-    .setTag(toMediaMetadata())
-    .setMediaMetadata(
-        androidx.media3.common.MediaMetadata.Builder()
-            .setTitle(title)
-            .setSubtitle(artists.joinToString { it.name })
-            .setArtist(artists.joinToString { it.name })
-            .setArtworkUri(thumbnail.toUri())
-            .setAlbumTitle(album?.name)
-            .setAlbumArtist(artists.firstOrNull()?.name)
-            .setDisplayTitle(title)
-            .setMediaType(MEDIA_TYPE_MUSIC)
-            .setIsBrowsable(false)
-            .setIsPlayable(true)
-            .setExtras(Bundle().apply {
-                putString("artwork_uri", thumbnail)
-            })
-            .build()
-    )
-    .build()
+fun SongItem.toMediaItem(): MediaItem {
+    val safeTitle = title.takeIf { it.isNotBlank() } ?: "Track $id"
+    val safeArtist = artists.joinToString(", ") { it.name }.takeIf { it.isNotBlank() } ?: "Unknown Artist"
+    val safeAlbum = album?.name?.takeIf { it.isNotBlank() } ?: "Unknown Album"
+    val safeArtUri = thumbnail.takeIf { it.isNotBlank() }?.toUri()
 
-fun MediaMetadata.toMediaItem() = MediaItem.Builder()
-    .setMediaId(id)
-    .setUri(id)
-    .setCustomCacheKey(id)
-    .setTag(this)
-    .setMediaMetadata(
-        androidx.media3.common.MediaMetadata.Builder()
-            .setTitle(title)
-            .setSubtitle(artists.joinToString { it.name })
-            .setArtist(artists.joinToString { it.name })
-            .setArtworkUri(thumbnailUrl?.toUri())
-            .setAlbumTitle(album?.title)
-            .setAlbumArtist(artists.firstOrNull()?.name)
-            .setDisplayTitle(title)
-            .setMediaType(MEDIA_TYPE_MUSIC)
-            .setIsBrowsable(false)
-            .setIsPlayable(true)
-            .setExtras(Bundle().apply {
-                thumbnailUrl?.let { putString("artwork_uri", it) }
-            })
+    val streamUri = if (id.startsWith("http://") || id.startsWith("https://")) {
+        id.toUri()
+    } else {
+        android.net.Uri.Builder()
+            .scheme("vibevault")
+            .authority("stream")
+            .appendQueryParameter("id", id.split("/").lastOrNull() ?: id)
+            .appendQueryParameter("title", safeTitle)
+            .appendQueryParameter("artist", safeArtist)
             .build()
-    )
-    .build()
+    }
 
-fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem = MediaItem.Builder()
-    .setMediaId(id)
-    .setUri(id)
-    .setCustomCacheKey(id)
-    .setTag(MediaMetadata(
+    return MediaItem.Builder()
+        .setMediaId(id)
+        .setUri(streamUri)
+        .setCustomCacheKey(id)
+        .setTag(toMediaMetadata())
+        .setMediaMetadata(
+            androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(safeTitle)
+                .setSubtitle(safeArtist)
+                .setArtist(safeArtist)
+                .setArtworkUri(safeArtUri)
+                .setAlbumTitle(safeAlbum)
+                .setAlbumArtist(artists.firstOrNull()?.name?.takeIf { it.isNotBlank() } ?: safeArtist)
+                .setDisplayTitle(safeTitle)
+                .setMediaType(MEDIA_TYPE_MUSIC)
+                .setIsBrowsable(false)
+                .setIsPlayable(true)
+                .setExtras(Bundle().apply {
+                    thumbnail.takeIf { it.isNotBlank() }?.let { putString("artwork_uri", it) }
+                })
+                .build()
+        )
+        .build()
+}
+
+fun MediaMetadata.toMediaItem(): MediaItem {
+    val safeTitle = title.takeIf { it.isNotBlank() } ?: "Track $id"
+    val safeArtist = artists.joinToString(", ") { it.name }.takeIf { it.isNotBlank() } ?: "Unknown Artist"
+    val safeAlbum = album?.title?.takeIf { it.isNotBlank() } ?: "Unknown Album"
+    val safeArtUri = thumbnailUrl?.takeIf { it.isNotBlank() }?.toUri()
+
+    val streamUri = if (id.startsWith("http://") || id.startsWith("https://")) {
+        id.toUri()
+    } else {
+        android.net.Uri.Builder()
+            .scheme("vibevault")
+            .authority("stream")
+            .appendQueryParameter("id", id.split("/").lastOrNull() ?: id)
+            .appendQueryParameter("title", safeTitle)
+            .appendQueryParameter("artist", safeArtist)
+            .build()
+    }
+
+    return MediaItem.Builder()
+        .setMediaId(id)
+        .setUri(streamUri)
+        .setCustomCacheKey(id)
+        .setTag(this)
+        .setMediaMetadata(
+            androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(safeTitle)
+                .setSubtitle(safeArtist)
+                .setArtist(safeArtist)
+                .setArtworkUri(safeArtUri)
+                .setAlbumTitle(safeAlbum)
+                .setAlbumArtist(artists.firstOrNull()?.name?.takeIf { it.isNotBlank() } ?: safeArtist)
+                .setDisplayTitle(safeTitle)
+                .setMediaType(MEDIA_TYPE_MUSIC)
+                .setIsBrowsable(false)
+                .setIsPlayable(true)
+                .setExtras(Bundle().apply {
+                    thumbnailUrl?.takeIf { it.isNotBlank() }?.let { putString("artwork_uri", it) }
+                })
+                .build()
+        )
+        .build()
+}
+
+fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
+    val safeTitle = title.takeIf { it.isNotBlank() } ?: "Track $id"
+    val safeArtist = artist.takeIf { it.isNotBlank() && it != "Unknown" } ?: "Unknown Artist"
+    val safeAlbum = album.takeIf { it.isNotBlank() && it != "Unknown" } ?: "Unknown Album"
+    val safeArtUri = albumImageUrl.takeIf { it.isNotBlank() }?.toUri()
+
+    val streamUri = if (id.startsWith("http://") || id.startsWith("https://")) {
+        id.toUri()
+    } else {
+        android.net.Uri.Builder()
+            .scheme("vibevault")
+            .authority("stream")
+            .appendQueryParameter("id", id.split("/").lastOrNull() ?: id)
+            .appendQueryParameter("title", safeTitle)
+            .appendQueryParameter("artist", safeArtist)
+            .build()
+    }
+
+    return MediaItem.Builder()
+        .setMediaId(id)
+        .setUri(streamUri)
+        .setCustomCacheKey(id)
+        .setTag(MediaMetadata(
+            id = id,
+            title = safeTitle,
+            artists = listOf(MediaMetadata.Artist(null, safeArtist)),
+            duration = (durationMs / 1000).toInt(),
+            thumbnailUrl = albumImageUrl,
+            album = MediaMetadata.Album("", safeAlbum)
+        ))
+        .setMediaMetadata(
+            androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(safeTitle)
+                .setSubtitle(safeArtist)
+                .setArtist(safeArtist)
+                .setArtworkUri(safeArtUri)
+                .setAlbumTitle(safeAlbum)
+                .setAlbumArtist(safeArtist)
+                .setDisplayTitle(safeTitle)
+                .setMediaType(MEDIA_TYPE_MUSIC)
+                .setIsBrowsable(false)
+                .setIsPlayable(true)
+                .setExtras(Bundle().apply {
+                    albumImageUrl.takeIf { it.isNotBlank() }?.let { putString("artwork_uri", it) }
+                })
+                .build()
+        )
+        .build()
+}
+
+fun SongItem.toTrack(): Track {
+    val safeTitle = title.takeIf { it.isNotBlank() } ?: "Track $id"
+    val safeArtist = artists.joinToString(", ") { it.name }.takeIf { it.isNotBlank() } ?: "Unknown Artist"
+    return Track(
         id = id,
-        title = title,
-        artists = listOf(MediaMetadata.Artist(null, artist)),
-        duration = (durationMs / 1000).toInt(),
-        thumbnailUrl = albumImageUrl,
-        album = MediaMetadata.Album("", album)
-    ))
-    .setMediaMetadata(
-        androidx.media3.common.MediaMetadata.Builder()
-            .setTitle(title)
-            .setSubtitle(artist)
-            .setArtist(artist)
-            .setArtworkUri(albumImageUrl.toUri())
-            .setAlbumTitle(album)
-            .setAlbumArtist(artist)
-            .setDisplayTitle(title)
-            .setMediaType(MEDIA_TYPE_MUSIC)
-            .setIsBrowsable(false)
-            .setIsPlayable(true)
-            .setExtras(Bundle().apply {
-                putString("artwork_uri", albumImageUrl)
-            })
-            .build()
+        title = safeTitle,
+        artist = safeArtist,
+        album = album?.name ?: "Unknown Album",
+        albumImageUrl = thumbnail,
+        durationMs = (duration ?: 0) * 1000L,
+        source = "youtube"
     )
-    .build()
-
-fun SongItem.toTrack(): Track = Track(
-    id = id,
-    title = title,
-    artist = artists.joinToString(", ") { it.name },
-    album = album?.name ?: "Unknown",
-    albumImageUrl = thumbnail,
-    durationMs = (duration ?: 0) * 1000L,
-    source = "youtube"
-)
+}

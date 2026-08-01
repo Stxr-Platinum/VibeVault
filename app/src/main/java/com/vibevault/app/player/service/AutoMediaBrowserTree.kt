@@ -227,22 +227,19 @@ class AutoMediaBrowserTree @Inject constructor(
     }
 
     private suspend fun getLibraryCategories(): List<MediaItem> {
-        return listOf(
-            createCategoryItem(
-                id = PLAYLISTS_ID,
-                title = "Playlists",
-                subtitle = "User & Spotify Playlists",
-                mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                isGrid = false
-            ),
+        val items = mutableListOf<MediaItem>()
+        items.add(
             createCategoryItem(
                 id = LIKED_SONGS_ID,
                 title = "Liked Songs",
                 subtitle = "Favorite Tracks",
                 mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                isGrid = false
+                isGrid = true,
+                childrenIsGrid = false
             )
         )
+        items.addAll(getPlaylistItems())
+        return items
     }
 
     private suspend fun getPlaylistItems(): List<MediaItem> {
@@ -258,7 +255,8 @@ class AutoMediaBrowserTree @Inject constructor(
                     title = entity.title,
                     subtitle = "VibeVault",
                     mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                    isGrid = false
+                    isGrid = true,
+                    childrenIsGrid = false
                 )
             )
         }
@@ -271,7 +269,8 @@ class AutoMediaBrowserTree @Inject constructor(
                     subtitle = playlist.ownerName ?: "VibeVault",
                     artworkUrl = playlist.coverUrl,
                     mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                    isGrid = false
+                    isGrid = true,
+                    childrenIsGrid = false
                 )
             )
         }
@@ -286,7 +285,8 @@ class AutoMediaBrowserTree @Inject constructor(
                         subtitle = playlist.ownerName ?: "Featured",
                         artworkUrl = playlist.coverUrl,
                         mediaType = MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
-                        isGrid = false
+                        isGrid = true,
+                        childrenIsGrid = false
                     )
                 )
             }
@@ -311,7 +311,7 @@ class AutoMediaBrowserTree @Inject constructor(
             else -> musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
         }
         return tracks.filter { it.title.isNotBlank() && it.id.isNotBlank() }
-            .map { it.toMediaItem(path = "$PLAYLIST_PREFIX$playlistId", isGrid = true) }
+            .map { it.toMediaItem(path = "$PLAYLIST_PREFIX$playlistId", isGrid = false) }
     }
 
     private suspend fun getLikedSongItems(): List<MediaItem> {
@@ -319,7 +319,7 @@ class AutoMediaBrowserTree @Inject constructor(
         val resultTracks = if (tracks.isNotEmpty()) tracks else {
             musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
         }
-        return resultTracks.map { it.toMediaItem(path = LIKED_SONGS_ID, isGrid = true) }
+        return resultTracks.map { it.toMediaItem(path = LIKED_SONGS_ID, isGrid = false) }
     }
 
     private fun createCategoryItem(
@@ -328,12 +328,14 @@ class AutoMediaBrowserTree @Inject constructor(
         mediaType: Int,
         subtitle: String? = null,
         artworkUrl: String? = null,
-        isGrid: Boolean = true
+        isGrid: Boolean = true,
+        childrenIsGrid: Boolean = isGrid
     ): MediaItem {
         val style = if (isGrid) MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM else MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+        val childrenStyle = if (childrenIsGrid) MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM else MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
         val extras = Bundle().apply {
-            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, style)
-            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, style)
+            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, childrenStyle)
+            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, childrenStyle)
             putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM, style)
         }
         return MediaItem.Builder()

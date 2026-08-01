@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import com.vibevault.app.data.listentogether.ListenTogetherManager
 import com.vibevault.app.playback.PlayerConnection
@@ -132,15 +133,23 @@ class PlayerViewModel @Inject constructor(
 
         // 0. Load last played track
         viewModelScope.launch {
-            sessionManager.lastPlayedTrackId?.let { trackId ->
-                try {
-                    // Try to get track from local repository instead
-                    val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
-                    if (localTrackResult != null) {
-                        queueManager.syncExternalTrack(localTrackResult)
+            val savedTrack = sessionManager.lastPlayedTrack
+            if (savedTrack != null && savedTrack.id.isNotBlank()) {
+                currentlyPlayingTrackId = savedTrack.id
+                queueManager.syncExternalTrack(savedTrack)
+                val pos = sessionManager.lastPlayedPositionMs
+                if (pos > 0) _currentPosition.value = pos
+                if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
+            } else {
+                sessionManager.lastPlayedTrackId?.let { trackId ->
+                    try {
+                        val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
+                        if (localTrackResult != null) {
+                            queueManager.syncExternalTrack(localTrackResult)
+                        }
+                    } catch (e: Exception) {
+                        // Ignore
                     }
-                } catch (e: Exception) {
-                    // Ignore
                 }
             }
         }
@@ -233,7 +242,9 @@ class PlayerViewModel @Inject constructor(
             while (isActive) {
                 player?.let { p ->
                     if (p.isPlaying || p.playWhenReady) {
-                        _currentPosition.value = p.currentPosition.coerceAtLeast(0)
+                        val pos = p.currentPosition.coerceAtLeast(0)
+                        _currentPosition.value = pos
+                        sessionManager.lastPlayedPositionMs = pos
                         val dur = p.duration.coerceAtLeast(0)
                         if (dur > 0) {
                             _duration.value = dur
@@ -275,7 +286,6 @@ class PlayerViewModel @Inject constructor(
                 if (newId != null) {
                     val isNewTrack = newId != currentlyPlayingTrackId
                     currentlyPlayingTrackId = newId
-                    sessionManager.lastPlayedTrackId = newId
                     
                     val tagMetadata = mediaItem.localConfiguration?.tag as? com.vibevault.app.models.MediaMetadata
                     val md = mediaItem.mediaMetadata
@@ -297,6 +307,7 @@ class PlayerViewModel @Inject constructor(
                         durationMs = durationMs
                     )
                     
+                    sessionManager.lastPlayedTrack = externalTrack
                     queueManager.syncExternalTrack(externalTrack)
                     
                     if (isNewTrack) {
@@ -431,7 +442,7 @@ class PlayerViewModel @Inject constructor(
         }
 
         currentlyPlayingTrackId = track.id
-        sessionManager.lastPlayedTrackId = track.id
+        sessionManager.lastPlayedTrack = track
         
         Log.d("PlaybackDebug", "playInternal: ${track.title} (${track.id}) via MediaController")
         
@@ -507,25 +518,64 @@ class PlayerViewModel @Inject constructor(
 
     fun playTrack(trackId: String, context: List<Track> = emptyList(), isAlbumOrPlaylist: Boolean = false) {
         viewModelScope.launch {
-            val selectedTrack = context.find { it.id == trackId }
+            var selectedTrack = context.find { it.id == trackId }
                 ?: try {
                     musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
                 } catch (e: Exception) {
                     null
-                } ?: Track(
+                }
+
+            val needsMetadataFetch = selectedTrack == null || 
+                selectedTrack.title.isBlank() || 
+                selectedTrack.title == "Playing" || 
+                selectedTrack.artist.isBlank() || 
+                selectedTrack.artist == "Unknown" || 
+                selectedTrack.artist == "Unknown Artist" ||
+                selectedTrack.albumImageUrl.isBlank()
+
+            if (selectedTrack == null) {
+                val contextFirst = context.firstOrNull()
+                selectedTrack = Track(
                     id = trackId,
-                    title = "Playing",
-                    artist = "Unknown",
-                    album = "Unknown",
-                    albumImageUrl = "",
-                    durationMs = 0L
+                    title = contextFirst?.title?.takeIf { it.isNotBlank() } ?: "Track $trackId",
+                    artist = contextFirst?.artist?.takeIf { it.isNotBlank() } ?: "Unknown Artist",
+                    album = contextFirst?.album?.takeIf { it.isNotBlank() } ?: "Unknown Album",
+                    albumImageUrl = contextFirst?.albumImageUrl ?: "",
+                    durationMs = contextFirst?.durationMs ?: 0L
                 )
+            }
 
             if (isAlbumOrPlaylist && context.size > 1) {
                 val index = context.indexOfFirst { it.id == trackId }.coerceAtLeast(0)
                 queueManager.setQueue(context, index)
             } else {
                 queueManager.playRadio(selectedTrack)
+            }
+
+            // Asynchronously resolve full metadata if incomplete
+            if (needsMetadataFetch) {
+                launch(Dispatchers.IO) {
+                    try {
+                        val onlineResult = musicRepository.searchOnline(trackId).getOrNull()?.firstOrNull { it.id == trackId }
+                            ?: musicRepository.searchOnline(trackId).getOrNull()?.firstOrNull()
+                            ?: musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
+                        
+                        if (onlineResult != null && onlineResult.title.isNotBlank()) {
+                            val updatedTrack = selectedTrack.copy(
+                                title = onlineResult.title.takeIf { it.isNotBlank() } ?: selectedTrack.title,
+                                artist = onlineResult.artist.takeIf { it.isNotBlank() && it != "Unknown" } ?: selectedTrack.artist,
+                                album = onlineResult.album.takeIf { it.isNotBlank() && it != "Unknown" } ?: selectedTrack.album,
+                                albumImageUrl = onlineResult.albumImageUrl.takeIf { it.isNotBlank() } ?: selectedTrack.albumImageUrl,
+                                durationMs = if (onlineResult.durationMs > 0) onlineResult.durationMs else selectedTrack.durationMs
+                            )
+                            withContext(Dispatchers.Main) {
+                                queueManager.syncExternalTrack(updatedTrack)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("PlaybackDebug", "Failed async metadata resolution for $trackId", e)
+                    }
+                }
             }
         }
     }

@@ -649,42 +649,108 @@ class MusicRepositoryImpl @Inject constructor(
     }
     override fun getSpotifyRecentlyPlayed(): Flow<List<Track>> = flow { emit(emptyList()) }
 
+    @Volatile
+    private var cachedFeaturedPlaylists: List<Playlist>? = null
+    @Volatile
+    private var cachedFeaturedTimestamp: Long = 0L
+
     override fun getFeaturedPlaylists(): Flow<List<Playlist>> = flow {
-        val featured = listOf(
-            Playlist(
-                id = "RDCLAK5uy_kL21mX1f0b001n-071a9l9019",
-                title = "Global Top 50",
-                description = "The most played tracks right now across the globe.",
-                coverUrl = "https://lh3.googleusercontent.com/w4pS8M-a26",
-                ownerName = "YouTube Music",
-                trackCount = 50
-            ),
-            Playlist(
-                id = "RDCLAK5uy_n9FAC29uL9d4",
-                title = "Today's Hits",
-                description = "Biggest hit songs right now.",
-                coverUrl = "https://lh3.googleusercontent.com/v_18pL0m02",
-                ownerName = "VibeVault",
-                trackCount = 50
-            ),
-            Playlist(
-                id = "RDCLAK5uy_m-78_g3xX0",
-                title = "Pop Rising",
-                description = "The next generation of pop superstars.",
-                coverUrl = "https://lh3.googleusercontent.com/a-10xP0",
-                ownerName = "VibeVault",
-                trackCount = 50
-            ),
-            Playlist(
-                id = "RDCLAK5uy_l4309uX_0",
-                title = "Chill Vibes",
-                description = "Relaxing, acoustic and chill hits.",
-                coverUrl = "https://lh3.googleusercontent.com/b-20yQ1",
-                ownerName = "VibeVault",
-                trackCount = 50
+        val now = System.currentTimeMillis()
+        val cacheTtlMs = 60 * 60 * 1000L // 1 hour TTL
+        
+        cachedFeaturedPlaylists?.let { cached ->
+            if (now - cachedFeaturedTimestamp < cacheTtlMs && cached.isNotEmpty()) {
+                emit(cached)
+                return@flow
+            }
+        }
+
+        val dynamicPlaylists = mutableListOf<Playlist>()
+
+        try {
+            val homePage = com.music.innertube.YouTube.home().getOrNull()
+            
+            homePage?.sections?.forEach { section ->
+                section.items.filterIsInstance<com.music.innertube.models.PlaylistItem>().forEach { item ->
+                    if (item.id.isNotBlank() && item.title.isNotBlank() && dynamicPlaylists.none { it.id == item.id }) {
+                        dynamicPlaylists.add(
+                            Playlist(
+                                id = item.id,
+                                title = item.title,
+                                description = section.title,
+                                coverUrl = item.thumbnail,
+                                ownerName = item.author?.name ?: "YouTube Music",
+                                trackCount = 50
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (dynamicPlaylists.isEmpty()) {
+                val explorePage = com.music.innertube.YouTube.explore().getOrNull()
+                explorePage?.newReleaseAlbums?.forEach { album ->
+                    if (album.playlistId != null && album.title.isNotBlank() && dynamicPlaylists.none { it.id == album.playlistId }) {
+                        dynamicPlaylists.add(
+                            Playlist(
+                                id = album.playlistId!!,
+                                title = album.title,
+                                description = album.artists?.firstOrNull()?.name ?: "New Release",
+                                coverUrl = album.thumbnail,
+                                ownerName = album.artists?.firstOrNull()?.name ?: "YouTube Music",
+                                trackCount = 50
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MusicRepository", "Failed to fetch dynamic InnerTube browse playlists", e)
+        }
+
+        if (dynamicPlaylists.isNotEmpty()) {
+            cachedFeaturedPlaylists = dynamicPlaylists
+            cachedFeaturedTimestamp = now
+            emit(dynamicPlaylists)
+        } else {
+            val fallback = listOf(
+                Playlist(
+                    id = "RDCLAK5uy_kL21mX1f0b001n-071a9l9019",
+                    title = "Global Top 50",
+                    description = "The most played tracks right now across the globe.",
+                    coverUrl = "https://lh3.googleusercontent.com/w4pS8M-a26",
+                    ownerName = "YouTube Music",
+                    trackCount = 50
+                ),
+                Playlist(
+                    id = "RDCLAK5uy_n9FAC29uL9d4",
+                    title = "Today's Hits",
+                    description = "Biggest hit songs right now.",
+                    coverUrl = "https://lh3.googleusercontent.com/v_18pL0m02",
+                    ownerName = "VibeVault",
+                    trackCount = 50
+                ),
+                Playlist(
+                    id = "RDCLAK5uy_m-78_g3xX0",
+                    title = "Pop Rising",
+                    description = "The next generation of pop superstars.",
+                    coverUrl = "https://lh3.googleusercontent.com/a-10xP0",
+                    ownerName = "VibeVault",
+                    trackCount = 50
+                ),
+                Playlist(
+                    id = "RDCLAK5uy_l4309uX_0",
+                    title = "Chill Vibes",
+                    description = "Relaxing, acoustic and chill hits.",
+                    coverUrl = "https://lh3.googleusercontent.com/b-20yQ1",
+                    ownerName = "VibeVault",
+                    trackCount = 50
+                )
             )
-        )
-        emit(featured)
+            cachedFeaturedPlaylists = fallback
+            cachedFeaturedTimestamp = now
+            emit(fallback)
+        }
     }
 
     override fun getNewReleases(): Flow<List<Track>> = flow { emit(emptyList()) }
@@ -778,20 +844,7 @@ class MusicRepositoryImpl @Inject constructor(
     override suspend fun cacheSpotifyPlaylist(playlistId: String, title: String, coverUrl: String?, tracks: List<Track>) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val cleanTitle = title.ifBlank { "Playlist" }
-                val entity = PlaylistEntity(
-                    id = playlistId,
-                    title = cleanTitle,
-                    description = "Spotify Playlist",
-                    coverUrl = coverUrl ?: "",
-                    trackCount = tracks.size,
-                    durationMs = tracks.sumOf { it.durationMs },
-                    isPublic = true,
-                    isSynced = true,
-                    ownerName = "Spotify"
-                )
-                playlistDao.insertPlaylist(entity)
-
+                // Cache track metadata locally for offline lookup without inserting a user PlaylistEntity
                 tracks.forEach { track ->
                     try {
                         likedSongDao.insertLikedSong(track.toLikedEntity().copy(isDeleted = true))
@@ -800,7 +853,7 @@ class MusicRepositoryImpl @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("MusicRepo", "Failed caching Spotify playlist into Room DB", e)
+                Log.e("MusicRepo", "Failed caching playlist tracks into Room DB", e)
             }
         }
     }
