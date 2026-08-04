@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.vibevault.app.ui.components.FastScrollbar
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -381,10 +383,14 @@ fun PlaylistScreen(
         }
 
         if (playlist != null) {
-            LazyColumn(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            val listState = rememberLazyListState()
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                 item {
                     // Header Block
                     Box(
@@ -620,6 +626,19 @@ fun PlaylistScreen(
                     }
                 }
             }
+
+            FastScrollbar(
+                listState = listState,
+                itemCount = tracks.size,
+                headerCount = 3,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 16.dp, bottom = 100.dp),
+                getSectionText = { index ->
+                    tracks.getOrNull(index)?.title?.take(1)?.uppercase() ?: "#${index + 1}"
+                }
+            )
         }
     }
+}
 }
