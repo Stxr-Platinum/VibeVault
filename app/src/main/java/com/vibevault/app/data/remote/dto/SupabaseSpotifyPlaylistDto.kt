@@ -10,8 +10,14 @@ data class SupabaseSpotifyPlaylistDto(
     val name: String,
     val description: String? = null,
     val image: String? = null,
+    @SerialName("cover_url") val coverUrl: String? = null,
+    @SerialName("cover_image") val coverImage: String? = null,
     @SerialName("owner_name") val ownerName: String? = null,
     @SerialName("track_count") val trackCount: Int = 0,
     @SerialName("synced_at") val syncedAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
-)
+) {
+    val displayCoverUrl: String? get() = image?.takeIf { it.isNotBlank() }
+        ?: coverUrl?.takeIf { it.isNotBlank() }
+        ?: coverImage?.takeIf { it.isNotBlank() }
+}

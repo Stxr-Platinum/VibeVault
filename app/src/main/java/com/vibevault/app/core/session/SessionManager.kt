@@ -61,7 +61,7 @@ class SessionManager @Inject constructor(
         private const val KEY_LAST_PLAYED_TRACK_ID = "last_played_track_id"
     }
 
-    private val prefs: SharedPreferences by lazy { createPreferences() }
+    val prefs: SharedPreferences by lazy { createPreferences() }
 
     private val _userDisplayName = MutableStateFlow<String?>(null)
     val userDisplayNameFlow = _userDisplayName.asStateFlow()
@@ -90,7 +90,7 @@ class SessionManager @Inject constructor(
         val spDc = prefs.getString(KEY_SPOTIFY_SP_DC, null)
         _spotifyAccessTokenFlow.value = token
         _isSpotifyConnected.value = !spDc.isNullOrBlank()
-        if (!token.isNullOrBlank() && !isSpotifyExpired) {
+        if (!token.isNullOrBlank()) {
             com.music.spotify.Spotify.accessToken = token
         }
         
@@ -212,6 +212,30 @@ class SessionManager @Inject constructor(
         get() = prefs.getLong("last_played_position_ms", 0L)
         set(value) {
             prefs.edit().putLong("last_played_position_ms", value).apply()
+        }
+
+    var lastPlayedQueue: List<com.vibevault.app.domain.model.Track>
+        get() {
+            val json = prefs.getString("last_played_queue", null) ?: return emptyList()
+            return try {
+                val type = object : com.google.gson.reflect.TypeToken<List<com.vibevault.app.domain.model.Track>>() {}.type
+                gson.fromJson(json, type) ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        set(value) {
+            if (value.isEmpty()) {
+                prefs.edit().remove("last_played_queue").apply()
+            } else {
+                prefs.edit().putString("last_played_queue", gson.toJson(value)).apply()
+            }
+        }
+
+    var lastPlayedQueueIndex: Int
+        get() = prefs.getInt("last_played_queue_index", 0)
+        set(value) {
+            prefs.edit().putInt("last_played_queue_index", value).apply()
         }
 
     fun addRecentContext(id: String, type: String, title: String, coverUrl: String) {

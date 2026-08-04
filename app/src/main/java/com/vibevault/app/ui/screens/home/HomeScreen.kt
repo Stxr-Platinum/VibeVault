@@ -69,7 +69,23 @@ fun HomeScreen(
     val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
 
     val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
+    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showSpotifyCookieDialog by remember { mutableStateOf(false) }
+    var showSpotifyDisconnectConfirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(authState) {
+        when (val state = authState) {
+            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.SpotifySuccess -> {
+                android.widget.Toast.makeText(context, "Spotify Connected Successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                viewModel.refresh()
+            }
+            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.Error -> {
+                android.widget.Toast.makeText(context, state.message, android.widget.Toast.LENGTH_LONG).show()
+            }
+            else -> {}
+        }
+    }
 
     if (showSpotifyCookieDialog) {
         SpotifyConnectDialog(
@@ -77,6 +93,30 @@ fun HomeScreen(
             onConnect = { spDc, spKey ->
                 authViewModel.connectWithCookies(spDc, spKey)
                 showSpotifyCookieDialog = false
+            }
+        )
+    }
+
+    if (showSpotifyDisconnectConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSpotifyDisconnectConfirm = false },
+            title = { Text("Disconnect Spotify") },
+            text = { Text("Are you sure you want to disconnect your Spotify account?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        viewModel.disconnectSpotify()
+                        showSpotifyDisconnectConfirm = false
+                        android.widget.Toast.makeText(context, "Spotify Disconnected", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Disconnect", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showSpotifyDisconnectConfirm = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -146,7 +186,7 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(horizontal = 8.dp)
-                            .clickable { viewModel.disconnectSpotify() }
+                            .clickable { showSpotifyDisconnectConfirm = true }
                             .padding(4.dp) // extra touch target
                     ) {
                         Icon(
@@ -201,15 +241,19 @@ fun HomeScreen(
                     SkeletonFeed()
                 }
             } else {
+                val playlists by viewModel.playlists.collectAsStateWithLifecycle()
                 HomeFeed(
                     quickPicks = quickPicks,
                     recentlyPlayed = recentlyPlayed,
                     trendingTracks = trendingTracks,
+                    playlists = playlists,
                     onTrackClick = onTrackClick,
                     onPlaylistClick = onPlaylistClick,
                     onSearchClick = { /* Scroll to top or focus search */ },
                     onProfileClick = onProfileClick,
-                    onSwipeToQueue = onSwipeToQueue
+                    onSwipeToQueue = onSwipeToQueue,
+                    onAddToPlaylist = { playlistId, track -> viewModel.addTrackToPlaylist(playlistId, track) },
+                    onCreatePlaylist = { name -> viewModel.createPlaylist(name) }
                 )
             }
         }
@@ -325,11 +369,14 @@ fun HomeFeed(
     quickPicks: List<com.vibevault.app.ui.viewmodel.QuickPickItem>,
     recentlyPlayed: List<Track>,
     trendingTracks: List<Track>,
+    playlists: List<PlaylistEntity>,
     onTrackClick: (Track) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onSearchClick: () -> Unit,
     onProfileClick: () -> Unit,
-    onSwipeToQueue: (Track) -> Unit
+    onSwipeToQueue: (Track) -> Unit,
+    onAddToPlaylist: (playlistId: String, track: Track) -> Unit,
+    onCreatePlaylist: (name: String) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -405,7 +452,15 @@ fun HomeFeed(
                         .padding(vertical = 8.dp)
                 ) {
                     trendingTracks.forEachIndexed { index, track ->
-                        TrendingTrackRow(track, index + 1, onClick = { onTrackClick(track) }, onSwipeToQueue = { onSwipeToQueue(track) })
+                        TrendingTrackRow(
+                            track = track,
+                            index = index + 1,
+                            onClick = { onTrackClick(track) },
+                            onSwipeToQueue = { onSwipeToQueue(track) },
+                            playlists = playlists,
+                            onAddToPlaylist = { playlistId -> onAddToPlaylist(playlistId, track) },
+                            onCreatePlaylist = onCreatePlaylist
+                        )
                     }
                 }
             }
@@ -526,8 +581,125 @@ fun PlaylistCardTrack(track: Track, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit, onSwipeToQueue: () -> Unit) {
+fun TrendingTrackRow(
+    track: Track,
+    index: Int,
+    onClick: () -> Unit,
+    onSwipeToQueue: () -> Unit,
+    playlists: List<PlaylistEntity>,
+    onAddToPlaylist: (playlistId: String) -> Unit,
+    onCreatePlaylist: (name: String) -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var showMenu by remember { mutableStateOf(false) }
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
+
+    // Add to Playlist Dialog
+    if (showAddToPlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddToPlaylistDialog = false },
+            title = { Text("Add to Playlist", color = Color.White) },
+            text = {
+                LazyColumn {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showAddToPlaylistDialog = false
+                                    showCreatePlaylistDialog = true
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = androidx.compose.material3.MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Create new playlist", color = androidx.compose.material3.MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                        }
+                    }
+                    items(playlists, key = { it.id }) { playlist ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onAddToPlaylist(playlist.id)
+                                    showAddToPlaylistDialog = false
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(text = playlist.title, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                Text(text = "${playlist.trackCount} tracks", color = Color.White.copy(alpha = 0.5f), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    if (playlists.isEmpty()) {
+                        item {
+                            Text("No playlists available", color = Color.Gray, modifier = Modifier.padding(16.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAddToPlaylistDialog = false }) {
+                    Text("Close", color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                }
+            },
+            containerColor = Color(0xFF282828)
+        )
+    }
+
+    // Create New Playlist Dialog
+    if (showCreatePlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreatePlaylistDialog = false; newPlaylistName = "" },
+            title = { Text("Create Playlist", color = Color.White) },
+            text = {
+                OutlinedTextField(
+                    value = newPlaylistName,
+                    onValueChange = { newPlaylistName = it },
+                    placeholder = { Text("Playlist name") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = Color.Gray
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newPlaylistName.isNotBlank()) {
+                            onCreatePlaylist(newPlaylistName.trim())
+                            android.widget.Toast.makeText(context, "Playlist \"${newPlaylistName.trim()}\" created", android.widget.Toast.LENGTH_SHORT).show()
+                            newPlaylistName = ""
+                            showCreatePlaylistDialog = false
+                        }
+                    },
+                    enabled = newPlaylistName.isNotBlank()
+                ) {
+                    Text("Create", color = if (newPlaylistName.isNotBlank()) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.Gray)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreatePlaylistDialog = false; newPlaylistName = "" }) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF282828)
+        )
+    }
+
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
@@ -603,7 +775,34 @@ fun TrendingTrackRow(track: Track, index: Int, onClick: () -> Unit, onSwipeToQue
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            Box {
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                    modifier = Modifier.background(Color(0xFF282828))
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Add to playlist", color = Color.White) },
+                        onClick = {
+                            showMenu = false
+                            showAddToPlaylistDialog = true
+                        },
+                        leadingIcon = { Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = Color.White) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add to queue", color = Color.White) },
+                        onClick = {
+                            showMenu = false
+                            onSwipeToQueue()
+                            android.widget.Toast.makeText(context, "Added to queue", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        leadingIcon = { Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White) }
+                    )
+                }
+            }
         }
     }
 }
@@ -867,37 +1066,61 @@ fun SpotifyConnectDialog(
                             settings.domStorageEnabled = true
                             settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; SM-S921U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36"
 
-                            webViewClient = object : WebViewClient() {
-                                private fun checkCookies(): Boolean {
-                                    if (captured) return true
-                                    cookieManager.flush()
-                                    val cookiesStr = cookieManager.getCookie("https://open.spotify.com") ?: ""
-                                    val cookies = cookiesStr.split(";").associate {
-                                        val parts = it.split("=")
-                                        val key = parts.firstOrNull()?.trim().orEmpty()
-                                        val valStr = parts.drop(1).joinToString("=").trim()
-                                        key to valStr
-                                    }
-                                    val spDc = cookies["sp_dc"].orEmpty()
-                                    if (spDc.isNotBlank()) {
-                                        captured = true
-                                        onConnect(spDc, cookies["sp_key"].orEmpty())
-                                        onDismiss()
-                                        return true
-                                    }
-                                    return false
+                            fun checkCookies(): Boolean {
+                                if (captured) return true
+                                cookieManager.flush()
+                                val c1 = cookieManager.getCookie("https://open.spotify.com") ?: ""
+                                val c2 = cookieManager.getCookie("https://accounts.spotify.com") ?: ""
+                                val c3 = cookieManager.getCookie("https://spotify.com") ?: ""
+                                val combined = "$c1;$c2;$c3"
+                                val cookies = combined.split(";").associate {
+                                    val parts = it.split("=")
+                                    val key = parts.firstOrNull()?.trim().orEmpty()
+                                    val valStr = parts.drop(1).joinToString("=").trim()
+                                    key to valStr
                                 }
+                                val spDc = cookies["sp_dc"].orEmpty()
+                                if (spDc.isNotBlank()) {
+                                    captured = true
+                                    onConnect(spDc, cookies["sp_key"].orEmpty())
+                                    onDismiss()
+                                    return true
+                                }
+                                return false
+                            }
 
+                            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                            val checkRunnable = object : Runnable {
+                                override fun run() {
+                                    if (!captured && checkCookies()) {
+                                        return
+                                    }
+                                    if (!captured) {
+                                        handler.postDelayed(this, 1000)
+                                    }
+                                }
+                            }
+
+                            webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                     return checkCookies()
+                                }
+
+                                override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                                    checkCookies()
                                 }
 
                                 override fun onPageFinished(view: WebView, url: String?) {
                                     checkCookies()
                                 }
+
+                                override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                                    checkCookies()
+                                }
                             }
                             cookieManager.removeAllCookies(null)
                             cookieManager.flush()
+                            handler.post(checkRunnable)
                             loadUrl(com.music.spotify.SpotifyAuth.LOGIN_URL)
                         }
                     }

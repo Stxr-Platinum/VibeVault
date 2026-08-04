@@ -138,6 +138,7 @@ dependencies {
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.realtime)
     implementation(libs.supabase.functions)
+    implementation(libs.supabase.storage)
 
     // ── Ktor Engine (required by supabase-kt and ListenTogether) ──────────────
     implementation(libs.ktor.client.okhttp)
@@ -167,6 +168,10 @@ dependencies {
 
     // ── Coil (Image Loading) ───────────────────────────────
     implementation(libs.coil.compose)
+
+    // ── Image Picker & Crop ──────────────────────────────
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("com.github.yalantis:ucrop:2.2.8")
 
     // ── Security (EncryptedSharedPreferences) ──────────────
     implementation(libs.androidx.security.crypto)

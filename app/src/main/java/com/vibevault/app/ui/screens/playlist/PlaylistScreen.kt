@@ -1,5 +1,11 @@
 package com.vibevault.app.ui.screens.playlist
 
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -32,6 +39,105 @@ import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.result.PickVisualMediaRequest
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import dagger.hilt.android.EntryPointAccessors
+import io.github.jan.supabase.storage.Storage
+import com.vibevault.app.core.session.SessionManager
+import android.util.Log
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface StorageEntryPoint {
+    fun storage(): Storage
+    fun sessionManager(): SessionManager
+}
+
+@Composable
+fun SquareCropDialog(
+    imageUri: Uri,
+    onDismiss: () -> Unit,
+    onCropConfirmed: (Bitmap) -> Unit
+) {
+    val context = LocalContext.current
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    
+    LaunchedEffect(imageUri) {
+        try {
+            val contentResolver = context.contentResolver
+            val inputStream = contentResolver.openInputStream(imageUri)
+            bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+        } catch (e: Exception) {
+            Log.e("CropDialog", "Failed decoding bitmap", e)
+        }
+    }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Crop Playlist Cover", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Center 1:1 square preview:", color = Color.Gray, fontSize = 12.sp)
+                Spacer(Modifier.height(12.dp))
+                if (bitmap != null) {
+                    val square = remember(bitmap) {
+                        val b = bitmap!!
+                        val size = Math.min(b.width, b.height)
+                        val x = (b.width - size) / 2
+                        val y = (b.height - size) / 2
+                        Bitmap.createBitmap(b, x, y, size, size)
+                    }
+                    Image(
+                        bitmap = square.asImageBitmap(),
+                        contentDescription = "Cropped Preview",
+                        modifier = Modifier
+                            .size(200.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    CircularProgressIndicator(color = Color(0xFF1DB954))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    bitmap?.let { b ->
+                        val size = Math.min(b.width, b.height)
+                        val x = (b.width - size) / 2
+                        val y = (b.height - size) / 2
+                        val cropped = Bitmap.createBitmap(b, x, y, size, size)
+                        onCropConfirmed(cropped)
+                    }
+                },
+                enabled = bitmap != null
+            ) {
+                Text("Crop & Set Cover", color = Color(0xFF1DB954), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Color.White)
+            }
+        },
+        containerColor = Color(0xFF282828)
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,10 +150,91 @@ fun PlaylistScreen(
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
     val userPlaylists by viewModel.userPlaylists.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     
     var showMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var isUploadingCover by remember { mutableStateOf(false) }
+
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+    var croppedBitmapToUpload by remember { mutableStateOf<Bitmap?>(null) }
+
+    if (pendingCropUri != null) {
+        SquareCropDialog(
+            imageUri = pendingCropUri!!,
+            onDismiss = { pendingCropUri = null },
+            onCropConfirmed = { cropped ->
+                pendingCropUri = null
+                croppedBitmapToUpload = cropped
+            }
+        )
+    }
+
+    LaunchedEffect(croppedBitmapToUpload) {
+        val bitmap = croppedBitmapToUpload ?: return@LaunchedEffect
+        isUploadingCover = true
+        try {
+            // 1. Encode Base64 Data URL fallback (100% web-compatible for music-stream-hub)
+            val baos = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
+            val bytes = baos.toByteArray()
+            val base64Str = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            var finalUrl = "data:image/jpeg;base64,$base64Str"
+
+            // 2. Save local file cache
+            val coversDir = File(context.filesDir, "playlist_covers")
+            if (!coversDir.exists()) {
+                coversDir.mkdirs()
+            }
+            val localFile = File(coversDir, "cover_${playlistId}_${System.currentTimeMillis()}.jpg")
+            val fos = FileOutputStream(localFile)
+            fos.write(bytes)
+            fos.flush()
+            fos.close()
+
+            // 3. Upload to Supabase Storage for public HTTP URL if signed in
+            try {
+                val entryPoint = EntryPointAccessors.fromApplication(
+                    context.applicationContext,
+                    StorageEntryPoint::class.java
+                )
+                val storage = entryPoint.storage()
+                val sessionManager = entryPoint.sessionManager()
+                val userId = sessionManager.userId
+
+                if (userId != null) {
+                    val fileName = "${playlistId}_${System.currentTimeMillis()}.jpg"
+                    val bucket = storage.from("covers")
+                    bucket.upload(fileName, bytes) {
+                        upsert = true
+                    }
+                    val publicHttpUrl = bucket.publicUrl(fileName)
+                    if (publicHttpUrl.isNotBlank()) {
+                        finalUrl = publicHttpUrl
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("PlaylistScreen", "Supabase storage upload failed, using Base64 Data URL", e)
+            }
+
+            viewModel.updatePlaylistCover(finalUrl)
+        } catch (e: Exception) {
+            Log.e("PlaylistScreen", "Failed processing cropped cover image", e)
+        } finally {
+            isUploadingCover = false
+            croppedBitmapToUpload = null
+        }
+    }
+
+    // Image picker for gallery
+    val pickImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { selectedUri ->
+            pendingCropUri = selectedUri
+        }
+    }
 
     if (showAddToPlaylistDialog) {
         AlertDialog(
@@ -168,6 +355,20 @@ fun PlaylistScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { 
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(imageVector = Icons.Default.AddPhotoAlternate, contentDescription = "Change Cover", tint = Color.White, modifier = Modifier.size(20.dp).padding(end = 12.dp))
+                                    Text("Change Cover", color = Color.White)
+                                }
+                            },
+                            onClick = {
+                                showMenu = false
+                                pickImageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Delete playlist", color = Color.Red) },
                             onClick = {
                                 showMenu = false
@@ -191,7 +392,7 @@ fun PlaylistScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(24.dp))
                     ) {
-                        if (playlist!!.coverUrl != null) {
+                        if (!playlist!!.coverUrl.isNullOrBlank()) {
                             AsyncImage(
                                 model = playlist!!.coverUrl,
                                 contentDescription = null,
@@ -212,10 +413,13 @@ fun PlaylistScreen(
                                 modifier = Modifier
                                     .size(120.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF282828)),
+                                    .background(Color(0xFF282828))
+                                    .clickable {
+                                        pickImageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (playlist!!.coverUrl != null) {
+                                if (!playlist!!.coverUrl.isNullOrBlank()) {
                                     AsyncImage(
                                         model = playlist!!.coverUrl,
                                         contentDescription = "Playlist Cover",
@@ -228,6 +432,19 @@ fun PlaylistScreen(
                                         contentDescription = "Playlist",
                                         tint = Color.White,
                                         modifier = Modifier.size(48.dp)
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.35f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.AddPhotoAlternate,
+                                        contentDescription = "Change Cover",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(28.dp)
                                     )
                                 }
                             }
@@ -291,10 +508,14 @@ fun PlaylistScreen(
                         }
                         Spacer(Modifier.width(24.dp))
                         Icon(
-                            imageVector = Icons.Default.Refresh, // Placeholder for loop
-                            contentDescription = "Loop",
-                            tint = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.size(28.dp)
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Reload",
+                            tint = if (viewModel.isRefreshing.collectAsStateWithLifecycle().value) 
+                                androidx.compose.material3.MaterialTheme.colorScheme.primary 
+                            else Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clickable { viewModel.refreshPlaylist() }
                         )
                         Spacer(Modifier.width(24.dp))
                         Icon(

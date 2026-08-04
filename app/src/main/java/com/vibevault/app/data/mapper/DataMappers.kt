@@ -78,7 +78,7 @@ fun PlaylistDto.toPlaylistEntity(): PlaylistEntity = PlaylistEntity(
     id = id,
     title = title,
     description = description,
-    coverUrl = coverUrl,
+    coverUrl = coverUrl?.takeIf { it.isNotBlank() },
     trackCount = trackCount,
     durationMs = durationMs,
     isPublic = isPublic,
@@ -93,7 +93,7 @@ fun PlaylistEntity.toDomain(): Playlist = Playlist(
     id = id,
     title = title,
     description = description,
-    coverUrl = coverUrl,
+    coverUrl = coverUrl?.takeIf { it.isNotBlank() },
     ownerName = ownerName,
     trackCount = trackCount
 )

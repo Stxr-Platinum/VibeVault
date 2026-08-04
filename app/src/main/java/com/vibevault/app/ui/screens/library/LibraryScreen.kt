@@ -292,7 +292,7 @@ fun LibraryScreen(
                 LibraryListItem(
                     title = playlist.title,
                     subtitle = "Playlist • ${playlist.trackCount} songs",
-                    imageUri = null, // Future: fetch playlist cover
+                    imageUri = playlist.coverUrl,
                     placeholderIcon = Icons.Default.QueueMusic,
                     onClick = { onPlaylistClick(playlist.id) }
                 )
@@ -369,7 +369,7 @@ fun LibraryListItem(
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.surface),
             contentAlignment = Alignment.Center
         ) {
-            if (imageUri != null) {
+            if (!imageUri.isNullOrBlank()) {
                 AsyncImage(
                     model = imageUri,
                     contentDescription = title,

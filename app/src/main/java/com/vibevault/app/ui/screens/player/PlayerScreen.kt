@@ -150,23 +150,91 @@ fun PlayerScreen(
     }
 
     if (showAddToPlaylistDialog && currentTrack != null) {
+        var showCreateDialog by remember { mutableStateOf(false) }
+        var newPlaylistName by remember { mutableStateOf("") }
+        val addContext = LocalContext.current
+
+        if (showCreateDialog) {
+            AlertDialog(
+                onDismissRequest = { showCreateDialog = false; newPlaylistName = "" },
+                title = { Text("Create Playlist", color = Color.White) },
+                text = {
+                    OutlinedTextField(
+                        value = newPlaylistName,
+                        onValueChange = { newPlaylistName = it },
+                        placeholder = { Text("Playlist name") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            cursorColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                            focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.Gray
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (newPlaylistName.isNotBlank()) {
+                                viewModel.createPlaylist(newPlaylistName.trim())
+                                android.widget.Toast.makeText(addContext, "Playlist \"${newPlaylistName.trim()}\" created", android.widget.Toast.LENGTH_SHORT).show()
+                                newPlaylistName = ""
+                                showCreateDialog = false
+                            }
+                        },
+                        enabled = newPlaylistName.isNotBlank()
+                    ) {
+                        Text("Create", color = if (newPlaylistName.isNotBlank()) androidx.compose.material3.MaterialTheme.colorScheme.primary else Color.Gray)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCreateDialog = false; newPlaylistName = "" }) {
+                        Text("Cancel", color = Color.White)
+                    }
+                },
+                containerColor = Color(0xFF282828)
+            )
+        }
+
         AlertDialog(
             onDismissRequest = { showAddToPlaylistDialog = false },
             title = { Text("Add to Playlist", color = Color.White) },
             text = {
                 LazyColumn {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCreateDialog = true }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = androidx.compose.material3.MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Create new playlist", color = androidx.compose.material3.MaterialTheme.colorScheme.primary, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                        }
+                    }
                     items(playlists, key = { it.id }) { playlist ->
-                        Text(
-                            text = playlist.title,
-                            color = Color.White,
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    viewModel.addTrackToPlaylist(playlist.id, currentTrack!!.id)
+                                    viewModel.addTrackToPlaylistWithCheck(playlist.id, currentTrack!!.id, addContext)
                                     showAddToPlaylistDialog = false
                                 }
-                                .padding(16.dp)
-                        )
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(text = playlist.title, color = Color.White, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
+                                Text(text = "${playlist.trackCount} tracks", color = Color.White.copy(alpha = 0.5f), style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
                     if (playlists.isEmpty()) {
                         item {

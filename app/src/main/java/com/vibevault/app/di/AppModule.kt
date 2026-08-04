@@ -11,6 +11,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+import com.vibevault.app.utils.DataUriFetcher
+
 /**
  * AppModule — Application-wide singletons.
  * Provides the Coil ImageLoader with memory and disk caching
@@ -25,6 +27,9 @@ object AppModule {
     fun provideImageLoader(
         @ApplicationContext context: Context
     ): ImageLoader = ImageLoader.Builder(context)
+        .components {
+            add(DataUriFetcher.Factory())
+        }
         .memoryCache {
             MemoryCache.Builder(context)
                 .maxSizePercent(0.25)    // 25% of app memory for bitmaps

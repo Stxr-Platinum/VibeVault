@@ -10,6 +10,7 @@ import com.vibevault.app.domain.repository.MusicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import android.util.Log
 import javax.inject.Inject
 
 @HiltViewModel
@@ -47,7 +48,7 @@ class PlaylistViewModel @Inject constructor(
                     ownerName = artistName.ifBlank { "Album" },
                     createdAt = 0L,
                     trackCount = 0,
-                    coverUrl = ""
+                    coverUrl = null
                 )
                 
                 val query = if (artistName.isNotEmpty()) "$albumName $artistName" else albumName
@@ -102,17 +103,35 @@ class PlaylistViewModel @Inject constructor(
                         ownerName = sp.ownerName ?: "Spotify",
                         createdAt = 0L,
                         trackCount = sp.trackCount,
-                        coverUrl = sp.coverUrl
+                        coverUrl = sp.coverUrl?.takeIf { it.isNotBlank() }
                     )
-                    
-                    // Immediately show whatever we have in Supabase
-                    _tracks.value = musicRepository.getSpotifyPlaylistTracks(playlistId)
-                    
-                    // Background sync with Spotify API
-                    viewModelScope.launch {
-                        musicRepository.backgroundSyncSpotifyPlaylistTracks(playlistId)
-                        // Reload tracks after sync finishes
-                        _tracks.value = musicRepository.getSpotifyPlaylistTracks(playlistId)
+                }
+                
+                // 1. Immediately display cached tracks for fast UI loading
+                val cachedTracks = musicRepository.getSpotifyPlaylistTracks(playlistId)
+                if (cachedTracks.isNotEmpty()) {
+                    _tracks.value = cachedTracks
+                }
+                
+                // 2. Simultaneously query Supabase and sync directly with Spotify API for this open playlist in background
+                viewModelScope.launch {
+                    val syncResult = musicRepository.forceRefreshSpotifyPlaylist(playlistId)
+                    syncResult.onSuccess { (freshPlaylist, freshTracks) ->
+                        if (freshTracks.isNotEmpty()) {
+                            _tracks.value = freshTracks
+                        }
+                        if (freshPlaylist != null) {
+                            _playlist.value = PlaylistEntity(
+                                id = freshPlaylist.id,
+                                title = freshPlaylist.title,
+                                ownerName = freshPlaylist.ownerName ?: "Spotify",
+                                createdAt = 0L,
+                                trackCount = freshPlaylist.trackCount.takeIf { it > 0 } ?: freshTracks.size,
+                                coverUrl = freshPlaylist.coverUrl?.takeIf { it.isNotBlank() } ?: sp?.coverUrl
+                            )
+                        }
+                    }.onFailure { e ->
+                        Log.e("PlaylistVM", "Background playlist sync failed for $playlistId", e)
                     }
                 }
             }
@@ -122,6 +141,13 @@ class PlaylistViewModel @Inject constructor(
     fun renamePlaylist(newName: String) {
         viewModelScope.launch {
             musicRepository.renamePlaylist(playlistId, newName)
+            loadPlaylist()
+        }
+    }
+
+    fun updatePlaylistCover(coverUrl: String) {
+        viewModelScope.launch {
+            musicRepository.updatePlaylistCover(playlistId, coverUrl)
             loadPlaylist()
         }
     }
@@ -136,6 +162,54 @@ class PlaylistViewModel @Inject constructor(
     fun removeTrack(trackId: String) {
         viewModelScope.launch {
             musicRepository.removeTrackFromPlaylist(playlistId, trackId)
+        }
+    }
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    fun refreshPlaylist() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                // Check if this is a Spotify playlist (not local, not album)
+                if (!playlistId.startsWith("album:")) {
+                    val localPlaylist = musicRepository.getPlaylist(playlistId)
+                    if (localPlaylist != null) {
+                        // Local playlist - re-collect tracks
+                        musicRepository.getPlaylistTracks(playlistId).collect {
+                            _tracks.value = it
+                        }
+                    } else {
+                        // Spotify playlist - instantly fetch fresh data from Supabase & sync directly with Spotify API for this playlist
+                        val syncResult = musicRepository.forceRefreshSpotifyPlaylist(playlistId)
+                        syncResult.onSuccess { (freshPlaylist, freshTracks) ->
+                            if (freshTracks.isNotEmpty()) {
+                                _tracks.value = freshTracks
+                            }
+                            if (freshPlaylist != null) {
+                                _playlist.value = PlaylistEntity(
+                                    id = freshPlaylist.id,
+                                    title = freshPlaylist.title,
+                                    ownerName = freshPlaylist.ownerName ?: "Spotify",
+                                    createdAt = 0L,
+                                    trackCount = freshPlaylist.trackCount.takeIf { it > 0 } ?: freshTracks.size,
+                                    coverUrl = freshPlaylist.coverUrl?.takeIf { it.isNotBlank() }
+                                )
+                            }
+                        }.onFailure { e ->
+                            Log.e("PlaylistVM", "Failed to refresh Spotify playlist $playlistId", e)
+                        }
+                    }
+                } else {
+                    // Album - reload
+                    loadPlaylist()
+                }
+            } catch (e: Exception) {
+                Log.e("PlaylistVM", "Failed to refresh playlist", e)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 

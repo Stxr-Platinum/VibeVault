@@ -102,6 +102,7 @@ class HomeViewModel @Inject constructor(
 
     fun disconnectSpotify() {
         sessionManager.clearSpotifySession()
+        musicRepository.clearSpotifyCache()
     }
 
     fun refresh() {
@@ -185,6 +186,13 @@ class HomeViewModel @Inject constructor(
         
         viewModelScope.launch {
             Log.d("SpotifyDebug", "HomeVM: Starting sync sequence...")
+            if (sessionManager.isSpotifyConnected.value) {
+                try {
+                    musicRepository.backgroundSyncSpotifyPlaylists()
+                } catch (e: Exception) {
+                    Log.e("SpotifyDebug", "HomeVM: Spotify playlist sync failed", e)
+                }
+            }
             
             // 1. Sync recent history so personalized trending has data
             musicRepository.syncRecentlyPlayed()

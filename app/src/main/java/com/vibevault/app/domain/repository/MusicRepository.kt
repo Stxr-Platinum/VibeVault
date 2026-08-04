@@ -73,11 +73,13 @@ interface MusicRepository {
     suspend fun getPlaylist(playlistId: String): com.vibevault.app.data.local.entity.PlaylistEntity?
     suspend fun createPlaylist(title: String): String
     suspend fun renamePlaylist(playlistId: String, newTitle: String)
+    suspend fun updatePlaylistCover(playlistId: String, coverUrl: String)
     suspend fun deletePlaylist(playlistId: String)
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String)
+    suspend fun isTrackInPlaylist(playlistId: String, trackId: String): Boolean
     suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String)
 
-    // ── Spotify Specific Data ────────────────────────────────
+    fun clearSpotifyCache()
     fun getSpotifyRecentlyPlayed(): Flow<List<Track>>
     fun getFeaturedPlaylists(): Flow<List<com.vibevault.app.domain.model.Playlist>>
     fun getNewReleases(): Flow<List<Track>>
@@ -89,7 +91,10 @@ interface MusicRepository {
     suspend fun backgroundSyncSpotifyPlaylists()
     
     /** Sync tracks of a specific Spotify playlist from Spotify API to Supabase. */
-    suspend fun backgroundSyncSpotifyPlaylistTracks(playlistId: String)
+    suspend fun backgroundSyncSpotifyPlaylistTracks(playlistId: String): Result<Unit>
+    
+    /** Force refresh and sync a single Spotify playlist's metadata and tracks from Supabase + Spotify API. */
+    suspend fun forceRefreshSpotifyPlaylist(playlistId: String): Result<Pair<com.vibevault.app.domain.model.Playlist?, List<Track>>>
     
     fun getBrowseCategories(): Flow<List<com.vibevault.app.domain.model.Category>>
     suspend fun searchSpotifyAll(query: String): Result<com.vibevault.app.domain.model.SpotifySearchResult>

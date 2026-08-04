@@ -111,6 +111,7 @@ class PlayerViewModel @Inject constructor(
     // ── Media3 ──────────────────────────────────────────────
     private var player: MediaController? = null
     private var pendingTrack: Track? = null
+    private var isRestoringSavedState = true
 
     init {
         // Build MediaController asynchronously
@@ -123,34 +124,57 @@ class PlayerViewModel @Inject constructor(
                 setupPlayerListener()
                 
                 // If a track was requested while controller was loading, play it now
-                pendingTrack?.let {
-                    playInternal(it)
-                    pendingTrack = null
+                if (pendingTrack != null) {
+                    pendingTrack?.let {
+                        playInternal(it)
+                        pendingTrack = null
+                    }
+                } else {
+                    // Ensure player is strictly paused when initializing state on app launch
+                    player?.playWhenReady = false
                 }
             },
             ContextCompat.getMainExecutor(context)
         )
 
-        // 0. Load last played track
+        // 0. Load last played track and queue
         viewModelScope.launch {
-            val savedTrack = sessionManager.lastPlayedTrack
-            if (savedTrack != null && savedTrack.id.isNotBlank()) {
-                currentlyPlayingTrackId = savedTrack.id
-                queueManager.syncExternalTrack(savedTrack)
-                val pos = sessionManager.lastPlayedPositionMs
-                if (pos > 0) _currentPosition.value = pos
-                if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
-            } else {
-                sessionManager.lastPlayedTrackId?.let { trackId ->
-                    try {
-                        val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
-                        if (localTrackResult != null) {
-                            queueManager.syncExternalTrack(localTrackResult)
+            isRestoringSavedState = true
+            try {
+                val savedQueue = sessionManager.lastPlayedQueue
+                val savedIndex = sessionManager.lastPlayedQueueIndex
+                if (savedQueue.isNotEmpty()) {
+                    val validIndex = savedIndex.coerceIn(0, savedQueue.size - 1)
+                    val savedTrack = savedQueue[validIndex]
+                    currentlyPlayingTrackId = savedTrack.id
+                    queueManager.setQueue(savedQueue, validIndex)
+                    val pos = sessionManager.lastPlayedPositionMs
+                    if (pos > 0) _currentPosition.value = pos
+                    if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
+                } else {
+                    val savedTrack = sessionManager.lastPlayedTrack
+                    if (savedTrack != null && savedTrack.id.isNotBlank()) {
+                        currentlyPlayingTrackId = savedTrack.id
+                        queueManager.syncExternalTrack(savedTrack)
+                        val pos = sessionManager.lastPlayedPositionMs
+                        if (pos > 0) _currentPosition.value = pos
+                        if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
+                    } else {
+                        sessionManager.lastPlayedTrackId?.let { trackId ->
+                            try {
+                                val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
+                                if (localTrackResult != null) {
+                                    queueManager.syncExternalTrack(localTrackResult)
+                                }
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
                         }
-                    } catch (e: Exception) {
-                        // Ignore
                     }
                 }
+            } finally {
+                kotlinx.coroutines.yield()
+                isRestoringSavedState = false
             }
         }
 
@@ -176,11 +200,19 @@ class PlayerViewModel @Inject constructor(
         // 1. Observe QueueManager's currentTrack to trigger playback and lyrics fetch
         viewModelScope.launch {
             queueManager.currentTrack.collect { track ->
-                if (track != null && track.id != currentlyPlayingTrackId) {
-                    playInternal(track)
+                val currentExoMediaId = player?.currentMediaItem?.mediaId
+                val shouldStartPlayback = !isRestoringSavedState && 
+                    track != null && 
+                    track.id != currentlyPlayingTrackId && 
+                    track.id != currentExoMediaId
+                
+                if (shouldStartPlayback) {
+                    playInternal(track!!)
                     musicRepository.recordPlay(track)
                 } else if (track == null) {
                     stopAllPlayback()
+                } else if (isRestoringSavedState && track != null) {
+                    currentlyPlayingTrackId = track.id
                 }
 
                 if (track != null) {
@@ -276,7 +308,18 @@ class PlayerViewModel @Inject constructor(
                 } else if (playbackState == Player.STATE_ENDED) {
                     // Entire ExoPlayer playlist finished. 
                     queueManager.next()
+                } else if (playbackState == Player.STATE_IDLE) {
+                    _isPlaying.value = false
                 }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                Log.e("PlaybackDebug", "ExoPlayer error during playback: ${error.message}", error)
+                _isPlaying.value = false
+                _currentPosition.value = 0L
+                player?.stop()
+                player?.clearMediaItems()
+                _spotifyError.tryEmit("Playback error: ${error.localizedMessage ?: "Failed to stream track"}")
             }
             
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -308,14 +351,17 @@ class PlayerViewModel @Inject constructor(
                     )
                     
                     sessionManager.lastPlayedTrack = externalTrack
-                    queueManager.syncExternalTrack(externalTrack)
+                    
+                    val idxInQueue = queueManager.queueState.value.indexOfFirst { it.id == newId }
+                    if (idxInQueue >= 0) {
+                        queueManager.onMediaItemTransition(idxInQueue)
+                    } else {
+                        queueManager.syncExternalTrack(externalTrack)
+                    }
                     
                     if (isNewTrack) {
                         viewModelScope.launch {
                             musicRepository.recordPlay(externalTrack)
-                        }
-                        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && existingTrack != null) {
-                            queueManager.next()
                         }
                         ensureUpcomingTracks()
                     }
@@ -452,6 +498,10 @@ class PlayerViewModel @Inject constructor(
         val mediaItem = buildMediaItem(track)
 
         player?.let { controller ->
+            if (controller.playbackState == Player.STATE_IDLE || controller.playerError != null) {
+                controller.stop()
+                controller.clearMediaItems()
+            }
             controller.setMediaItem(mediaItem)
             controller.prepare()
             controller.play()
@@ -459,7 +509,7 @@ class PlayerViewModel @Inject constructor(
         
         ensureUpcomingTracks()
     }
-    
+
     private fun buildMediaItem(track: Track): MediaItem {
         return track.toMediaItem()
     }
@@ -481,10 +531,16 @@ class PlayerViewModel @Inject constructor(
             if (idx < 0 || idx >= q.size) return@launch
             
             player?.let { controller ->
+                // Clean up already played tracks prior to current position in ExoPlayer's playlist
+                val currentControllerIndex = controller.currentMediaItemIndex
+                if (currentControllerIndex > 0) {
+                    controller.removeMediaItems(0, currentControllerIndex)
+                }
+
                 val desiredUpcoming = 2
                 val currentControllerCount = controller.mediaItemCount
-                val currentControllerIndex = controller.currentMediaItemIndex
-                val itemsAhead = currentControllerCount - currentControllerIndex - 1
+                val activeIndex = controller.currentMediaItemIndex
+                val itemsAhead = currentControllerCount - activeIndex - 1
                 
                 if (itemsAhead < desiredUpcoming) {
                     for (i in (itemsAhead + 1)..desiredUpcoming) {
@@ -594,12 +650,12 @@ class PlayerViewModel @Inject constructor(
 
     fun togglePlayPause() {
         val p = player ?: return
-        if (p.playWhenReady) {
+        if (p.isPlaying || p.playWhenReady) {
             p.pause()
         } else {
-            if (p.mediaItemCount == 0 && currentlyPlayingTrackId != null) {
-                // The service might have died and lost the media item, restore it
-                val track = queueManager.queueState.value.find { it.id == currentlyPlayingTrackId }
+            if (p.playerError != null || p.playbackState == Player.STATE_IDLE || p.mediaItemCount == 0) {
+                val track = queueManager.currentTrack.value 
+                    ?: queueManager.queueState.value.find { it.id == currentlyPlayingTrackId }
                 if (track != null) {
                     playInternal(track)
                     return
@@ -667,6 +723,24 @@ class PlayerViewModel @Inject constructor(
     fun addTrackToPlaylist(playlistId: String, trackId: String) {
         viewModelScope.launch {
             musicRepository.addTrackToPlaylist(playlistId, trackId)
+        }
+    }
+
+    fun addTrackToPlaylistWithCheck(playlistId: String, trackId: String, context: android.content.Context) {
+        viewModelScope.launch {
+            val alreadyExists = musicRepository.isTrackInPlaylist(playlistId, trackId)
+            if (alreadyExists) {
+                android.widget.Toast.makeText(context, "Song is already in this playlist", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                musicRepository.addTrackToPlaylist(playlistId, trackId)
+                android.widget.Toast.makeText(context, "Added to playlist", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun createPlaylist(name: String) {
+        viewModelScope.launch {
+            musicRepository.createPlaylist(name)
         }
     }
 

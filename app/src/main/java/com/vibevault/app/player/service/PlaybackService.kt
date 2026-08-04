@@ -113,21 +113,15 @@ class PlaybackService : MediaLibraryService() {
         sleepTimer = com.vibevault.app.player.SleepTimer(CoroutineScope(Dispatchers.Main), player)
         player.addListener(sleepTimer)
         
-        player.addListener(object : androidx.media3.common.Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-                    queueManager.next()
-                }
-            }
-        })
-        
         val callback = object : MediaLibrarySession.Callback {
 
             override fun onPlaybackResumption(
                 mediaSession: MediaSession,
                 controller: MediaSession.ControllerInfo
             ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-                triggerAutoPlayOnAndroidAuto("PlaybackResumption")
+                if (isAutoController(controller)) {
+                    triggerAutoPlayOnAndroidAuto("PlaybackResumption")
+                }
                 return serviceScope.future {
                     val lastTrack = sessionManager.lastPlayedTrack 
                         ?: musicRepository.getRecentlyPlayed(1).firstOrNull()?.firstOrNull()
@@ -162,7 +156,7 @@ class PlaybackService : MediaLibraryService() {
                 browser: MediaSession.ControllerInfo,
                 params: LibraryParams?
             ): ListenableFuture<LibraryResult<MediaItem>> {
-                if (isAutoController(browser) || params?.isRecent == true) {
+                if (isAutoController(browser)) {
                     triggerAutoPlayOnAndroidAuto("onGetLibraryRoot")
                 }
 

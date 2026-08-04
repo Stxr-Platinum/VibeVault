@@ -19,7 +19,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class QueueManager @Inject constructor() {
+class QueueManager @Inject constructor(
+    private val sessionManager: com.vibevault.app.core.session.SessionManager
+) {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var activeQueue: Queue? = null
@@ -241,6 +243,18 @@ class QueueManager @Inject constructor() {
             _currentTrack.value = null
         }
         _queueState.value = currentQueue.toList()
+
+        if (currentQueue.isNotEmpty()) {
+            try {
+                sessionManager.lastPlayedQueue = currentQueue.toList()
+                sessionManager.lastPlayedQueueIndex = _currentIndex.value.coerceAtLeast(0)
+                _currentTrack.value?.let { track ->
+                    sessionManager.lastPlayedTrack = track
+                }
+            } catch (e: Exception) {
+                Log.e("QueueManager", "Failed to persist queue state to SessionManager", e)
+            }
+        }
     }
 
     private fun debugLog() {

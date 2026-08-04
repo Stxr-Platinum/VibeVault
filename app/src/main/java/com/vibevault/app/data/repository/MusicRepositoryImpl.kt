@@ -615,11 +615,71 @@ class MusicRepositoryImpl @Inject constructor(
         syncScheduler.syncNow()
     }
 
+    override suspend fun updatePlaylistCover(playlistId: String, coverUrl: String) {
+        // 1. Update in local Room database if present
+        val localPlaylist = playlistDao.getPlaylistById(playlistId)
+        if (localPlaylist != null) {
+            playlistDao.updatePlaylist(localPlaylist.copy(coverUrl = coverUrl, isSynced = false, clientTimestamp = System.currentTimeMillis()))
+            syncScheduler.syncNow()
+        }
+
+        // 2. Update in-memory & persistent disk cache for Spotify playlists
+        val updatedCache = _cachedSpotifyPlaylists.value.map {
+            if (it.id == playlistId) it.copy(coverUrl = coverUrl) else it
+        }
+        saveSpotifyPlaylistsToCache(updatedCache)
+        _spotifyPlaylistsTrigger.tryEmit(Unit)
+
+        // 3. Update in Supabase `spotify_playlists` table if user logged in
+        // Only send web-compatible URLs (http://, https://, data:image/...) to Supabase
+        if (coverUrl.startsWith("http://") || coverUrl.startsWith("https://") || coverUrl.startsWith("data:image/")) {
+            val userId = sessionManager.userId
+            if (userId != null) {
+                try {
+                    postgrest.from("spotify_playlists")
+                        .update(mapOf("image" to coverUrl)) {
+                            filter {
+                                eq("user_id", userId)
+                                eq("playlist_id", playlistId)
+                            }
+                        }
+                } catch (e: Exception) {
+                    Log.e("MusicRepo", "Failed updating playlist cover in Supabase", e)
+                }
+            }
+        }
+    }
+
     override suspend fun deletePlaylist(playlistId: String) {
-        val playlist = playlistDao.getPlaylistById(playlistId) ?: return
-        // Mark as deleted locally
-        playlistDao.updatePlaylist(playlist.copy(isDeleted = true, isSynced = false, clientTimestamp = System.currentTimeMillis()))
-        syncScheduler.syncNow()
+        addDeletedSpotifyPlaylistId(playlistId)
+        
+        // 1. Remove from in-memory and disk cached Spotify playlists
+        val updatedCache = _cachedSpotifyPlaylists.value.filter { it.id != playlistId }
+        saveSpotifyPlaylistsToCache(updatedCache)
+        _spotifyPlaylistsTrigger.tryEmit(Unit)
+
+        // 2. Delete from Supabase if user logged in
+        val userId = sessionManager.userId
+        if (userId != null) {
+            try {
+                postgrest.from("spotify_playlists")
+                    .delete {
+                        filter {
+                            eq("user_id", userId)
+                            eq("playlist_id", playlistId)
+                        }
+                    }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "Failed to delete Spotify playlist from Supabase", e)
+            }
+        }
+
+        // 3. Mark as deleted in local Room database if present
+        val playlist = playlistDao.getPlaylistById(playlistId)
+        if (playlist != null) {
+            playlistDao.updatePlaylist(playlist.copy(isDeleted = true, isSynced = false, clientTimestamp = System.currentTimeMillis()))
+            syncScheduler.syncNow()
+        }
     }
 
     override suspend fun addTrackToPlaylist(playlistId: String, trackId: String) {
@@ -640,6 +700,11 @@ class MusicRepositoryImpl @Inject constructor(
             playlistDao.addTrackToPlaylist(ref)
             syncScheduler.syncNow()
         }
+    }
+
+    override suspend fun isTrackInPlaylist(playlistId: String, trackId: String): Boolean {
+        val crossRef = playlistDao.getCrossRef(playlistId, trackId)
+        return crossRef != null && !crossRef.isDeleted
     }
 
     override suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String) {
@@ -757,41 +822,152 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun getTopArtists(): Flow<List<Artist>> = flow { emit(emptyList()) }
 
+    private val gson = com.google.gson.Gson()
+    private val prefs get() = sessionManager.prefs
+
+    override fun clearSpotifyCache() {
+        prefs.edit().remove("persistent_spotify_playlists").remove("deleted_spotify_playlist_ids").apply()
+        _cachedSpotifyPlaylists.value = emptyList()
+        _spotifyPlaylistsTrigger.tryEmit(Unit)
+    }
+
+    private val _cachedSpotifyPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
     private val _spotifyPlaylistsTrigger = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(
         replay = 1,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
     ).apply { tryEmit(Unit) }
 
-    override fun getUserSpotifyPlaylists(): Flow<List<Playlist>> = _spotifyPlaylistsTrigger.map {
-        try {
-            val userId = sessionManager.userId
-            if (userId != null) {
-                val dtos = postgrest.from("spotify_playlists")
-                    .select {
-                        filter { eq("user_id", userId) }
-                    }
-                    .decodeList<com.vibevault.app.data.remote.dto.SupabaseSpotifyPlaylistDto>()
-                
-                dtos.map { dto ->
-                    Playlist(
-                        id = dto.playlistId,
-                        title = dto.name,
-                        description = dto.description,
-                        coverUrl = dto.image,
-                        ownerName = dto.ownerName,
-                        trackCount = dto.trackCount
-                    )
-                }
-            } else {
-                emptyList()
-            }
+    private fun getDeletedSpotifyPlaylistIds(): Set<String> {
+        return prefs.getStringSet("deleted_spotify_playlist_ids", emptySet()) ?: emptySet()
+    }
+
+    private fun addDeletedSpotifyPlaylistId(id: String) {
+        val current = getDeletedSpotifyPlaylistIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet("deleted_spotify_playlist_ids", current).apply()
+    }
+
+    private fun loadSpotifyPlaylistsFromCache(): List<Playlist> {
+        val json = prefs.getString("persistent_spotify_playlists", null) ?: return emptyList()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<List<Playlist>>() {}.type
+            gson.fromJson<List<Playlist>>(json, type) ?: emptyList()
         } catch (e: Exception) {
-            e.printStackTrace()
             emptyList()
         }
     }
 
+    private fun saveSpotifyPlaylistsToCache(playlists: List<Playlist>) {
+        _cachedSpotifyPlaylists.value = playlists
+        try {
+            prefs.edit().putString("persistent_spotify_playlists", gson.toJson(playlists)).apply()
+        } catch (e: Exception) {
+            Log.e("MusicRepo", "Failed to save spotify playlists to prefs cache", e)
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun getUserSpotifyPlaylists(): Flow<List<Playlist>> = _spotifyPlaylistsTrigger.flatMapLatest {
+        flow {
+            val deletedIds = getDeletedSpotifyPlaylistIds()
+            if (_cachedSpotifyPlaylists.value.isEmpty()) {
+                val diskCached = loadSpotifyPlaylistsFromCache()
+                if (diskCached.isNotEmpty()) {
+                    _cachedSpotifyPlaylists.value = diskCached
+                }
+            }
+
+            var playlists = _cachedSpotifyPlaylists.value.filter { it.id !in deletedIds }
+            
+            // 1. Emit cached immediately for instant UI render
+            emit(playlists)
+
+            // 2. Always fetch & update cache from Supabase `spotify_playlists` if user is signed in
+            val currentUserId = sessionManager.userId
+            if (currentUserId != null) {
+                try {
+                    val dtos = postgrest.from("spotify_playlists")
+                        .select {
+                            filter { eq("user_id", currentUserId) }
+                        }
+                        .decodeList<com.vibevault.app.data.remote.dto.SupabaseSpotifyPlaylistDto>()
+                    
+                    val supabasePlaylists = dtos.map { dto ->
+                        Playlist(
+                            id = dto.playlistId,
+                            title = dto.name,
+                            description = dto.description,
+                            coverUrl = (dto.displayCoverUrl ?: dto.image)?.takeIf { it.isNotBlank() },
+                            ownerName = dto.ownerName,
+                            trackCount = dto.trackCount
+                        )
+                    }.filter { it.id !in deletedIds }
+
+                    if (supabasePlaylists.isNotEmpty()) {
+                        playlists = supabasePlaylists
+                        saveSpotifyPlaylistsToCache(playlists)
+                        emit(playlists)
+                    }
+                } catch (e: Exception) {
+                    Log.e("MusicRepo", "Failed fetching spotify playlists from Supabase", e)
+                }
+            }
+
+            // 3. Always update from Spotify API if connected to keep playlists in sync
+            if (sessionManager.isSpotifyConnected.value) {
+                try {
+                    val result = spotifyApi.getUserPlaylists()
+                    if (result.isSuccess) {
+                        val dtos = result.getOrNull() ?: emptyList()
+                        val directPlaylists = dtos.map { dto ->
+                            val existingCover = playlists.find { p -> p.id == dto.id }?.coverUrl
+                            Playlist(
+                                id = dto.id,
+                                title = dto.name,
+                                description = dto.description,
+                                coverUrl = existingCover ?: dto.images.firstOrNull()?.url?.takeIf { it.isNotBlank() },
+                                ownerName = dto.owner?.displayName,
+                                trackCount = 0
+                            )
+                        }.filter { it.id !in deletedIds }
+
+                        if (directPlaylists.isNotEmpty()) {
+                            playlists = directPlaylists
+                            saveSpotifyPlaylistsToCache(playlists)
+                            emit(playlists)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MusicRepo", "Failed fetching spotify playlists directly from API", e)
+                }
+            }
+        }
+    }
+
+    private fun getSpotifyPlaylistTracksFromCache(playlistId: String): List<Track> {
+        val json = prefs.getString("persistent_spotify_tracks_$playlistId", null) ?: return emptyList()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<List<Track>>() {}.type
+            gson.fromJson<List<Track>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveSpotifyPlaylistTracksToCache(playlistId: String, tracks: List<Track>) {
+        try {
+            prefs.edit().putString("persistent_spotify_tracks_$playlistId", gson.toJson(tracks)).apply()
+        } catch (e: Exception) {
+            Log.e("MusicRepo", "Failed to save playlist tracks to prefs cache", e)
+        }
+    }
+
     override suspend fun getSpotifyPlaylistTracks(playlistId: String): List<Track> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val cachedTracks = getSpotifyPlaylistTracksFromCache(playlistId)
+        if (cachedTracks.isNotEmpty()) {
+            return@withContext cachedTracks
+        }
+
         val tracks = mutableListOf<Track>()
         try {
             val userId = sessionManager.userId
@@ -817,7 +993,33 @@ class MusicRepositoryImpl @Inject constructor(
                 })
             }
         } catch (e: Exception) {
-            Log.e("MusicRepo", "Failed fetching spotify tracks from Supabase, trying online YouTube playlist", e)
+            Log.e("MusicRepo", "Failed fetching spotify tracks from Supabase", e)
+        }
+
+        if (tracks.isEmpty() && sessionManager.isSpotifyConnected.value) {
+            try {
+                val result = spotifyApi.getPlaylistTracks(playlistId)
+                if (result.isSuccess) {
+                    val items = result.getOrNull() ?: emptyList()
+                    val directTracks = items.mapNotNull { item ->
+                        val t = item.track ?: item.item ?: return@mapNotNull null
+                        val id = t.id ?: return@mapNotNull null
+                        Track(
+                            id = id,
+                            title = t.name,
+                            artist = t.artists.firstOrNull()?.name ?: "Unknown",
+                            album = t.album?.name ?: "Unknown",
+                            albumImageUrl = t.album?.images?.firstOrNull()?.url ?: "",
+                            durationMs = t.durationMs
+                        )
+                    }
+                    if (directTracks.isNotEmpty()) {
+                        tracks.addAll(directTracks)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "Direct Spotify track fetch failed for $playlistId", e)
+            }
         }
 
         if (tracks.isEmpty()) {
@@ -836,6 +1038,10 @@ class MusicRepositoryImpl @Inject constructor(
             } catch (e: Exception) {
                 Log.e("MusicRepo", "YouTube playlist fetch failed for $playlistId", e)
             }
+        }
+
+        if (tracks.isNotEmpty()) {
+            saveSpotifyPlaylistTracksToCache(playlistId, tracks)
         }
 
         tracks
@@ -952,46 +1158,61 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun backgroundSyncSpotifyPlaylists() {
-        val userId = sessionManager.userId ?: return
         try {
             val result = spotifyApi.getUserPlaylists()
             if (result.isSuccess) {
                 val playlists = result.getOrNull() ?: emptyList()
-                val dtos = playlists.map {
-                    SupabaseSpotifyPlaylistDto(
-                        userId = userId,
-                        playlistId = it.id,
-                        name = it.name,
-                        description = it.description,
-                        image = it.images.firstOrNull()?.url,
-                        ownerName = it.owner?.displayName,
-                        trackCount = 0 // Stub, wait, do we have track count?
+                val mappedPlaylists = playlists.map { dto ->
+                    Playlist(
+                        id = dto.id,
+                        title = dto.name,
+                        description = dto.description,
+                        coverUrl = dto.images.firstOrNull()?.url,
+                        ownerName = dto.owner?.displayName,
+                        trackCount = 0
                     )
                 }
-                
-                // Diff and sync logic
-                val existingPlaylists = postgrest.from("spotify_playlists")
-                    .select { filter { eq("user_id", userId) } }
-                    .decodeList<SupabaseSpotifyPlaylistDto>()
+                _cachedSpotifyPlaylists.value = mappedPlaylists
+
+                val userId = sessionManager.userId
+                if (userId != null) {
+                    val existingPlaylists = postgrest.from("spotify_playlists")
+                        .select { filter { eq("user_id", userId) } }
+                        .decodeList<SupabaseSpotifyPlaylistDto>()
+                    val existingMap = existingPlaylists.associateBy { it.playlistId }
+
+                    val dtos = playlists.map {
+                        val existingImage = existingMap[it.id]?.displayCoverUrl
+                        SupabaseSpotifyPlaylistDto(
+                            userId = userId,
+                            playlistId = it.id,
+                            name = it.name,
+                            description = it.description,
+                            image = existingImage ?: it.images.firstOrNull()?.url,
+                            ownerName = it.owner?.displayName,
+                            trackCount = 0
+                        )
+                    }
+                        
+                    val newIds = dtos.map { it.playlistId }.toSet()
+                    val idsToDelete = existingPlaylists.map { it.playlistId }.filter { !newIds.contains(it) }
                     
-                val newIds = dtos.map { it.playlistId }.toSet()
-                val idsToDelete = existingPlaylists.map { it.playlistId }.filter { !newIds.contains(it) }
-                
-                if (idsToDelete.isNotEmpty()) {
-                    for (chunk in idsToDelete.chunked(50)) {
-                        postgrest.from("spotify_playlists").delete {
-                            filter { 
-                                eq("user_id", userId)
-                                isIn("playlist_id", chunk)
+                    if (idsToDelete.isNotEmpty()) {
+                        for (chunk in idsToDelete.chunked(50)) {
+                            postgrest.from("spotify_playlists").delete {
+                                filter { 
+                                    eq("user_id", userId)
+                                    isIn("playlist_id", chunk)
+                                }
                             }
                         }
                     }
-                }
-                
-                if (dtos.isNotEmpty()) {
-                    for (chunk in dtos.chunked(50)) {
-                        postgrest.from("spotify_playlists").upsert(chunk) {
-                            onConflict = "user_id, playlist_id"
+                    
+                    if (dtos.isNotEmpty()) {
+                        for (chunk in dtos.chunked(50)) {
+                            postgrest.from("spotify_playlists").upsert(chunk) {
+                                onConflict = "user_id, playlist_id"
+                            }
                         }
                     }
                 }
@@ -1004,8 +1225,8 @@ class MusicRepositoryImpl @Inject constructor(
         }
     }
     
-    override suspend fun backgroundSyncSpotifyPlaylistTracks(playlistId: String) {
-        val userId = sessionManager.userId ?: return
+    override suspend fun backgroundSyncSpotifyPlaylistTracks(playlistId: String): Result<Unit> = runCatching {
+        val userId = sessionManager.userId ?: return@runCatching
         try {
             val result = spotifyApi.getPlaylistTracks(playlistId)
             if (result.isSuccess) {
@@ -1027,8 +1248,22 @@ class MusicRepositoryImpl @Inject constructor(
                 
                 if (parsed.isEmpty()) {
                     Log.d("SpotifySync", "Parsed tracks is empty. Skipping sync to avoid erasing existing tracks.")
-                    return
+                    return@runCatching
                 }
+
+                // Update per-playlist local cache immediately
+                val freshTracksList = parsed.map { t ->
+                    Track(
+                        id = t.id!!,
+                        title = t.name,
+                        artist = t.artists.firstOrNull()?.name ?: "Unknown",
+                        album = t.album?.name ?: "Unknown",
+                        albumImageUrl = t.album?.images?.firstOrNull()?.url ?: "",
+                        durationMs = t.durationMs
+                    )
+                }
+                saveSpotifyPlaylistTracksToCache(playlistId, freshTracksList)
+
                 val existingTracks = postgrest.from("spotify_playlist_tracks")
                     .select {
                         filter {
@@ -1089,7 +1324,121 @@ class MusicRepositoryImpl @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e("SpotifySync", "Error syncing tracks for $playlistId", e)
+            throw e
         }
+    }
+
+    override suspend fun forceRefreshSpotifyPlaylist(playlistId: String): Result<Pair<Playlist?, List<Track>>> = runCatching {
+        var freshPlaylist: Playlist? = null
+        val freshTracks = mutableListOf<Track>()
+        val userId = sessionManager.userId
+
+        // 1. Fetch from Supabase for this specific playlist ID
+        if (userId != null) {
+            try {
+                val playlistDtos = postgrest.from("spotify_playlists")
+                    .select {
+                        filter {
+                            eq("user_id", userId)
+                            eq("playlist_id", playlistId)
+                        }
+                    }
+                    .decodeList<SupabaseSpotifyPlaylistDto>()
+                
+                val spDto = playlistDtos.firstOrNull()
+                if (spDto != null) {
+                    freshPlaylist = Playlist(
+                        id = spDto.playlistId,
+                        title = spDto.name,
+                        description = spDto.description,
+                        coverUrl = (spDto.displayCoverUrl ?: spDto.image)?.takeIf { it.isNotBlank() },
+                        ownerName = spDto.ownerName,
+                        trackCount = spDto.trackCount
+                    )
+                }
+
+                val trackDtos = postgrest.from("spotify_playlist_tracks")
+                    .select {
+                        filter {
+                            eq("user_id", userId)
+                            eq("playlist_id", playlistId)
+                        }
+                    }
+                    .decodeList<SupabaseSpotifyPlaylistTrackDto>()
+                
+                if (trackDtos.isNotEmpty()) {
+                    val supabaseTracks = trackDtos.sortedBy { it.position }.map { dto ->
+                        Track(
+                            id = dto.spotifyTrackId,
+                            title = dto.title,
+                            artist = dto.artist,
+                            album = dto.album,
+                            albumImageUrl = dto.coverUrl,
+                            durationMs = dto.durationMs
+                        )
+                    }
+                    freshTracks.clear()
+                    freshTracks.addAll(supabaseTracks)
+                    saveSpotifyPlaylistTracksToCache(playlistId, supabaseTracks)
+                }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "Failed fetching per-playlist data from Supabase for $playlistId", e)
+            }
+        }
+
+        // 2. Sync directly with Spotify API for this specific playlist ID
+        if (sessionManager.isSpotifyConnected.value) {
+            try {
+                val apiResult = spotifyApi.getPlaylistTracks(playlistId)
+                if (apiResult.isSuccess) {
+                    val items = apiResult.getOrNull() ?: emptyList()
+                    val spotifyTracks = items.mapNotNull { item ->
+                        val t = item.track ?: item.item ?: return@mapNotNull null
+                        val id = t.id ?: return@mapNotNull null
+                        Track(
+                            id = id,
+                            title = t.name,
+                            artist = t.artists.firstOrNull()?.name ?: "Unknown",
+                            album = t.album?.name ?: "Unknown",
+                            albumImageUrl = t.album?.images?.firstOrNull()?.url ?: "",
+                            durationMs = t.durationMs
+                        )
+                    }.distinctBy { it.id }
+
+                    if (spotifyTracks.isNotEmpty()) {
+                        freshTracks.clear()
+                        freshTracks.addAll(spotifyTracks)
+                        saveSpotifyPlaylistTracksToCache(playlistId, spotifyTracks)
+                        backgroundSyncSpotifyPlaylistTracks(playlistId)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "Failed syncing per-playlist with Spotify API for $playlistId", e)
+            }
+        }
+
+        // 3. Update single playlist entry in _cachedSpotifyPlaylists memory & disk cache
+        if (freshPlaylist != null || freshTracks.isNotEmpty()) {
+            val currentCache = _cachedSpotifyPlaylists.value.toMutableList()
+            val index = currentCache.indexOfFirst { it.id == playlistId }
+            val updatedPlaylist = Playlist(
+                id = playlistId,
+                title = freshPlaylist?.title ?: currentCache.getOrNull(index)?.title ?: "Playlist",
+                description = freshPlaylist?.description ?: currentCache.getOrNull(index)?.description,
+                coverUrl = freshPlaylist?.coverUrl ?: currentCache.getOrNull(index)?.coverUrl,
+                ownerName = freshPlaylist?.ownerName ?: currentCache.getOrNull(index)?.ownerName ?: "Spotify",
+                trackCount = freshTracks.size.takeIf { it > 0 } ?: freshPlaylist?.trackCount ?: currentCache.getOrNull(index)?.trackCount ?: 0
+            )
+
+            if (index != -1) {
+                currentCache[index] = updatedPlaylist
+            } else {
+                currentCache.add(updatedPlaylist)
+            }
+            saveSpotifyPlaylistsToCache(currentCache)
+        }
+
+        Pair(freshPlaylist, freshTracks)
     }
 
     override suspend fun getAlbumDetails(albumId: String): Result<com.vibevault.app.domain.model.AlbumDetails> = runCatching {

@@ -16,6 +16,8 @@ import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.functions.functions
+import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.storage.storage
 import io.ktor.client.engine.okhttp.OkHttp
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
@@ -75,6 +77,7 @@ object NetworkModule {
             heartbeatInterval = 15.seconds
         }
         install(Functions)
+        install(Storage)
     }
     }
 
@@ -93,6 +96,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideFunctions(client: SupabaseClient): Functions = client.functions
+
+    @Provides
+    @Singleton
+    fun provideStorage(client: SupabaseClient): Storage = client.storage
 
     @Provides
     @Singleton

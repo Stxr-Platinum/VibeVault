@@ -116,7 +116,23 @@ fun ViviHomeScreen(
     val categories = listOf("Podcasts", "Workout", "Commute", "Feel good", "Romance", "Focus", "Party")
 
     val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
+    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showSpotifyConnectDialog by remember { mutableStateOf(false) }
+    var showSpotifyDisconnectConfirm by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(authState) {
+        when (val state = authState) {
+            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.SpotifySuccess -> {
+                android.widget.Toast.makeText(context, "Spotify Connected Successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                viewModel.refresh()
+            }
+            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.Error -> {
+                android.widget.Toast.makeText(context, state.message, android.widget.Toast.LENGTH_LONG).show()
+            }
+            else -> {}
+        }
+    }
 
     if (showSpotifyConnectDialog) {
         SpotifyConnectDialog(
@@ -124,6 +140,30 @@ fun ViviHomeScreen(
             onConnect = { spDc, spKey ->
                 authViewModel.connectWithCookies(spDc, spKey)
                 showSpotifyConnectDialog = false
+            }
+        )
+    }
+
+    if (showSpotifyDisconnectConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSpotifyDisconnectConfirm = false },
+            title = { Text("Disconnect Spotify") },
+            text = { Text("Are you sure you want to disconnect your Spotify account?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        viewModel.disconnectSpotify()
+                        showSpotifyDisconnectConfirm = false
+                        android.widget.Toast.makeText(context, "Spotify Disconnected", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Disconnect", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showSpotifyDisconnectConfirm = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -197,10 +237,18 @@ fun ViviHomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = { showSpotifyConnectDialog = true }) {
+                            IconButton(
+                                onClick = {
+                                    if (isSpotifyConnected) {
+                                        showSpotifyDisconnectConfirm = true
+                                    } else {
+                                        showSpotifyConnectDialog = true
+                                    }
+                                }
+                            ) {
                                 Icon(
                                     painter = painterResource(R.drawable.spotify),
-                                    contentDescription = "Spotify Login",
+                                    contentDescription = if (isSpotifyConnected) "Disconnect Spotify" else "Connect Spotify",
                                     tint = if (isSpotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(26.dp)
                                 )

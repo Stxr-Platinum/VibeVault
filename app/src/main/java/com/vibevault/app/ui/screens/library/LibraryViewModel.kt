@@ -36,6 +36,12 @@ class LibraryViewModel @Inject constructor(
             musicRepository.createPlaylist(title)
         }
     }
+
+    fun deletePlaylist(playlistId: String) {
+        viewModelScope.launch {
+            musicRepository.deletePlaylist(playlistId)
+        }
+    }
     
     init {
         viewModelScope.launch {
