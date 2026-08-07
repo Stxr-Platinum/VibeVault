@@ -151,23 +151,25 @@ fun PfpDto.toPfpEntity(): PfpEntity = PfpEntity(
 // ── Spotify: DTO → Domain ────────────────────────────────
 fun SpotifyTrackDto.toDomain(likedIds: Set<String> = emptySet()): Track? {
     val nonNullId = id ?: return null
+    val highestResImage = album?.images?.maxByOrNull { (it.width ?: 0) * (it.height ?: 0) }?.url 
+        ?: album?.images?.firstOrNull()?.url ?: ""
     return Track(
         id = nonNullId,
-    title = name,
-    artist = artists.firstOrNull()?.name ?: "Unknown",
-    album = album?.name ?: "Unknown",
-    albumImageUrl = album?.images?.firstOrNull()?.url ?: "",
-    audioUrl = previewUrl,
-    durationMs = durationMs,
-    isLiked = likedIds.contains(id),
-    source = "spotify"
-)
+        title = name,
+        artist = artists.firstOrNull()?.name ?: "Unknown",
+        album = album?.name ?: "Unknown",
+        albumImageUrl = highestResImage,
+        audioUrl = previewUrl,
+        durationMs = durationMs,
+        isLiked = likedIds.contains(id),
+        source = "spotify"
+    )
 }
 
 fun SpotifyArtistDto.toDomain(): com.vibevault.app.domain.model.Artist = com.vibevault.app.domain.model.Artist(
     id = id,
     name = name,
-    imageUrl = images.firstOrNull()?.url
+    imageUrl = images.maxByOrNull { (it.width ?: 0) * (it.height ?: 0) }?.url ?: images.firstOrNull()?.url
 )
 
 fun SpotifyAlbumDto.toDomain(likedIds: Set<String> = emptySet()): Track = Track(
@@ -175,7 +177,7 @@ fun SpotifyAlbumDto.toDomain(likedIds: Set<String> = emptySet()): Track = Track(
     title = name,
     artist = artists.firstOrNull()?.name ?: "Unknown",
     album = name,
-    albumImageUrl = images.firstOrNull()?.url ?: "",
+    albumImageUrl = images.maxByOrNull { (it.width ?: 0) * (it.height ?: 0) }?.url ?: images.firstOrNull()?.url ?: "",
     durationMs = 0,
     isLiked = likedIds.contains(id),
     source = "spotify"

@@ -87,7 +87,6 @@ object MediaModule {
 
     @OptIn(UnstableApi::class)
     @Provides
-    @Singleton
     fun provideExoPlayer(
         @ApplicationContext context: Context,
         audioAttributes: AudioAttributes,

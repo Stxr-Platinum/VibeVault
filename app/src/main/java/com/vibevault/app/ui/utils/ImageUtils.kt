@@ -12,12 +12,20 @@ fun String.resize(
                       this.contains(Regex("=[wshd]\\d+"))
 
     val isYtimg = this.contains("ytimg") || this.contains("youtube.com") || this.contains("/vi/")
+    val isSpotifyCdn = this.contains("scdn.co") || this.contains("spotify.com")
 
     return when {
         isGoogleCdn -> resizeGoogleCdn(width, height)
         isYtimg -> resizeYtimg(width, height)
+        isSpotifyCdn -> resizeSpotifyCdn()
         else -> this
     }
+}
+
+private fun String.resizeSpotifyCdn(): String {
+    // Replace Spotify low/medium resolution hashes with maximum high-res 640x640 hash (ab67616d0000b273)
+    return this.replace("ab67616d00004851", "ab67616d0000b273")
+               .replace("ab67616d00001e02", "ab67616d0000b273")
 }
 
 private fun String.resizeGoogleCdn(width: Int?, height: Int?): String {

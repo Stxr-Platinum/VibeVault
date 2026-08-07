@@ -109,7 +109,29 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        
+        Log.d("PlaybackService", "onCreate called — initializing fresh ExoPlayer and MediaLibrarySession")
+
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                Log.e("PlaybackService", "[ExoPlayerError] code=${error.errorCode} (${error.errorCodeName}): ${error.message}", error)
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                val stateName = when (playbackState) {
+                    Player.STATE_IDLE -> "STATE_IDLE"
+                    Player.STATE_BUFFERING -> "STATE_BUFFERING"
+                    Player.STATE_READY -> "STATE_READY"
+                    Player.STATE_ENDED -> "STATE_ENDED"
+                    else -> "UNKNOWN($playbackState)"
+                }
+                Log.d("PlaybackService", "[PlaybackState] state=$stateName, playWhenReady=${player.playWhenReady}, item=${player.currentMediaItem?.mediaId}")
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                Log.d("PlaybackService", "[IsPlaying] isPlaying=$isPlaying")
+            }
+        })
+
         sleepTimer = com.vibevault.app.player.SleepTimer(CoroutineScope(Dispatchers.Main), player)
         player.addListener(sleepTimer)
         

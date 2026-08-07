@@ -111,6 +111,9 @@ class PlaylistViewModel @Inject constructor(
                 val cachedTracks = musicRepository.getSpotifyPlaylistTracks(playlistId)
                 if (cachedTracks.isNotEmpty()) {
                     _tracks.value = cachedTracks
+                    cachedTracks.firstOrNull()?.let {
+                        Log.d("ImageSourceDebug", "[PlaylistViewModel] Cached Track '${it.title}' | Cover: '${it.albumImageUrl}'")
+                    }
                 }
                 
                 // 2. Simultaneously query Supabase and sync directly with Spotify API for this open playlist in background
@@ -119,6 +122,9 @@ class PlaylistViewModel @Inject constructor(
                     syncResult.onSuccess { (freshPlaylist, freshTracks) ->
                         if (freshTracks.isNotEmpty()) {
                             _tracks.value = freshTracks
+                            freshTracks.firstOrNull()?.let {
+                                Log.d("ImageSourceDebug", "[PlaylistViewModel] Fresh Track '${it.title}' | Cover: '${it.albumImageUrl}'")
+                            }
                         }
                         if (freshPlaylist != null) {
                             _playlist.value = PlaylistEntity(

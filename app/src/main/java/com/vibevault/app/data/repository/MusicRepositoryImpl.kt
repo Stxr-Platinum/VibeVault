@@ -1258,7 +1258,7 @@ class MusicRepositoryImpl @Inject constructor(
                         title = t.name,
                         artist = t.artists.firstOrNull()?.name ?: "Unknown",
                         album = t.album?.name ?: "Unknown",
-                        albumImageUrl = t.album?.images?.firstOrNull()?.url ?: "",
+                        albumImageUrl = t.album?.images?.maxByOrNull { (it.width ?: 0) * (it.height ?: 0) }?.url ?: t.album?.images?.firstOrNull()?.url ?: "",
                         durationMs = t.durationMs
                     )
                 }
@@ -1292,7 +1292,7 @@ class MusicRepositoryImpl @Inject constructor(
                                 title = t.name,
                                 artist = t.artists.firstOrNull()?.name ?: "Unknown",
                                 album = t.album?.name ?: "Unknown",
-                                coverUrl = t.album?.images?.firstOrNull()?.url ?: "",
+                                coverUrl = t.album?.images?.maxByOrNull { (it.width ?: 0) * (it.height ?: 0) }?.url ?: t.album?.images?.firstOrNull()?.url ?: "",
                                 durationMs = t.durationMs,
                                 position = i
                             )
@@ -1400,7 +1400,7 @@ class MusicRepositoryImpl @Inject constructor(
                             title = t.name,
                             artist = t.artists.firstOrNull()?.name ?: "Unknown",
                             album = t.album?.name ?: "Unknown",
-                            albumImageUrl = t.album?.images?.firstOrNull()?.url ?: "",
+                            albumImageUrl = t.album?.images?.maxByOrNull { (it.width ?: 0) * (it.height ?: 0) }?.url ?: t.album?.images?.firstOrNull()?.url ?: "",
                             durationMs = t.durationMs
                         )
                     }.distinctBy { it.id }

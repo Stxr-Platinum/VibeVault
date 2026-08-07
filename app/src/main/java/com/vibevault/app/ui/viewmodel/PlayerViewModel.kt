@@ -49,7 +49,8 @@ class PlayerViewModel @Inject constructor(
     private val audioFocusManager: AudioFocusManager,
     private val sessionManager: SessionManager,
     private val listenTogetherManager: ListenTogetherManager,
-    private val lyricsHelper: LyricsHelper
+    private val lyricsHelper: LyricsHelper,
+    private val streamResolver: com.vibevault.app.player.media.StreamResolver
 ) : ViewModel() {
 
     // ── Playback State (Delegated to QueueManager) ──────────
@@ -314,12 +315,12 @@ class PlayerViewModel @Inject constructor(
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.e("PlaybackDebug", "ExoPlayer error during playback: ${error.message}", error)
+                Log.e("PlaybackDebug", "[PlayerViewModelError] code=${error.errorCode} (${error.errorCodeName}): ${error.message}", error)
                 _isPlaying.value = false
                 _currentPosition.value = 0L
                 player?.stop()
                 player?.clearMediaItems()
-                _spotifyError.tryEmit("Playback error: ${error.localizedMessage ?: "Failed to stream track"}")
+                _spotifyError.tryEmit("Playback error [${error.errorCodeName}]: ${error.localizedMessage ?: "Failed to stream track"}")
             }
             
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -490,7 +491,11 @@ class PlayerViewModel @Inject constructor(
         currentlyPlayingTrackId = track.id
         sessionManager.lastPlayedTrack = track
         
+        Log.d("ImageSourceDebug", "[PlayerViewModel] Playing Track: '${track.title}' | Source: '${track.source}' | ImageUrl: '${track.albumImageUrl}'")
         Log.d("PlaybackDebug", "playInternal: ${track.title} (${track.id}) via MediaController")
+
+        // Immediately trigger background stream pre-resolution for instant playback start
+        streamResolver.preResolve(track.title, track.artist)
         
         // Stop currently playing audio immediately to prevent overlap while resolving new stream
         player?.pause()
@@ -554,8 +559,9 @@ class PlayerViewModel @Inject constructor(
                         
                         if (nextQIdx < q.size) {
                             val trackToAdd = q[nextQIdx]
+                            streamResolver.preResolve(trackToAdd.title, trackToAdd.artist)
                             controller.addMediaItem(buildMediaItem(trackToAdd))
-                            Log.d("PlaybackDebug", "Pre-added ${trackToAdd.title} to ExoPlayer playlist")
+                            Log.d("PlaybackDebug", "Pre-added ${trackToAdd.title} to ExoPlayer playlist and preResolved stream")
                         } else if (repeat == Player.REPEAT_MODE_ALL) {
                             val wrapIdx = nextQIdx % q.size
                             if (wrapIdx < q.size) {
@@ -607,6 +613,10 @@ class PlayerViewModel @Inject constructor(
             } else {
                 queueManager.playRadio(selectedTrack)
             }
+
+            // Always trigger playInternal so explicit user track selection starts playing immediately
+            playInternal(selectedTrack)
+            musicRepository.recordPlay(selectedTrack)
 
             // Asynchronously resolve full metadata if incomplete
             if (needsMetadataFetch) {
