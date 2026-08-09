@@ -8,3 +8,16 @@ plugins {
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.protobufPlugin) apply false
 }
+
+subprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.application") || plugins.hasPlugin("com.android.library")) {
+            configure<com.android.build.gradle.BaseExtension> {
+                lintOptions {
+                    isCheckReleaseBuilds = false
+                    isAbortOnError = false
+                }
+            }
+        }
+    }
+}

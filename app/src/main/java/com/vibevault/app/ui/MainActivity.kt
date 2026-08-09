@@ -12,7 +12,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -180,7 +184,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (startDestination == null) {
-                    // ── Spotify-style Splash Screen ──────────────────
+                    // ── Stitch Music App Splash Screen ──────────────────
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -188,11 +192,12 @@ class MainActivity : ComponentActivity() {
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = VibePrimary,
-                                modifier = Modifier.size(80.dp)
+                            Image(
+                                painter = painterResource(id = com.vibevault.app.R.drawable.ic_app_logo),
+                                contentDescription = "App Logo",
+                                modifier = Modifier
+                                    .size(100.dp)
+                                    .clip(RoundedCornerShape(22.dp))
                             )
                             Spacer(Modifier.height(16.dp))
                             Text(

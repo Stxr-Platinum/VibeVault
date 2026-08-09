@@ -2,7 +2,7 @@
 <resources>
     <style name="Theme.VibeVault.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#000000</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_app_icon_hi_fi</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_app_logo</item>
         <item name="postSplashScreenTheme">@style/Theme.VibeVault</item>
     </style>
 </resources>

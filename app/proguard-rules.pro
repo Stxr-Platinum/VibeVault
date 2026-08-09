@@ -32,3 +32,13 @@
 -dontwarn com.fasterxml.jackson.databind.deser.std.StdDeserializer
 -dontwarn com.fasterxml.jackson.databind.ser.std.StdSerializer
 -dontwarn com.spotify.base.annotations.NotNull
+
+# Rhino / Mozilla JavaScript & Java Beans
+-dontwarn org.mozilla.javascript.**
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-keep class org.mozilla.javascript.** { *; }
+
+# JSoup / RE2J
+-dontwarn com.google.re2j.**
+-dontwarn org.jsoup.**
