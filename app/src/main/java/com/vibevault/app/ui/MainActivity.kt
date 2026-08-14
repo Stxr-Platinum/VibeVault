@@ -7,6 +7,9 @@ import com.vibevault.app.ui.viewmodel.AuthViewModel
 import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.data.sync.RealtimeSyncManager
 import javax.inject.Inject
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import io.github.jan.supabase.SupabaseClient
 import androidx.activity.ComponentActivity
 
 import androidx.activity.compose.setContent
@@ -265,6 +268,15 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    @Inject
+    lateinit var supabaseClient: SupabaseClient
+
+    @Inject
+    lateinit var auth: io.github.jan.supabase.auth.Auth
+
+    @Inject
+    lateinit var authRepository: com.vibevault.app.domain.repository.AuthRepository
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // CRITICAL: Update the activity's intent to the new one
@@ -275,6 +287,36 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val uri = intent?.data
-        Log.d("SpotifyDebug", "MainActivity: handleIntent called, URI = $uri")
+        Log.d("VibeVault", "MainActivity: handleIntent called, URI = $uri")
+        if (uri != null && uri.scheme == "vibevault") {
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val session = auth.currentSessionOrNull()
+                    val user = session?.user
+                    if (session != null && user != null) {
+                        val metadata = user.userMetadata
+                        val fullName = metadata?.get("full_name")?.let { 
+                            if (it is kotlinx.serialization.json.JsonPrimitive) it.content else it.toString().replace("\"", "")
+                        }
+                        val avatar = (metadata?.get("avatar_url") ?: metadata?.get("picture"))?.let {
+                            if (it is kotlinx.serialization.json.JsonPrimitive) it.content else it.toString().replace("\"", "")
+                        }
+
+                        sessionManager.saveSession(
+                            accessToken = session.accessToken,
+                            refreshToken = session.refreshToken,
+                            userId = user.id,
+                            email = user.email ?: "",
+                            displayName = fullName ?: user.email?.substringBefore("@"),
+                            avatarUrl = avatar,
+                            expiresAtEpochMs = (session.expiresAt?.epochSeconds ?: 0) * 1000
+                        )
+                        authRepository.refreshProfile()
+                    }
+                } catch (e: Exception) {
+                    Log.e("VibeVault", "Failed handling Auth deep link", e)
+                }
+            }
+        }
     }
 }

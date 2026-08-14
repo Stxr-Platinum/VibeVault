@@ -49,8 +49,8 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="vibevault" android:host="spotify-auth-callback" />
                 <data android:scheme="vibevault" android:host="auth-callback" />
+                <data android:scheme="vibevault" android:host="auth" android:pathPrefix="/callback" />
             </intent-filter>
         </activity>
 

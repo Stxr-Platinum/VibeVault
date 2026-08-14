@@ -63,6 +63,7 @@ val SquigglySliderKey = booleanPreferencesKey("squigglySlider")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val SwipeToRemoveSongKey = booleanPreferencesKey("SwipeToRemoveSong")
 val UseNewPlayerDesignKey= booleanPreferencesKey("useNewPlayerDesign")
+val UseMinimalisticPlayerDesignKey = booleanPreferencesKey("useMinimalisticPlayerDesign")
 val NewHomeScreenDesignKey = booleanPreferencesKey("newHomeScreenDesign")
 val UseExpressiveAlbumDesignKey = booleanPreferencesKey("useExpressiveAlbumDesign")
 val ExpressiveSongAlbumImageKey = booleanPreferencesKey("expressiveSongAlbumImage")
@@ -437,6 +438,8 @@ enum class PlayerBackgroundStyle {
     DEFAULT,
     GRADIENT,
     BLUR,
+    BLUR_GRADIENT,
+    GLOW,
     GLOW_ANIMATED,
     APPLE_MUSIC,
     LIVE_MESH,

@@ -117,6 +117,7 @@ import com.vibevault.app.constants.SwipeToSongKey
 import com.vibevault.app.constants.ThumbnailCornerRadiusKey
 import com.vibevault.app.constants.UseNewMiniPlayerDesignKey
 import com.vibevault.app.constants.UseNewPlayerDesignKey
+import com.vibevault.app.constants.UseMinimalisticPlayerDesignKey
 import com.vibevault.app.constants.UseExpressiveAlbumDesignKey
 import com.vibevault.app.constants.ExpressiveSongAlbumImageKey
 //
@@ -212,6 +213,24 @@ fun AppearanceSettings(
         UseNewPlayerDesignKey,
         defaultValue = true
     )
+    val (useMinimalisticPlayerDesign, onUseMinimalisticPlayerDesignChange) = rememberPreference(
+        UseMinimalisticPlayerDesignKey,
+        defaultValue = false
+    )
+
+    val toggleNewPlayerDesign: (Boolean) -> Unit = { enabled ->
+        onUseNewPlayerDesignChange(enabled)
+        if (enabled) {
+            onUseMinimalisticPlayerDesignChange(false)
+        }
+    }
+
+    val toggleMinimalisticPlayerDesign: (Boolean) -> Unit = { enabled ->
+        onUseMinimalisticPlayerDesignChange(enabled)
+        if (enabled) {
+            onUseNewPlayerDesignChange(false)
+        }
+    }
     val (newHomeScreenDesign, onNewHomeScreenDesignChange) = rememberPreference(
         NewHomeScreenDesignKey,
         defaultValue = true
@@ -640,6 +659,8 @@ fun AppearanceSettings(
                     PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
                     PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
                     PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
+                    PlayerBackgroundStyle.BLUR_GRADIENT -> stringResource(R.string.blur_gradient)
+                    PlayerBackgroundStyle.GLOW -> stringResource(R.string.glow)
                     PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                     PlayerBackgroundStyle.APPLE_MUSIC -> stringResource(R.string.apple_music)
                     PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
@@ -663,6 +684,8 @@ fun AppearanceSettings(
                     PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
                     PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
                     PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
+                    PlayerBackgroundStyle.BLUR_GRADIENT -> stringResource(R.string.blur_gradient)
+                    PlayerBackgroundStyle.GLOW -> stringResource(R.string.glow)
                     PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                     PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)
                     else -> ""
@@ -1274,7 +1297,7 @@ fun AppearanceSettings(
                     trailingContent = {
                         Switch(
                             checked = useNewPlayerDesign,
-                            onCheckedChange = onUseNewPlayerDesignChange,
+                            onCheckedChange = toggleNewPlayerDesign,
                             thumbContent = {
                                 Icon(
                                     painter = painterResource(
@@ -1286,10 +1309,33 @@ fun AppearanceSettings(
                             }
                         )
                     },
-                    onClick = { onUseNewPlayerDesignChange(!useNewPlayerDesign) },
+                    onClick = { toggleNewPlayerDesign(!useNewPlayerDesign) },
                     isExpressive = true
                 ),
-                if (!useNewPlayerDesign) {
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.palette),
+                    title = { Text(stringResource(R.string.minimalistic_player_design)) },
+                    description = { Text(stringResource(R.string.minimalistic_player_design_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = useMinimalisticPlayerDesign,
+                            onCheckedChange = toggleMinimalisticPlayerDesign,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (useMinimalisticPlayerDesign) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { toggleMinimalisticPlayerDesign(!useMinimalisticPlayerDesign) },
+                    isExpressive = true,
+                    descriptionBelow = true
+                ),
+                if (!useNewPlayerDesign && !useMinimalisticPlayerDesign) {
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.tune),
                         title = { Text(stringResource(R.string.show_audio_quality_badge)) },
@@ -1321,6 +1367,8 @@ fun AppearanceSettings(
                                 PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
                                 PlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
                                 PlayerBackgroundStyle.BLUR -> stringResource(R.string.player_background_blur)
+                                PlayerBackgroundStyle.BLUR_GRADIENT -> stringResource(R.string.blur_gradient)
+                                PlayerBackgroundStyle.GLOW -> stringResource(R.string.glow)
                                 PlayerBackgroundStyle.GLOW_ANIMATED -> stringResource(R.string.glow_animated)
                                 PlayerBackgroundStyle.APPLE_MUSIC -> stringResource(R.string.apple_music)
                                 PlayerBackgroundStyle.LIVE_MESH -> stringResource(R.string.live_mesh)

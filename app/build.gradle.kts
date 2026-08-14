@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
@@ -6,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.protobufPlugin)
+    alias(libs.plugins.googleServices)
 }
 
 android {
@@ -25,14 +29,37 @@ android {
         buildConfigField("String", "SUPABASE_URL", "\"https://zmkvknwtqclvtijdoobh.supabase.co\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpta3Zrbnd0cWNsdnRpamRvb2JoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjI3MTAsImV4cCI6MjA5MjY5ODcxMH0.EAmQAyov7gZkRlk1g1gWOs4QmyZHXpEYBiohN9Net5I\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"721678895902-g3h3crf4odmibqopop0nlfktcqeae23i.apps.googleusercontent.com\"")
-        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"a5949efaa0b54f29b37220ad1c3eda18\"")
-        buildConfigField("String", "SPOTIFY_REDIRECT_URI", "\"vibevault://spotify-auth-callback\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePropertiesFile = rootProject.file("keystore.properties")
+            val keystoreProperties = Properties()
+            if (keystorePropertiesFile.exists()) {
+                keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+                val storeFilePath = keystoreProperties.getProperty("storeFile", "release.keystore")
+                val keystoreFile = rootProject.file(storeFilePath)
+                storeFile = if (keystoreFile.exists()) keystoreFile else file(storeFilePath)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            } else {
+                val localKeystore = rootProject.file("release.keystore")
+                if (localKeystore.exists()) {
+                    storeFile = localKeystore
+                    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android123"
+                    keyAlias = System.getenv("KEY_ALIAS") ?: "releasekey"
+                    keyPassword = System.getenv("KEY_PASSWORD") ?: "android123"
+                }
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -205,6 +232,10 @@ dependencies {
     // ── Romanization ─────────────────────────────────────────
     implementation(libs.kuromoji.ipadic)
     implementation(libs.tinypinyin)
+
+    // ── Firebase ──────────────────────────────────────────────
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
 }
 
 

@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.protobufPlugin) apply false
+    alias(libs.plugins.googleServices) apply false
 }
 
 subprojects {

@@ -13,7 +13,10 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +34,37 @@ class AuthRepositoryImpl @Inject constructor(
     private val profileDao: ProfileDao,
     private val pfpDao: PfpDao
 ) : AuthRepository {
+
+    init {
+        CoroutineScope(Dispatchers.IO).launch {
+            auth.sessionStatus.collect { status ->
+                if (status is io.github.jan.supabase.auth.status.SessionStatus.Authenticated) {
+                    val session = status.session
+                    val user = session.user
+                    if (user != null) {
+                        val metadata = user.userMetadata
+                        val fullName = metadata?.get("full_name")?.let { 
+                            if (it is kotlinx.serialization.json.JsonPrimitive) it.content else it.toString().replace("\"", "")
+                        }
+                        val avatar = (metadata?.get("avatar_url") ?: metadata?.get("picture"))?.let {
+                            if (it is kotlinx.serialization.json.JsonPrimitive) it.content else it.toString().replace("\"", "")
+                        }
+
+                        sessionManager.saveSession(
+                            accessToken = session.accessToken,
+                            refreshToken = session.refreshToken,
+                            userId = user.id,
+                            email = user.email ?: "",
+                            displayName = fullName ?: user.email?.substringBefore("@"),
+                            avatarUrl = avatar,
+                            expiresAtEpochMs = (session.expiresAt?.epochSeconds ?: 0) * 1000
+                        )
+                        refreshProfile()
+                    }
+                }
+            }
+        }
+    }
 
     override suspend fun isLoggedIn(): Boolean {
         if (sessionManager.isLoggedIn && !sessionManager.isSessionExpired) {
@@ -106,7 +140,7 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun signInWithGoogle(): Result<Unit> {
         return try {
-            auth.signInWith(Google)
+            auth.signInWith(Google, redirectUrl = "vibevault://auth-callback")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

@@ -42,9 +42,10 @@ object MediaModule {
         .setBufferDurationsMs(
             15000, // minBufferMs
             10 * 60 * 1000, // maxBufferMs (10 mins, enough to pre-fetch next 2 songs)
-            1500, // bufferForPlaybackMs
-            2500  // bufferForPlaybackAfterRebufferMs
+            150,   // bufferForPlaybackMs (Ultra-fast initial playback start <200ms!)
+            1000   // bufferForPlaybackAfterRebufferMs
         )
+        .setPrioritizeTimeOverSizeThresholds(true)
         .build()
 
     @OptIn(UnstableApi::class)

@@ -43,8 +43,10 @@ timber = "5.0.1"
 # Coroutines
 coroutines = "1.9.0"
 
-# Google Auth
+# Google Auth & Firebase
 playServicesAuth = "21.2.0"
+googleServices = "4.4.2"
+firebaseBom = "33.7.0"
 
 # Coil
 coil = "2.7.0"
@@ -165,6 +167,10 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 javapoet = { group = "com.squareup", name = "javapoet", version.ref = "javapoet" }
 
+# Firebase
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
@@ -173,3 +179,4 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 protobufPlugin = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
+googleServices = { id = "com.google.gms.google-services", version.ref = "googleServices" }

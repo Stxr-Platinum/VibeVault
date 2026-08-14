@@ -160,6 +160,9 @@
     <string name="glow_animated">Glow motion</string>
     <string name="live_mesh">Live Mesh</string>
     <string name="new_player_design">New player design</string>
+    <string name="minimalistic_player_design">Minimalistic player design</string>
+    <string name="minimalistic_player_design_desc">Use a sleek cinematic minimalistic player layout</string>
+    <string name="blur_gradient">Blur Gradient</string>
     <string name="use_expressive_album_design">Expressive album design</string>
     <string name="use_expressive_album_design_desc">Minimal list without thumbnails</string>
     <string name="show_song_thumbnail_in_list">Show album song thumbnails</string>

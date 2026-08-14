@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "123456789012",
+    "project_id": "demo-app",
+    "storage_bucket": "demo-app.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789012:android:1234567890abcdef",
+        "android_client_info": {
+          "package_name": "com.vibevault.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDummyKeyForBuildValidationOnly"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789012:android:1234567890abcdeg",
+        "android_client_info": {
+          "package_name": "com.vibevault.app.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDummyKeyForBuildValidationOnly"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

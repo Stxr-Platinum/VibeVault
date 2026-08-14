@@ -30,7 +30,7 @@ import com.vibevault.app.constants.SelectedThemeColorKey
 import com.vibevault.app.utils.rememberEnumPreference
 import com.vibevault.app.utils.rememberPreference
 
-val DefaultThemeColor = Color(0xFFED5564)
+val DefaultThemeColor = Color(0xFFFFFFFF)
 
 val LocalSolidColorScheme = staticCompositionLocalOf { darkColorScheme() }
 

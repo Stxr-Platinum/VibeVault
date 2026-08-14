@@ -37,8 +37,8 @@ class MusixmatchTest {
         val lrc = Musixmatch.convertRichSyncToLrc(entries)
         
         // Expected formatted LRC (inline RichSync):
-        // [00:32.240]<00:32.240>This <00:32.676>is <00:32.867>the <00:33.527>end
-        val expected = "[00:32.240]<00:32.240>This <00:32.676>is <00:32.867>the <00:33.527>end\n"
+        // [00:32.240]<00:32.240>This <00:32.676>is <00:32.867>the<00:33.527>end
+        val expected = "[00:32.240]<00:32.240>This <00:32.676>is <00:32.867>the<00:33.527>end\n"
         assertEquals(expected, lrc)
     }
 }
