@@ -54,25 +54,31 @@ class YouTubeStreamResolver @Inject constructor(
             return spec.videoId
         }
 
-        val cleanArtist = if (spec.artist.equals("Unknown", ignoreCase = true)) "" else spec.artist
-        val query = listOf(spec.title, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
+        val cleanArtist = if (spec.artist.equals("Unknown", ignoreCase = true) || spec.artist.equals("Unknown Artist", ignoreCase = true)) "" else spec.artist
+        val query = listOf(cleanArtist, spec.title).filter { it.isNotBlank() }.joinToString(" ")
         if (query.isBlank()) return null
 
         val isVersionQuery = com.vibevault.app.utils.TrackMatcher.hasVersionModifier(query)
 
-        val candidates = if (isVersionQuery) {
+        if (isVersionQuery) {
             val videoResult = YouTube.search(query, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
             val summaryResult = YouTube.searchSummary(query).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
-            videoResult + summaryResult
+            val candidates = videoResult + summaryResult
+            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(query, candidates, spec.durationSeconds)
+            return bestMatch?.id?.takeIf { it.length == 11 }
         } else {
             val songResult = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty()
+            if (songResult.isNotEmpty()) {
+                val bestSongMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(query, songResult, spec.durationSeconds)
+                if (bestSongMatch != null && bestSongMatch.id.length == 11) {
+                    return bestSongMatch.id
+                }
+            }
             val videoResult = YouTube.search(query, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
             val summaryResult = YouTube.searchSummary(query).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
-            songResult + videoResult + summaryResult
+            val candidates = videoResult + summaryResult
+            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(query, candidates, spec.durationSeconds)
+            return bestMatch?.id?.takeIf { it.length == 11 }
         }
-
-        val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(query, candidates)
-        val songId = bestMatch?.id
-        return songId?.takeIf { it.length == 11 }
     }
 }

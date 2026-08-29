@@ -34,6 +34,7 @@ fun SongItem.toMediaItem(): MediaItem {
             .appendQueryParameter("id", id.split("/").lastOrNull() ?: id)
             .appendQueryParameter("title", safeTitle)
             .appendQueryParameter("artist", safeArtist)
+            .appendQueryParameter("duration", (duration ?: 0).toString())
             .build()
     }
 
@@ -77,6 +78,7 @@ fun MediaMetadata.toMediaItem(): MediaItem {
             .appendQueryParameter("id", id.split("/").lastOrNull() ?: id)
             .appendQueryParameter("title", safeTitle)
             .appendQueryParameter("artist", safeArtist)
+            .appendQueryParameter("duration", (duration ?: 0).toString())
             .build()
     }
 
@@ -120,6 +122,7 @@ fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
             .appendQueryParameter("id", id.split("/").lastOrNull() ?: id)
             .appendQueryParameter("title", safeTitle)
             .appendQueryParameter("artist", safeArtist)
+            .appendQueryParameter("duration", (durationMs / 1000).toString())
             .build()
     }
 

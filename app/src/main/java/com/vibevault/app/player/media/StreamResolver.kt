@@ -57,7 +57,7 @@ class StreamResolver @Inject constructor(
         }
     }
 
-    private suspend fun resolveVideoIdInternal(query: String, cleanTrackId: String): String {
+    private suspend fun resolveVideoIdInternal(query: String, cleanTrackId: String, expectedDurationSec: Int? = null): String {
         val sanitizedId = cleanTrackId.trim().split("/").lastOrNull()?.trim().orEmpty()
         if (sanitizedId.length == 11 && !sanitizedId.contains(" ") && !sanitizedId.contains("?") && !sanitizedId.contains("=")) {
             return sanitizedId
@@ -78,16 +78,24 @@ class StreamResolver @Inject constructor(
             val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
             val allCandidates = videoResult + summaryResult
 
-            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(cacheKey, allCandidates)
+            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(cacheKey, allCandidates, expectedDurationSec)
             resolvedId = bestMatch?.id
         } else {
             val songResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty()
-            val videoResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
-            val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
-            val allCandidates = songResult + videoResult + summaryResult
+            if (songResult.isNotEmpty()) {
+                val bestSongMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(cacheKey, songResult, expectedDurationSec)
+                if (bestSongMatch != null && bestSongMatch.id.length == 11) {
+                    resolvedId = bestSongMatch.id
+                }
+            }
+            if (resolvedId == null) {
+                val videoResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
+                val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
+                val allCandidates = videoResult + summaryResult
 
-            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(cacheKey, allCandidates)
-            resolvedId = bestMatch?.id
+                val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(cacheKey, allCandidates, expectedDurationSec)
+                resolvedId = bestMatch?.id
+            }
         }
 
         val validId = resolvedId?.takeIf { it.length == 11 }
@@ -149,14 +157,15 @@ class StreamResolver @Inject constructor(
             val cleanTrackId = rawTrackId.split("/").lastOrNull()?.trim() ?: ""
             val rawTitle = uri.getQueryParameter("title") ?: ""
             val rawArtist = uri.getQueryParameter("artist") ?: ""
+            val expectedDurationSec = uri.getQueryParameter("duration")?.toIntOrNull()
 
             val cleanArtist = if (rawArtist.equals("Unknown", ignoreCase = true) || rawArtist.equals("Unknown Artist", ignoreCase = true)) "" else rawArtist
             val cleanTitle = if (rawTitle.startsWith("Track ")) "" else rawTitle
-            val query = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
+            val query = listOf(cleanArtist, cleanTitle).filter { it.isNotBlank() }.joinToString(" ")
 
             runBlocking {
                 try {
-                    val videoId = resolveVideoIdInternal(query, cleanTrackId)
+                    val videoId = resolveVideoIdInternal(query, cleanTrackId, expectedDurationSec)
                     resolveStreamUrlInternal(videoId, query)
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to resolve stream for id=$cleanTrackId, query=$query")
