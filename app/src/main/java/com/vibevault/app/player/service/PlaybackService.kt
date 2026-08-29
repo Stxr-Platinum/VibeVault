@@ -134,6 +134,14 @@ class PlaybackService : MediaLibraryService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 Log.d("PlaybackService", "[IsPlaying] isPlaying=$isPlaying")
             }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
+                    player.mediaItemCount - player.currentMediaItemIndex <= 5
+                ) {
+                    queueManager.fetchNextPage()
+                }
+            }
         })
 
         sleepTimer = com.vibevault.app.player.SleepTimer(CoroutineScope(Dispatchers.Main), player)

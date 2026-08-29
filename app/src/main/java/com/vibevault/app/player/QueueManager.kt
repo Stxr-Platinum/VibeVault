@@ -215,7 +215,7 @@ class QueueManager @Inject constructor(
         }
     }
 
-    private fun fetchNextPage(onComplete: (() -> Unit)? = null) {
+    fun fetchNextPage(onComplete: (() -> Unit)? = null) {
         val queue = activeQueue ?: return
         if (!queue.hasNextPage() || _isLoadingNextPage.value) return
 

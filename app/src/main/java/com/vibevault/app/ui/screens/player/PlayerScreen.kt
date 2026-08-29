@@ -268,6 +268,7 @@ fun PlayerScreen(
     }
 
     val track = currentTrack!!
+    val (cropAlbumArt) = com.vibevault.app.utils.rememberPreference(com.vibevault.app.constants.CropAlbumArtKey, defaultValue = false)
 
     Scaffold(
         modifier = Modifier.fillMaxSize()
@@ -542,7 +543,7 @@ fun PlayerScreen(
                                     .padding(horizontal = artworkPadding)
                                     .aspectRatio(1f)
                                     .clip(artworkShape),
-                                contentScale = ContentScale.Crop
+                                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit
                             )
                         }
                         Spacer(Modifier.height(12.dp))
@@ -555,7 +556,7 @@ fun PlayerScreen(
                                 .padding(horizontal = artworkPadding)
                                 .aspectRatio(1f)
                                 .clip(artworkShape),
-                            contentScale = ContentScale.Crop
+                            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit
                         )
                         Spacer(Modifier.height(24.dp))
                     }

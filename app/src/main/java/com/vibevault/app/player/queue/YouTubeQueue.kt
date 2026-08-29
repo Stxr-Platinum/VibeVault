@@ -69,7 +69,7 @@ class YouTubeQueue(
                             val searchQuery = "${preloadItem.artist} ${preloadItem.title}".trim()
                             if (searchQuery.isNotBlank()) {
                                 val searchPage = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-                                val resolvedSong = searchPage?.items?.filterIsInstance<com.music.innertube.models.SongItem>()?.firstOrNull()
+                                val resolvedSong = com.vibevault.app.utils.TrackMatcher.selectBestMatch(searchQuery, searchPage?.items.orEmpty())
                                 if (resolvedSong != null) {
                                     endpoint = WatchEndpoint(
                                         videoId = resolvedSong.id,
