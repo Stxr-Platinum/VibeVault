@@ -31,6 +31,7 @@ dependencies {
     implementation(libs.ktor.client.encoding)
     implementation(libs.brotli)
     implementation(libs.newpipeextractor)
+    implementation(libs.rhino)
     testImplementation(libs.junit)
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")

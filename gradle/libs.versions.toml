@@ -34,6 +34,7 @@ ktor = "3.1.1"
 brotli = "0.1.2"
 desugaring = "2.1.5"
 newpipeextractor = "v0.25.2"
+rhino = "1.7.15"
 
 # Romanization
 kuromojiIpadic = "0.9.0"
@@ -110,6 +111,7 @@ room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
 
 # Supabase
 supabase-bom = { group = "io.github.jan-tennert.supabase", name = "bom", version.ref = "supabase" }
@@ -132,6 +134,7 @@ ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", 
 brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 desugaring = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugaring" }
 newpipeextractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipeextractor" }
+rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }

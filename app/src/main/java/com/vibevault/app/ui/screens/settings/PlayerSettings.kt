@@ -285,7 +285,7 @@ fun PlayerSettings(
                     // JioSaavn settings navigation
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.graphic_eq),
-                        title = { Text("JioSaavn Settings (via vivimusic)") },
+                        title = { Text(stringResource(R.string.jiosaavn_settings)) },
                         description = {
                             Text(
                                 if (saavnEnabled) {
@@ -298,14 +298,7 @@ fun PlayerSettings(
                         onClick = { navController.navigate("settings/player/jio") },
                         isExpressive = true
                     ))
-                    // YouTube Extractor Settings
-                    add(Material3SettingsItem(
-                        icon = painterResource(R.drawable.graphic_eq),
-                        title = { Text(stringResource(R.string.youtube_decryption_settings)) },
-                        description = { Text(stringResource(R.string.enabled)) },
-                        onClick = { navController.navigate("settings/player/cipher") },
-                        isExpressive = true
-                    ))
+                    // JioSaavn settings navigation
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.linear_scale),
                         title = { Text(stringResource(R.string.crossfade)) },

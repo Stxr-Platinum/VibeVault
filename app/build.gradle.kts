@@ -163,6 +163,7 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
+    implementation(libs.media3.datasource.okhttp)
 
     // ── Supabase (BOM-managed) ─────────────────────────────
     implementation(platform(libs.supabase.bom))

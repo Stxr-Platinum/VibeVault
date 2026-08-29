@@ -56,7 +56,7 @@ fun JioSettings(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("JioSaavn Settings (via vivimusic)") },
+                title = { Text(stringResource(R.string.jiosaavn_settings)) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

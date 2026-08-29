@@ -17,9 +17,11 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import com.vibevault.app.utils.StreamClientUtils
 import com.music.innertube.YouTube
 import com.music.innertube.models.SongItem
 
+@androidx.media3.common.util.UnstableApi
 @Singleton
 class StreamResolver @Inject constructor(
     @ApplicationContext private val context: Context
@@ -28,6 +30,12 @@ class StreamResolver @Inject constructor(
     private val resolverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val videoIdCache = ConcurrentHashMap<String, String>()
     private val streamUrlCache = ConcurrentHashMap<String, Pair<String, Long>>() // videoId -> (url, expiryMs)
+
+    fun invalidateCacheForTrack(key: String) {
+        streamUrlCache.remove(key)
+        videoIdCache.remove(key)
+        Timber.d("StreamResolver invalidated cache for key: $key")
+    }
 
     fun preResolve(title: String, artist: String) {
         if (title.isBlank()) return
@@ -50,39 +58,44 @@ class StreamResolver @Inject constructor(
     }
 
     private suspend fun resolveVideoIdInternal(query: String, cleanTrackId: String): String {
-        val cacheKey = query.ifBlank { cleanTrackId }
-        videoIdCache[cacheKey]?.let { cachedId ->
-            return cachedId
+        val sanitizedId = cleanTrackId.trim().split("/").lastOrNull()?.trim().orEmpty()
+        if (sanitizedId.length == 11 && !sanitizedId.contains(" ") && !sanitizedId.contains("?") && !sanitizedId.contains("=")) {
+            return sanitizedId
         }
 
-        if (cleanTrackId.length == 11 && !cleanTrackId.contains(" ") && !cleanTrackId.contains("/")) {
-            videoIdCache[cacheKey] = cleanTrackId
-            return cleanTrackId
+        val cacheKey = query.ifBlank { sanitizedId }
+        if (cacheKey.isNotBlank()) {
+            videoIdCache[cacheKey]?.let { cachedId ->
+                return cachedId
+            }
         }
 
         var resolvedId: String? = null
+        val isVersionQuery = com.vibevault.app.utils.TrackMatcher.hasVersionModifier(cacheKey)
 
-        // 1. Try YouTube song filter search
-        val songResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items
-        resolvedId = songResult?.firstOrNull { it is SongItem }?.id ?: songResult?.firstOrNull()?.id
+        if (isVersionQuery) {
+            val videoResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
+            val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
+            val allCandidates = videoResult + summaryResult
 
-        // 2. Try YouTube video filter search
-        if (resolvedId == null) {
-            val videoResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items
-            resolvedId = videoResult?.firstOrNull { it is SongItem }?.id ?: videoResult?.firstOrNull()?.id
-        }
+            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(cacheKey, allCandidates)
+            resolvedId = bestMatch?.id
+        } else {
+            val songResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty()
+            val videoResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
+            val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
+            val allCandidates = songResult + videoResult + summaryResult
 
-        // 3. Fallback to summary search
-        if (resolvedId == null) {
-            val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries
-            val summaryItems = summaryResult?.flatMap { it.items }.orEmpty()
-            resolvedId = summaryItems.firstOrNull { it is SongItem }?.id ?: summaryItems.firstOrNull()?.id
+            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(cacheKey, allCandidates)
+            resolvedId = bestMatch?.id
         }
 
         val validId = resolvedId?.takeIf { it.length == 11 }
             ?: throw Exception("No YouTube video ID found for query: '$cacheKey'")
 
-        videoIdCache[cacheKey] = validId
+        if (cacheKey.isNotBlank()) {
+            videoIdCache[cacheKey] = validId
+        }
         return validId
     }
 
@@ -102,8 +115,26 @@ class StreamResolver @Inject constructor(
         )
 
         val nonNullPlayback = result.getOrNull()
-        val streamUrl = nonNullPlayback?.streamUrl
+        val rawStreamUrl = nonNullPlayback?.streamUrl
             ?: throw java.io.IOException("No playable audio stream URL returned for query: '$query'")
+
+        var streamUrl = rawStreamUrl
+        if (streamUrl.contains("n=")) {
+            try {
+                var transformed = com.vibevault.app.utils.sabr.EjsNTransformSolver.transformNParamInUrl(streamUrl)
+                if (transformed == streamUrl) {
+                    transformed = com.vibevault.app.utils.cipher.CipherDeobfuscator.transformNParamInUrl(streamUrl)
+                }
+                if (transformed == streamUrl) {
+                    transformed = com.music.innertube.pages.YouTubeExtractor.deobfuscateUrlNParam(streamUrl)
+                }
+                if (transformed != streamUrl) {
+                    streamUrl = transformed
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "N-transform in StreamResolver failed")
+            }
+        }
 
         val expiresInSec = nonNullPlayback.streamExpiresInSeconds?.toLong() ?: 21600L
         val expiresMs = System.currentTimeMillis() + (expiresInSec * 1000L) - 60000L
@@ -113,7 +144,7 @@ class StreamResolver @Inject constructor(
 
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
         val uri = dataSpec.uri
-        if (uri.scheme == "vibevault" && uri.authority == "stream") {
+        val targetStreamUrl: String = if (uri.scheme == "vibevault" && uri.authority == "stream") {
             val rawTrackId = uri.getQueryParameter("id") ?: ""
             val cleanTrackId = rawTrackId.split("/").lastOrNull()?.trim() ?: ""
             val rawTitle = uri.getQueryParameter("title") ?: ""
@@ -123,18 +154,50 @@ class StreamResolver @Inject constructor(
             val cleanTitle = if (rawTitle.startsWith("Track ")) "" else rawTitle
             val query = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
 
-            return runBlocking {
+            runBlocking {
                 try {
                     val videoId = resolveVideoIdInternal(query, cleanTrackId)
-                    val streamUrl = resolveStreamUrlInternal(videoId, query)
-                    dataSpec.buildUpon().setUri(streamUrl).build()
+                    resolveStreamUrlInternal(videoId, query)
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to resolve stream for id=$cleanTrackId, query=$query")
                     if (e is java.io.IOException) throw e
                     else throw java.io.IOException("Failed to resolve stream for id=$cleanTrackId: ${e.message}", e)
                 }
             }
+        } else {
+            uri.toString()
         }
-        return dataSpec
+
+        val parsedUri = android.net.Uri.parse(targetStreamUrl)
+        val host = parsedUri.host.orEmpty()
+        val isYouTubeMediaHost = host.endsWith("googlevideo.com") ||
+                host.endsWith("googleusercontent.com") ||
+                host.endsWith("youtube.com") ||
+                host.endsWith("ytimg.com")
+
+        if (isYouTubeMediaHost) {
+            val clientParam = parsedUri.getQueryParameter("c")?.trim().orEmpty()
+            val userAgent = StreamClientUtils.resolveUserAgent(clientParam)
+            val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
+
+            val headers = mutableMapOf<String, String>()
+            headers.putAll(dataSpec.httpRequestHeaders)
+            headers["User-Agent"] = userAgent
+            headers["Accept"] = "*/*"
+            headers["X-Goog-Api-Format-Version"] = "2"
+            originReferer.origin?.let { headers["Origin"] = it }
+            originReferer.referer?.let { headers["Referer"] = it }
+
+            return dataSpec.buildUpon()
+                .setUri(targetStreamUrl)
+                .setHttpRequestHeaders(headers)
+                .build()
+        }
+
+        return if (targetStreamUrl != uri.toString()) {
+            dataSpec.buildUpon().setUri(targetStreamUrl).build()
+        } else {
+            dataSpec
+        }
     }
 }

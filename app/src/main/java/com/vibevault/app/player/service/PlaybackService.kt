@@ -109,11 +109,15 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.vibevault.app.utils.cipher.CipherDeobfuscator.initialize(this)
+        com.vibevault.app.utils.BotDetectionMitigator.initialize(this)
+        com.music.innertube.pages.YouTubeExtractor.cacheDir = cacheDir
         Log.d("PlaybackService", "onCreate called — initializing fresh ExoPlayer and MediaLibrarySession")
 
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e("PlaybackService", "[ExoPlayerError] code=${error.errorCode} (${error.errorCodeName}): ${error.message}", error)
+                handlePlaybackError(error)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -496,5 +500,33 @@ class PlaybackService : MediaLibraryService() {
             .setSuggested(this?.isSuggested ?: false)
             .setExtras(extras)
             .build()
+    }
+
+    private val retryCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    private fun handlePlaybackError(error: androidx.media3.common.PlaybackException) {
+        val mediaItem = player.currentMediaItem ?: return
+        val mediaId = mediaItem.mediaId.ifBlank { return }
+
+        val retries = retryCounts.getOrDefault(mediaId, 0)
+        if (retries >= 3) {
+            Log.w("PlaybackService", "Max retries (3) reached for $mediaId — letting queue proceed.")
+            retryCounts.remove(mediaId)
+            return
+        }
+
+        retryCounts[mediaId] = retries + 1
+        Log.d("PlaybackService", "Attempting playback error recovery for $mediaId (retry ${retries + 1}/3)...")
+
+        serviceScope.launch(Dispatchers.Main) {
+            val currentPos = player.currentPosition.coerceAtLeast(0L)
+            
+            streamResolver.invalidateCacheForTrack(mediaId)
+            com.vibevault.app.data.youtube.YTPlayerUtils.forceRefreshForVideo(mediaId)
+
+            player.seekTo(currentPos)
+            player.prepare()
+            player.play()
+        }
     }
 }

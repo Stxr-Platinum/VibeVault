@@ -69,11 +69,19 @@ object MediaModule {
         cache: androidx.media3.datasource.cache.Cache,
         streamResolver: com.vibevault.app.player.media.StreamResolver
     ): androidx.media3.exoplayer.source.MediaSource.Factory {
-        val upstreamFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .connectionPool(okhttp3.ConnectionPool(10, 5, java.util.concurrent.TimeUnit.MINUTES))
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .proxy(com.music.innertube.YouTube.proxy)
+            .build()
+
+        val okHttpDataSourceFactory = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(okHttpClient)
+
         val resolvingFactory = androidx.media3.datasource.ResolvingDataSource.Factory(
-            upstreamFactory,
+            okHttpDataSourceFactory,
             streamResolver
         )
 

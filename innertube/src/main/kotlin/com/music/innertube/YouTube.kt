@@ -1167,10 +1167,11 @@ object YouTube {
     }
 
     suspend fun likeVideo(videoId: String, like: Boolean) = runCatching {
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
         if (like)
-            innerTube.likeVideo(WEB_REMIX, videoId)
+            innerTube.likeVideo(WEB_REMIX, cleanVideoId)
         else
-            innerTube.unlikeVideo(WEB_REMIX, videoId)
+            innerTube.unlikeVideo(WEB_REMIX, cleanVideoId)
     }
 
     suspend fun likePlaylist(playlistId: String, like: Boolean) = runCatching {
@@ -1195,7 +1196,8 @@ object YouTube {
     }
 
     suspend fun addToPlaylist(playlistId: String, videoId: String) = runCatching {
-        innerTube.addToPlaylist(WEB_REMIX, playlistId, videoId)
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
+        innerTube.addToPlaylist(WEB_REMIX, playlistId, cleanVideoId)
     }
 
     suspend fun addPlaylistToPlaylist(playlistId: String, addPlaylistId: String) = runCatching {
@@ -1203,7 +1205,8 @@ object YouTube {
     }
 
     suspend fun removeFromPlaylist(playlistId: String, videoId: String, setVideoId: String) = runCatching {
-        innerTube.removeFromPlaylist(WEB_REMIX, playlistId, videoId, setVideoId)
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
+        innerTube.removeFromPlaylist(WEB_REMIX, playlistId, cleanVideoId, setVideoId)
     }
 
     suspend fun moveSongPlaylist(playlistId: String, setVideoId: String, successorSetVideoId: String?) = runCatching {
@@ -1238,7 +1241,8 @@ object YouTube {
     }
 
     suspend fun player(videoId: String, playlistId: String? = null, client: YouTubeClient, signatureTimestamp: Int? = null, poToken: String? = null): Result<PlayerResponse> = runCatching {
-        innerTube.player(client, videoId, playlistId, signatureTimestamp, poToken).body<PlayerResponse>()
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
+        innerTube.player(client, cleanVideoId, playlistId, signatureTimestamp, poToken).body<PlayerResponse>()
     }
 
     suspend fun registerPlayback(playlistId: String? = null, playbackTracking: String) = runCatching {
@@ -1262,9 +1266,10 @@ object YouTube {
     }
 
     suspend fun next(endpoint: WatchEndpoint, continuation: String? = null): Result<NextResult> = runCatching {
+        val cleanVideoId = endpoint.videoId?.split("/")?.lastOrNull() ?: endpoint.videoId
         val response = innerTube.next(
             WEB_REMIX,
-            endpoint.videoId,
+            cleanVideoId,
             endpoint.playlistId,
             endpoint.playlistSetVideoId,
             endpoint.index,
@@ -1390,7 +1395,8 @@ object YouTube {
     }
 
     suspend fun transcript(videoId: String): Result<String> = runCatching {
-        val response = innerTube.getTranscript(WEB, videoId).body<GetTranscriptResponse>()
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
+        val response = innerTube.getTranscript(WEB, cleanVideoId).body<GetTranscriptResponse>()
         response.actions?.firstOrNull()?.updateEngagementPanelAction?.content?.transcriptRenderer?.body?.transcriptBodyRenderer?.cueGroups?.joinToString(separator = "\n") { group ->
             val time = group.transcriptCueGroupRenderer.cues[0].transcriptCueRenderer.startOffsetMs
             val text = group.transcriptCueGroupRenderer.cues[0].transcriptCueRenderer.cue.simpleText
@@ -1428,9 +1434,10 @@ object YouTube {
      * This is more reliable than using cached tokens which might be stale
      */
     suspend fun addSongToLibrary(videoId: String): Result<Boolean> = runCatching {
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
         // Get fresh song data with menu tokens using next endpoint
-        val nextResult = next(WatchEndpoint(videoId = videoId)).getOrThrow()
-        val song = nextResult.items.find { it.id == videoId }
+        val nextResult = next(WatchEndpoint(videoId = cleanVideoId)).getOrThrow()
+        val song = nextResult.items.find { it.id == cleanVideoId }
             ?: throw Exception("Song not found in next response")
         
         val addToken = song.libraryAddToken
@@ -1443,9 +1450,10 @@ object YouTube {
      * Remove a song from library by fetching fresh feedback tokens from the next endpoint
      */
     suspend fun removeSongFromLibrary(videoId: String): Result<Boolean> = runCatching {
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
         // Get fresh song data with menu tokens using next endpoint
-        val nextResult = next(WatchEndpoint(videoId = videoId)).getOrThrow()
-        val song = nextResult.items.find { it.id == videoId }
+        val nextResult = next(WatchEndpoint(videoId = cleanVideoId)).getOrThrow()
+        val song = nextResult.items.find { it.id == cleanVideoId }
             ?: throw Exception("Song not found in next response")
         
         val removeToken = song.libraryRemoveToken
@@ -1459,15 +1467,17 @@ object YouTube {
      * Uses fresh tokens fetched from the API for reliability
      */
     suspend fun toggleSongLibrary(videoId: String, addToLibrary: Boolean): Result<Boolean> = runCatching {
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
         if (addToLibrary) {
-            addSongToLibrary(videoId).getOrThrow()
+            addSongToLibrary(cleanVideoId).getOrThrow()
         } else {
-            removeSongFromLibrary(videoId).getOrThrow()
+            removeSongFromLibrary(cleanVideoId).getOrThrow()
         }
     }
 
     suspend fun getMediaInfo(videoId: String): Result<MediaInfo> = runCatching {
-        return innerTube.getMediaInfo(videoId)
+        val cleanVideoId = videoId.split("/").lastOrNull() ?: videoId
+        return innerTube.getMediaInfo(cleanVideoId)
     }
 
     @JvmInline

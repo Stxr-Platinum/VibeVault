@@ -107,36 +107,76 @@ class NewPipeUtils(
     fun getStreamUrl(
         format: PlayerResponse.StreamingData.Format,
         videoId: String,
-    ): String? =
-        try {
-            val url =
-                format.url ?: format.signatureCipher?.let { signatureCipher ->
-                    val params = parseQueryString(signatureCipher)
-                    val obfuscatedSignature =
-                        params["s"]
-                            ?: throw ParsingException("Could not parse cipher signature")
-                    val signatureParam =
-                        params["sp"]
-                            ?: throw ParsingException("Could not parse cipher signature parameter")
-                    val url =
-                        params["url"]?.let { URLBuilder(it) }
-                            ?: throw ParsingException("Could not parse cipher url")
-                    url.parameters[signatureParam] =
-                        YoutubeJavaScriptPlayerManager.deobfuscateSignature(
-                            videoId,
-                            obfuscatedSignature,
-                        )
-                    url.toString()
-                } ?: throw ParsingException("Could not find format url")
+        client: YouTubeClient? = null,
+    ): String? = getStreamUrlResult(format, videoId, client).getOrNull()
 
-            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
-                videoId,
-                url,
-            )
-        } catch (e: Exception) {
-            // Don't print stack trace - caller handles errors
-            null
+    fun getStreamUrlResult(
+        format: PlayerResponse.StreamingData.Format,
+        videoId: String,
+        client: YouTubeClient? = null,
+    ): Result<String> = runCatching {
+        val cipherString = format.signatureCipher ?: format.cipher
+        val url = format.url ?: run {
+            if (cipherString == null) throw ParsingException("Could not find format url")
+
+            val params = parseQueryString(cipherString)
+            val obfuscatedSignature = params["s"]
+                ?: throw ParsingException("Could not parse cipher signature")
+            val signatureParam = params["sp"]
+                ?: throw ParsingException("Could not parse cipher signature parameter")
+            val rawUrl = params["url"]?.let { URLBuilder(it) }
+                ?: throw ParsingException("Could not parse cipher url")
+            rawUrl.parameters[signatureParam] =
+                YoutubeJavaScriptPlayerManager.deobfuscateSignature(
+                    videoId,
+                    obfuscatedSignature,
+                )
+            rawUrl.toString()
         }
+
+        runCatching {
+            retryWithBackoff(
+                maxAttempts = 3,
+                initialDelayMs = 250L,
+                maxDelayMs = 2_000L
+            ) {
+                YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, url)
+            }
+        }.getOrElse { url }
+    }
+
+    private inline fun <T> retryWithBackoff(
+        maxAttempts: Int,
+        initialDelayMs: Long,
+        maxDelayMs: Long,
+        block: () -> T
+    ): T {
+        var attempt = 0
+        var delayMs = initialDelayMs
+        var lastError: Throwable? = null
+        while (attempt < maxAttempts) {
+            try {
+                return block()
+            } catch (e: Throwable) {
+                val isRetryable =
+                    e is java.net.SocketTimeoutException ||
+                        e is java.io.IOException ||
+                        e.cause is java.net.SocketTimeoutException ||
+                        e.cause is java.io.IOException
+                if (!isRetryable || attempt == maxAttempts - 1) throw e
+                lastError = e
+                try {
+                    Thread.sleep(delayMs)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw e
+                }
+                delayMs = (delayMs * 2).coerceAtMost(maxDelayMs)
+                attempt++
+            }
+        }
+        throw lastError ?: IllegalStateException("Retry attempts exhausted")
+    }
 }
 
 object NewPipeExtractor {

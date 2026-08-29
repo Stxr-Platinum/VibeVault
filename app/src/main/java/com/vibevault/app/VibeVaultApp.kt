@@ -22,6 +22,11 @@ class VibeVaultApp : Application(), Configuration.Provider {
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize appContext for cipher deobfuscators, N-transform solvers, and bot mitigators
+        com.vibevault.app.utils.cipher.CipherDeobfuscator.initialize(this)
+        com.vibevault.app.utils.BotDetectionMitigator.initialize(this)
+        com.music.innertube.pages.YouTubeExtractor.cacheDir = cacheDir
         
         // Generate a fresh session every time the app opens to preemptively avoid bot detection
         GlobalScope.launch(Dispatchers.IO) {
