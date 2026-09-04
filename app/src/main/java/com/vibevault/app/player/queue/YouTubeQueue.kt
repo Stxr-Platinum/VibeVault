@@ -18,7 +18,45 @@ class YouTubeQueue(
     override suspend fun getInitialStatus(): Queue.Status {
         return withContext(IO) {
             var lastException: Throwable? = null
-            
+            var resolvedSongId: String? = null
+
+            // If preloadItem is provided, resolve its YouTube ID if needed
+            if (preloadItem != null) {
+                val isYouTubeId = preloadItem.id.length == 11 && !preloadItem.id.contains(" ") && !preloadItem.id.contains(":") && !preloadItem.id.contains("?")
+                if (!isYouTubeId) {
+                    try {
+                        val searchQuery = "${preloadItem.title} ${preloadItem.artist}".trim()
+                        if (searchQuery.isNotBlank()) {
+                            val searchPage = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+                            val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
+                                query = searchQuery,
+                                items = searchPage?.items.orEmpty(),
+                                expectedDurationSec = if (preloadItem.durationMs > 0) (preloadItem.durationMs / 1000L).toInt() else null,
+                                targetTitle = preloadItem.title,
+                                targetArtist = preloadItem.artist
+                            )
+                            if (bestMatch != null) {
+                                resolvedSongId = bestMatch.id
+                                endpoint = WatchEndpoint(
+                                    videoId = bestMatch.id,
+                                    playlistId = "RDAMVM${bestMatch.id}"
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // ignore resolution exception
+                    }
+                } else {
+                    resolvedSongId = preloadItem.id
+                    if (endpoint.playlistId == null) {
+                        endpoint = WatchEndpoint(
+                            videoId = preloadItem.id,
+                            playlistId = "RDAMVM${preloadItem.id}"
+                        )
+                    }
+                }
+            }
+
             for (attempt in 0..maxRetries) {
                 try {
                     val nextResult = YouTube.next(endpoint, continuation).getOrThrow()
@@ -53,42 +91,57 @@ class YouTubeQueue(
                         }
                     }
 
-                    val targetIndex = filteredTracks.indexOfFirst { 
-                        it.id == currentTrackId || it.title.equals(preloadItem?.title, ignoreCase = true) 
-                    }.coerceAtLeast(0)
+                    if (preloadItem != null) {
+                        // CRITICAL: Ensure preloadItem is placed at index 0 and mediaItemIndex = 0!
+                        // Remove any duplicate of preloadItem in the fetched recommendations
+                        val existingIndex = filteredTracks.indexOfFirst { 
+                            it.id == preloadItem.id || 
+                            (resolvedSongId != null && it.id == resolvedSongId) ||
+                            (it.title.equals(preloadItem.title, ignoreCase = true) && 
+                             (it.artist.contains(preloadItem.artist, ignoreCase = true) || preloadItem.artist.contains(it.artist, ignoreCase = true)))
+                        }
+                        if (existingIndex >= 0) {
+                            filteredTracks.removeAt(existingIndex)
+                        }
+                        // Prepend preloadItem as the active first item
+                        filteredTracks.add(0, preloadItem)
+
+                        return@withContext Queue.Status(
+                            title = nextResult.title ?: preloadItem.title,
+                            items = filteredTracks,
+                            mediaItemIndex = 0,
+                        )
+                    }
 
                     return@withContext Queue.Status(
-                        title = nextResult.title ?: preloadItem?.title ?: "Radio",
+                        title = nextResult.title ?: "Radio",
                         items = filteredTracks,
-                        mediaItemIndex = targetIndex,
+                        mediaItemIndex = 0,
                     )
                 } catch (e: Exception) {
                     lastException = e
-                    if (attempt == 0 && preloadItem != null) {
+                    if (attempt == 0 && preloadItem != null && resolvedSongId == null) {
                         try {
                             val searchQuery = "${preloadItem.artist} ${preloadItem.title}".trim()
                             if (searchQuery.isNotBlank()) {
                                 val searchPage = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-                                val resolvedSong = com.vibevault.app.utils.TrackMatcher.selectBestMatch(searchQuery, searchPage?.items.orEmpty())
+                                val resolvedSong = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
+                                    query = searchQuery,
+                                    items = searchPage?.items.orEmpty(),
+                                    expectedDurationSec = if (preloadItem.durationMs > 0) (preloadItem.durationMs / 1000L).toInt() else null,
+                                    targetTitle = preloadItem.title,
+                                    targetArtist = preloadItem.artist
+                                )
                                 if (resolvedSong != null) {
+                                    resolvedSongId = resolvedSong.id
                                     endpoint = WatchEndpoint(
                                         videoId = resolvedSong.id,
                                         playlistId = "RDAMVM${resolvedSong.id}"
                                     )
-                                } else if (endpoint.videoId != null && endpoint.playlistId == null) {
-                                    endpoint = WatchEndpoint(
-                                        videoId = endpoint.videoId,
-                                        playlistId = "RDAMVM${endpoint.videoId}"
-                                    )
                                 }
                             }
                         } catch (se: Exception) {
-                            if (endpoint.videoId != null && endpoint.playlistId == null) {
-                                endpoint = WatchEndpoint(
-                                    videoId = endpoint.videoId,
-                                    playlistId = "RDAMVM${endpoint.videoId}"
-                                )
-                            }
+                            // ignore
                         }
                     }
                 }
@@ -132,8 +185,9 @@ class YouTubeQueue(
 
     companion object {
         fun radio(track: Track): YouTubeQueue {
+            val isYouTubeId = track.id.length == 11 && !track.id.contains(" ") && !track.id.contains(":") && !track.id.contains("?")
             return YouTubeQueue(
-                WatchEndpoint(videoId = track.id),
+                WatchEndpoint(videoId = if (isYouTubeId) track.id else null),
                 track
             )
         }

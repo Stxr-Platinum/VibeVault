@@ -40,6 +40,7 @@ import com.vibevault.app.constants.SaavnAudioQuality
 import com.vibevault.app.utils.BotDetectionMitigator
 import com.vibevault.app.utils.dataStore
 import com.vibevault.app.utils.get
+import com.vibevault.app.utils.getAsync
 import com.vibevault.app.utils.cipher.CipherDeobfuscator
 import com.vibevault.app.utils.potoken.PoTokenGenerator
 import com.vibevault.app.utils.potoken.PoTokenResult
@@ -131,9 +132,7 @@ object YTPlayerUtils {
         contentHints: ContentHints = ContentHints(),
     ): Result<PlaybackData> {
         if (context != null) {
-            val saavnEnabled = kotlinx.coroutines.runBlocking {
-                context.dataStore.get(EnableSaavnStreamingKey, false)
-            }
+            val saavnEnabled = context.dataStore.getAsync(EnableSaavnStreamingKey, false)
             if (saavnEnabled) {
                 Timber.tag(logTag).d("JioSaavn streaming enabled — trying Saavn for videoId=$videoId")
                 val saavnResult = runCatching {
@@ -189,9 +188,7 @@ object YTPlayerUtils {
                         }
 
                         if (bestSong != null) {
-                            val qualityKey = kotlinx.coroutines.runBlocking {
-                                context.dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name)
-                            }
+                            val qualityKey = context.dataStore.getAsync(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name)
                             val quality = runCatching { SaavnAudioQuality.valueOf(qualityKey) }
                                 .getOrDefault(SaavnAudioQuality.QUALITY_320)
 
@@ -371,7 +368,12 @@ object YTPlayerUtils {
                 ?: musicVideoType.contains("LIVE", ignoreCase = true).takeIf { it },
             isUploaded = isPrivateTrack,
         )
-        val streamClients = fallbackStrategy.resolveClients(effectiveHints)
+        val resolvedFallback = fallbackStrategy.resolveClients(effectiveHints)
+        val streamClients = if (MAIN_CLIENT in resolvedFallback) {
+            listOf(MAIN_CLIENT) + (resolvedFallback - MAIN_CLIENT)
+        } else {
+            listOf(MAIN_CLIENT) + resolvedFallback
+        }
         var successClient: YouTubeClient? = null
 
         for ((clientIndex, client) in streamClients.withIndex()) {
@@ -439,7 +441,7 @@ object YTPlayerUtils {
 
                 val isPrivatelyOwned = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
-                if (clientIndex == -1 || clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 || isPrivatelyOwned) {
+                if (client == MAIN_CLIENT || isPrivatelyOwned || clientIndex == streamClients.size - 1) {
                     successClient = currentClient
                     break
                 }

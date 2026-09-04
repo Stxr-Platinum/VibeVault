@@ -116,28 +116,48 @@ class PlaylistViewModel @Inject constructor(
                     }
                 }
                 
-                // 2. Simultaneously query Supabase and sync directly with Spotify API for this open playlist in background
+                // 2. Fetch directly from YouTube Music if playlist ID is a YouTube playlist or if Spotify sync fails
                 viewModelScope.launch {
-                    val syncResult = musicRepository.forceRefreshSpotifyPlaylist(playlistId)
-                    syncResult.onSuccess { (freshPlaylist, freshTracks) ->
-                        if (freshTracks.isNotEmpty()) {
-                            _tracks.value = freshTracks
-                            freshTracks.firstOrNull()?.let {
-                                Log.d("ImageSourceDebug", "[PlaylistViewModel] Fresh Track '${it.title}' | Cover: '${it.albumImageUrl}'")
-                            }
-                        }
-                        if (freshPlaylist != null) {
-                            _playlist.value = PlaylistEntity(
-                                id = freshPlaylist.id,
-                                title = freshPlaylist.title,
-                                ownerName = freshPlaylist.ownerName ?: "Spotify",
-                                createdAt = 0L,
-                                trackCount = freshPlaylist.trackCount.takeIf { it > 0 } ?: freshTracks.size,
-                                coverUrl = freshPlaylist.coverUrl?.takeIf { it.isNotBlank() } ?: sp?.coverUrl
+                    com.music.innertube.YouTube.playlist(playlistId).onSuccess { page ->
+                        _playlist.value = PlaylistEntity(
+                            id = playlistId,
+                            title = page.playlist.title,
+                            ownerName = page.playlist.author?.name ?: "YouTube Music",
+                            createdAt = 0L,
+                            trackCount = page.songs.size,
+                            coverUrl = page.playlist.thumbnail
+                        )
+                        val convertedTracks = page.songs.map { song ->
+                            Track(
+                                id = song.id,
+                                title = song.title,
+                                artist = song.artists.joinToString(", ") { it.name }.ifBlank { page.playlist.author?.name ?: "Unknown" },
+                                album = song.album?.name ?: "",
+                                albumImageUrl = song.thumbnail.ifBlank { page.playlist.thumbnail ?: "" },
+                                durationMs = (song.duration ?: 0) * 1000L
                             )
                         }
-                    }.onFailure { e ->
-                        Log.e("PlaylistVM", "Background playlist sync failed for $playlistId", e)
+                        if (convertedTracks.isNotEmpty()) {
+                            _tracks.value = convertedTracks
+                        }
+                    }.onFailure {
+                        // Fallback to Spotify sync if YouTube playlist fetch failed
+                        val syncResult = musicRepository.forceRefreshSpotifyPlaylist(playlistId)
+                        syncResult.onSuccess { (freshPlaylist, freshTracks) ->
+                            if (freshTracks.isNotEmpty()) {
+                                _tracks.value = freshTracks
+                            }
+                            if (freshPlaylist != null) {
+                                _playlist.value = PlaylistEntity(
+                                    id = freshPlaylist.id,
+                                    title = freshPlaylist.title,
+                                    ownerName = freshPlaylist.ownerName ?: "Spotify",
+                                    createdAt = 0L,
+                                    trackCount = freshPlaylist.trackCount.takeIf { it > 0 } ?: freshTracks.size,
+                                    coverUrl = freshPlaylist.coverUrl?.takeIf { it.isNotBlank() } ?: sp?.coverUrl
+                                )
+                            }
+                        }
                     }
                 }
             }

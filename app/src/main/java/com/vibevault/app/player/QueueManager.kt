@@ -58,7 +58,22 @@ class QueueManager @Inject constructor(
         scope.launch {
             try {
                 val status = queue.getInitialStatus()
-                setQueueInternal(status.items, status.mediaItemIndex)
+                val current = _currentTrack.value
+                val preload = queue.preloadItem
+                if (preload != null && current != null && (current.id == preload.id || current.title.equals(preload.title, ignoreCase = true))) {
+                    val matchingIndex = status.items.indexOfFirst {
+                        it.id == current.id || (it.title.equals(current.title, ignoreCase = true) && it.artist.equals(current.artist, ignoreCase = true))
+                    }
+                    val finalItems = if (matchingIndex >= 0) {
+                        status.items
+                    } else {
+                        listOf(current) + status.items
+                    }
+                    val finalIndex = if (matchingIndex >= 0) matchingIndex else 0
+                    setQueueInternal(finalItems, finalIndex)
+                } else {
+                    setQueueInternal(status.items, status.mediaItemIndex)
+                }
             } catch (e: Exception) {
                 Log.e("QueueManager", "Failed to load initial status for queue", e)
             }
@@ -317,6 +332,21 @@ class QueueManager @Inject constructor(
             currentQueue.add(insertIndex.coerceAtMost(currentQueue.size), track)
         }
 
+        _queueState.value = currentQueue.toList()
+        debugLog()
+    }
+
+    fun addToQueueEnd(track: Track) {
+        val wasEmpty = currentQueue.isEmpty()
+        if (wasEmpty) {
+            originalQueue.add(track)
+            currentQueue.add(track)
+            _currentIndex.value = 0
+            updateState()
+        } else {
+            originalQueue.add(track)
+            currentQueue.add(track)
+        }
         _queueState.value = currentQueue.toList()
         debugLog()
     }

@@ -25,6 +25,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.vibevault.app.ui.components.UserAvatar
+import com.vibevault.app.ui.replay.ReplayBanner
+import com.vibevault.app.ui.replay.cards
+import com.vibevault.app.ui.replay.rememberReplayState
 import com.vibevault.app.ui.theme.*
 
 /**
@@ -42,8 +45,12 @@ fun LibraryScreen(
     onLikedSongsClick: () -> Unit,
     onPlaylistClick: (String) -> Unit,
     onSettingsClick: () -> Unit,
+    onReplayClick: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel()
 ) {
+    val (replayState, _) = rememberReplayState(active = true)
+    val replayCard = remember(replayState.summary) { replayState.summary?.cards()?.firstOrNull() }
+
     val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val spotifyPlaylists by viewModel.spotifyPlaylists.collectAsStateWithLifecycle()
@@ -219,6 +226,14 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
+            item(key = "replay") {
+                ReplayBanner(
+                    card = replayCard,
+                    onClick = onReplayClick,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+
             // ── Liked Songs Card ────────────────────────────
             item {
                 Row(

@@ -38,6 +38,7 @@
             android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.VibeVault.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -77,6 +78,16 @@
                 tools:node="remove" />
         </provider>
 
+        <!-- FileProvider for Sharing Replay Posters -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

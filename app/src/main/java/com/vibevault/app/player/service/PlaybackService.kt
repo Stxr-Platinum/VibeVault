@@ -109,14 +109,17 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.vibevault.app.data.stats.ListeningStats.init(this)
         com.vibevault.app.utils.cipher.CipherDeobfuscator.initialize(this)
         com.vibevault.app.utils.BotDetectionMitigator.initialize(this)
         com.music.innertube.pages.YouTubeExtractor.cacheDir = cacheDir
+        com.vibevault.app.player.audio.AudioEffectManager.init(this)
         Log.d("PlaybackService", "onCreate called — initializing fresh ExoPlayer and MediaLibrarySession")
 
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e("PlaybackService", "[ExoPlayerError] code=${error.errorCode} (${error.errorCodeName}): ${error.message}", error)
+                com.vibevault.app.data.stats.ListeningRecorder.onStopped()
                 handlePlaybackError(error)
             }
 
@@ -129,10 +132,24 @@ class PlaybackService : MediaLibraryService() {
                     else -> "UNKNOWN($playbackState)"
                 }
                 Log.d("PlaybackService", "[PlaybackState] state=$stateName, playWhenReady=${player.playWhenReady}, item=${player.currentMediaItem?.mediaId}")
+
+                if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
+                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                }
+
+                if (playbackState == Player.STATE_READY) {
+                    val sessionId = (player as? androidx.media3.exoplayer.ExoPlayer)?.audioSessionId ?: 0
+                    if (sessionId > 0) {
+                        com.vibevault.app.player.audio.AudioEffectManager.attachAudioSession(this@PlaybackService, sessionId)
+                    }
+                }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 Log.d("PlaybackService", "[IsPlaying] isPlaying=$isPlaying")
+                if (!isPlaying) {
+                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -325,8 +342,11 @@ class PlaybackService : MediaLibraryService() {
                         val artist = item.mediaMetadata.artist?.toString() ?: ""
                         val isLiked = item.mediaMetadata.extras?.getBoolean("isLiked") ?: false
                         
+                        val durMs = item.mediaMetadata.extras?.getLong("durationMs") ?: 0L
+                        val durationSec = if (durMs > 0) durMs / 1000L else 0L
+
                         if (title.isNotBlank() && artist.isNotBlank()) {
-                            streamResolver.preResolve(title, artist)
+                            streamResolver.preResolve(cleanId, title, artist, durMs)
                         }
 
                         val streamUri = item.requestMetadata.mediaUri
@@ -337,6 +357,9 @@ class PlaybackService : MediaLibraryService() {
                                 .appendQueryParameter("id", cleanId)
                                 .appendQueryParameter("title", title)
                                 .appendQueryParameter("artist", artist)
+                                .apply {
+                                    if (durationSec > 0) appendQueryParameter("duration", durationSec.toString())
+                                }
                                 .build()
 
                         item.buildUpon()
@@ -345,6 +368,7 @@ class PlaybackService : MediaLibraryService() {
                                 item.mediaMetadata.buildUpon()
                                     .setExtras(Bundle().apply {
                                         putBoolean("isLiked", isLiked)
+                                        if (durMs > 0) putLong("durationMs", durMs)
                                     })
                                     .build()
                             )
@@ -374,9 +398,11 @@ class PlaybackService : MediaLibraryService() {
                         val album = item.mediaMetadata.albumTitle?.toString()?.takeIf { it.isNotBlank() } ?: "Unknown Album"
                         val artUri = item.mediaMetadata.artworkUri
                         val isLiked = item.mediaMetadata.extras?.getBoolean("isLiked") ?: false
+                        val durMs = item.mediaMetadata.extras?.getLong("durationMs") ?: 0L
+                        val durationSec = if (durMs > 0) durMs / 1000L else 0L
                         
                         if (title.isNotBlank() && artist != "Unknown Artist") {
-                            streamResolver.preResolve(title, artist)
+                            streamResolver.preResolve(cleanId, title, artist, durMs)
                         }
                         
                         val uri = item.requestMetadata.mediaUri
@@ -387,6 +413,9 @@ class PlaybackService : MediaLibraryService() {
                                 .appendQueryParameter("id", cleanId)
                                 .appendQueryParameter("title", title)
                                 .appendQueryParameter("artist", artist)
+                                .apply {
+                                    if (durationSec > 0) appendQueryParameter("duration", durationSec.toString())
+                                }
                                 .build()
                             
                         item.buildUpon()

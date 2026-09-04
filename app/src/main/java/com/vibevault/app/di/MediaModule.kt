@@ -96,16 +96,37 @@ object MediaModule {
 
     @OptIn(UnstableApi::class)
     @Provides
+    @Singleton
     fun provideExoPlayer(
         @ApplicationContext context: Context,
         audioAttributes: AudioAttributes,
         loadControl: LoadControl,
         mediaSourceFactory: androidx.media3.exoplayer.source.MediaSource.Factory
-    ): ExoPlayer = ExoPlayer.Builder(context)
-        .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
-        .setLoadControl(loadControl)
-        .setMediaSourceFactory(mediaSourceFactory)
-        .setHandleAudioBecomingNoisy(true)   // Pause on headphone disconnect
-        .build()
+    ): ExoPlayer {
+        val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessorChain(
+                        androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(
+                            com.vibevault.app.player.audio.AudioEffectManager.audioProcessor
+                        )
+                    )
+                    .build()
+            }
+        }
+
+        return ExoPlayer.Builder(context, renderersFactory)
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .setLoadControl(loadControl)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setHandleAudioBecomingNoisy(true)   // Pause on headphone disconnect
+            .build()
+    }
 
 }

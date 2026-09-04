@@ -22,7 +22,7 @@ class LyricsHelper @Inject constructor(
 ) {
     companion object {
         private const val TAG = "LyricsHelper"
-        private const val MAX_CACHE_SIZE = 3
+        private const val MAX_CACHE_SIZE = 50
         const val LYRICS_NOT_FOUND = ""
     }
 
@@ -31,6 +31,9 @@ class LyricsHelper @Inject constructor(
     private val helperScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeFetches = mutableMapOf<String, Deferred<LyricsWithProvider>>()
     private val fetchesMutex = Mutex()
+
+    private fun getMetadataCacheKey(title: String, artist: String): String =
+        "$artist-$title".replace(" ", "").lowercase()
 
     suspend fun getLyrics(
         id: String,
@@ -41,9 +44,16 @@ class LyricsHelper @Inject constructor(
     ): LyricsWithProvider {
         currentLyricsJob?.cancel()
 
-        val cached = cache.get(id)?.firstOrNull()
-        if (cached != null) {
-            return LyricsWithProvider(cached.lyrics, cached.providerName)
+        // 1. Check in-memory LRU cache by ID or artist-title key
+        val metaKey = getMetadataCacheKey(title, artist)
+        val cachedById = cache.get(id)?.firstOrNull()
+        if (cachedById != null && cachedById.lyrics.isNotBlank() && cachedById.lyrics != LYRICS_NOT_FOUND) {
+            return LyricsWithProvider(cachedById.lyrics, cachedById.providerName)
+        }
+
+        val cachedByMeta = cache.get(metaKey)?.firstOrNull()
+        if (cachedByMeta != null && cachedByMeta.lyrics.isNotBlank() && cachedByMeta.lyrics != LYRICS_NOT_FOUND) {
+            return LyricsWithProvider(cachedByMeta.lyrics, cachedByMeta.providerName)
         }
 
         val deferred = fetchesMutex.withLock {
@@ -54,13 +64,15 @@ class LyricsHelper @Inject constructor(
                         if (provider.isEnabled(context)) {
                             try {
                                 val result = provider.getLyrics(id, title, artist, duration, album)
-                                result.onSuccess { lyrics ->
+                                val lyrics = result.getOrNull()
+                                if (!lyrics.isNullOrBlank() && lyrics != LYRICS_NOT_FOUND) {
+                                    val resultObj = LyricsResult(provider.name, lyrics)
+                                    cache.put(id, listOf(resultObj))
+                                    cache.put(metaKey, listOf(resultObj))
                                     return@async LyricsWithProvider(lyrics, provider.name)
-                                }.onFailure { e ->
-                                    Log.w(TAG, "Provider ${provider.name} failed", e)
                                 }
                             } catch (e: Exception) {
-                                Log.w(TAG, "Provider ${provider.name} threw exception", e)
+                                Log.w(TAG, "Provider ${provider.name} threw exception for '$title'", e)
                             }
                         }
                     }
@@ -88,7 +100,7 @@ class LyricsHelper @Inject constructor(
     ) {
         currentLyricsJob?.cancel()
 
-        val cacheKey = "$songArtists-$songTitle".replace(" ", "")
+        val cacheKey = getMetadataCacheKey(songTitle, songArtists)
         cache.get(cacheKey)?.let { results ->
             results.forEach { callback(it) }
             return
@@ -96,21 +108,28 @@ class LyricsHelper @Inject constructor(
 
         val allResult = mutableListOf<LyricsResult>()
         val providers = LyricsProviderRegistry.getOrderedProviders()
-        currentLyricsJob = CoroutineScope(SupervisorJob()).launch {
+        currentLyricsJob = CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             providers.forEach { provider ->
                 if (provider.isEnabled(context)) {
                     try {
                         provider.getAllLyrics(mediaId, songTitle, songArtists, duration, album) { lyrics ->
-                            val result = LyricsResult(provider.name, lyrics)
-                            allResult += result
-                            callback(result)
+                            if (lyrics.isNotBlank() && lyrics != LYRICS_NOT_FOUND) {
+                                val result = LyricsResult(provider.name, lyrics)
+                                allResult += result
+                                callback(result)
+                            }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Provider ${provider.name} threw exception in getAllLyrics", e)
                     }
                 }
             }
-            cache.put(cacheKey, allResult)
+            if (allResult.isNotEmpty()) {
+                cache.put(cacheKey, allResult)
+                if (mediaId.isNotBlank()) {
+                    cache.put(mediaId, allResult)
+                }
+            }
         }
 
         currentLyricsJob?.join()

@@ -201,7 +201,7 @@ class PlayerViewModel @Inject constructor(
         // 1. Observe QueueManager's currentTrack to trigger playback and lyrics fetch
         viewModelScope.launch {
             queueManager.currentTrack.collect { track ->
-                val currentExoMediaId = player?.currentMediaItem?.mediaId
+                val currentExoMediaId = player?.currentMediaItem?.mediaId?.split("/")?.lastOrNull() ?: player?.currentMediaItem?.mediaId
                 val shouldStartPlayback = !isRestoringSavedState && 
                     track != null && 
                     track.id != currentlyPlayingTrackId && 
@@ -282,6 +282,11 @@ class PlayerViewModel @Inject constructor(
                         if (dur > 0) {
                             _duration.value = dur
                         }
+                        currentTrack.value?.let { track ->
+                            if (track.id.isNotBlank() && track.title != "Playing" && track.title != "Unknown") {
+                                com.vibevault.app.data.stats.ListeningRecorder.onSample(track, dur)
+                            }
+                        }
                     }
                 }
                 _sleepTimerActive.value = PlaybackService.instance?.sleepTimer?.isActive == true
@@ -298,6 +303,9 @@ class PlayerViewModel @Inject constructor(
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
+                if (!isPlaying) {
+                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -308,9 +316,11 @@ class PlayerViewModel @Inject constructor(
                     }
                 } else if (playbackState == Player.STATE_ENDED) {
                     // Entire ExoPlayer playlist finished. 
+                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
                     queueManager.next()
                 } else if (playbackState == Player.STATE_IDLE) {
                     _isPlaying.value = false
+                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
                 }
             }
 
@@ -326,13 +336,14 @@ class PlayerViewModel @Inject constructor(
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 super.onMediaItemTransition(mediaItem, reason)
                 
-                val newId = mediaItem?.mediaId
+                val rawNewId = mediaItem?.mediaId
+                val newId = rawNewId?.split("/")?.lastOrNull() ?: rawNewId
                 if (newId != null) {
                     val isNewTrack = newId != currentlyPlayingTrackId
                     currentlyPlayingTrackId = newId
                     
-                    val tagMetadata = mediaItem.localConfiguration?.tag as? com.vibevault.app.models.MediaMetadata
-                    val md = mediaItem.mediaMetadata
+                    val tagMetadata = mediaItem?.localConfiguration?.tag as? com.vibevault.app.models.MediaMetadata
+                    val md = mediaItem?.mediaMetadata
                     val durFromTag = tagMetadata?.duration?.let { if (it > 0) it * 1000L else null }
                     val durFromPlayer = player?.duration?.coerceAtLeast(0)
                     val durationMs = durFromTag ?: (if (durFromPlayer != null && durFromPlayer > 0) durFromPlayer else 0L)
@@ -341,19 +352,33 @@ class PlayerViewModel @Inject constructor(
                         _duration.value = durationMs
                     }
                     
-                    val existingTrack = queueManager.queueState.value.find { it.id == newId }
-                    val externalTrack = existingTrack ?: com.vibevault.app.domain.model.Track(
-                        id = mediaItem.mediaId,
-                        title = md.title?.toString() ?: "Unknown",
-                        artist = md.artist?.toString() ?: "Unknown",
-                        album = md.albumTitle?.toString() ?: "",
-                        albumImageUrl = md.artworkUri?.toString() ?: tagMetadata?.thumbnailUrl ?: "",
-                        durationMs = durationMs
-                    )
+                    val existingTrack = queueManager.queueState.value.find { it.id == newId || (rawNewId != null && it.id == rawNewId) }
+                    val current = currentTrack.value
+                    val externalTrack = existingTrack ?: if (current != null && (current.id == newId || (rawNewId != null && current.id == rawNewId)) && current.title != "Unknown" && current.title.isNotBlank()) {
+                        current
+                    } else if (md?.title != null && md.title.toString() != "Unknown" && md.title.toString().isNotBlank()) {
+                        com.vibevault.app.domain.model.Track(
+                            id = newId,
+                            title = md.title.toString(),
+                            artist = md.artist?.toString() ?: "Unknown",
+                            album = md.albumTitle?.toString() ?: "",
+                            albumImageUrl = md.artworkUri?.toString() ?: tagMetadata?.thumbnailUrl ?: "",
+                            durationMs = durationMs
+                        )
+                    } else {
+                        current ?: com.vibevault.app.domain.model.Track(
+                            id = newId,
+                            title = md?.title?.toString() ?: "Unknown",
+                            artist = md?.artist?.toString() ?: "Unknown",
+                            album = md?.albumTitle?.toString() ?: "",
+                            albumImageUrl = md?.artworkUri?.toString() ?: tagMetadata?.thumbnailUrl ?: "",
+                            durationMs = durationMs
+                        )
+                    }
                     
                     sessionManager.lastPlayedTrack = externalTrack
                     
-                    val idxInQueue = queueManager.queueState.value.indexOfFirst { it.id == newId }
+                    val idxInQueue = queueManager.queueState.value.indexOfFirst { it.id == newId || (rawNewId != null && it.id == rawNewId) }
                     if (idxInQueue >= 0) {
                         queueManager.onMediaItemTransition(idxInQueue)
                     } else {
@@ -495,7 +520,7 @@ class PlayerViewModel @Inject constructor(
         Log.d("PlaybackDebug", "playInternal: ${track.title} (${track.id}) via MediaController")
 
         // Immediately trigger background stream pre-resolution for instant playback start
-        streamResolver.preResolve(track.title, track.artist)
+        streamResolver.preResolve(track.id, track.title, track.artist, track.durationMs)
         
         // Stop currently playing audio immediately to prevent overlap while resolving new stream
         player?.pause()
@@ -559,13 +584,14 @@ class PlayerViewModel @Inject constructor(
                         
                         if (nextQIdx < q.size) {
                             val trackToAdd = q[nextQIdx]
-                            streamResolver.preResolve(trackToAdd.title, trackToAdd.artist)
+                            streamResolver.preResolve(trackToAdd.id, trackToAdd.title, trackToAdd.artist, trackToAdd.durationMs)
                             controller.addMediaItem(buildMediaItem(trackToAdd))
                             Log.d("PlaybackDebug", "Pre-added ${trackToAdd.title} to ExoPlayer playlist and preResolved stream")
                         } else if (repeat == Player.REPEAT_MODE_ALL) {
                             val wrapIdx = nextQIdx % q.size
                             if (wrapIdx < q.size) {
                                 val trackToAdd = q[wrapIdx]
+                                streamResolver.preResolve(trackToAdd.id, trackToAdd.title, trackToAdd.artist, trackToAdd.durationMs)
                                 controller.addMediaItem(buildMediaItem(trackToAdd))
                                 Log.d("PlaybackDebug", "Pre-added (repeat) ${trackToAdd.title} to ExoPlayer playlist")
                             }
@@ -581,11 +607,15 @@ class PlayerViewModel @Inject constructor(
     fun playTrack(trackId: String, context: List<Track> = emptyList(), isAlbumOrPlaylist: Boolean = false) {
         viewModelScope.launch {
             var selectedTrack = context.find { it.id == trackId }
-                ?: try {
+            val isYouTubeId = trackId.length == 11 && !trackId.contains(" ") && !trackId.contains("?") && !trackId.contains("=")
+
+            if (selectedTrack == null && !isYouTubeId) {
+                selectedTrack = try {
                     musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
                 } catch (e: Exception) {
                     null
                 }
+            }
 
             val needsMetadataFetch = selectedTrack == null || 
                 selectedTrack.title.isBlank() || 
@@ -654,8 +684,12 @@ class PlayerViewModel @Inject constructor(
         queueManager.removeTrackAt(index)
     }
 
-    fun addToQueue(track: Track) {
+    fun playNext(track: Track) {
         queueManager.appendTrack(track)
+    }
+
+    fun addToQueue(track: Track) {
+        queueManager.addToQueueEnd(track)
     }
 
     fun togglePlayPause() {

@@ -24,6 +24,12 @@ data class QuickPickItem(
     val timestamp: Long = 0L
 )
 
+data class SimilarRecommendation(
+    val title: String,
+    val imageUrl: String? = null,
+    val items: List<Track>
+)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
@@ -38,9 +44,15 @@ class HomeViewModel @Inject constructor(
 
     // 1. State Properties (Initialized first)
 
-    // Recently Played
+    // Recently Played & Keep Listening
     private val _recentlyPlayed = MutableStateFlow<List<Track>>(emptyList())
     val recentlyPlayed: StateFlow<List<Track>> = _recentlyPlayed.asStateFlow()
+
+    private val _keepListening = MutableStateFlow<List<Track>>(emptyList())
+    val keepListening: StateFlow<List<Track>> = _keepListening.asStateFlow()
+
+    private val _similarRecommendations = MutableStateFlow<List<SimilarRecommendation>>(emptyList())
+    val similarRecommendations: StateFlow<List<SimilarRecommendation>> = _similarRecommendations.asStateFlow()
 
     // Liked Songs
     val likedSongs: StateFlow<List<Track>> = musicRepository.getLikedTracks()
@@ -60,9 +72,13 @@ class HomeViewModel @Inject constructor(
         .onEach { Log.d("SpotifyDebug", "HomeVM: Playlists flow emitted ${it.size} entities") }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // Quick Picks
-    private val _quickPicks = MutableStateFlow<List<QuickPickItem>>(emptyList())
-    val quickPicks: StateFlow<List<QuickPickItem>> = _quickPicks.asStateFlow()
+    // Speed Dial Items
+    private val _speedDialPicks = MutableStateFlow<List<QuickPickItem>>(emptyList())
+    val speedDialPicks: StateFlow<List<QuickPickItem>> = _speedDialPicks.asStateFlow()
+
+    // Quick Picks (Recommended Tracks matching vivi-music)
+    private val _quickPicks = MutableStateFlow<List<Track>>(emptyList())
+    val quickPicks: StateFlow<List<Track>> = _quickPicks.asStateFlow()
 
     // Trending Tracks
     private val _trendingTracks = MutableStateFlow<List<Track>>(emptyList())
@@ -127,9 +143,13 @@ class HomeViewModel @Inject constructor(
         
         // Keep flows updated in background
         viewModelScope.launch {
-            musicRepository.getRecentlyPlayed(10).collect { tracks ->
+            musicRepository.getRecentlyPlayed(20).collect { tracks ->
                 if (tracks.isNotEmpty()) {
-                    _recentlyPlayed.value = tracks
+                    val distinct = tracks.distinctBy { it.id }
+                    _keepListening.value = distinct
+                    _recentlyPlayed.value = distinct.take(10)
+                    loadSimilarRecommendations(distinct)
+                    loadQuickPicks(distinct)
                 }
             }
         }
@@ -179,7 +199,7 @@ class HomeViewModel @Inject constructor(
                 finalItems.take(8)
             }.collect { items ->
                 if (items.isNotEmpty()) {
-                    _quickPicks.value = items
+                    _speedDialPicks.value = items
                 }
             }
         }
@@ -235,6 +255,63 @@ class HomeViewModel @Inject constructor(
             _trendingTracks.value = finalTracks
             prefs.edit().putString("trending_tracks", gson.toJson(finalTracks)).apply()
         }
+    }
+
+    private suspend fun loadSimilarRecommendations(recentTracks: List<Track>) {
+        if (recentTracks.isEmpty()) return
+
+        val recommendations = mutableListOf<SimilarRecommendation>()
+        val topArtists = recentTracks.map { it.artist }
+            .filter { it.isNotBlank() && it != "Unknown Artist" && it != "Unknown" }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .map { it.key }
+
+        for (artist in topArtists) {
+            val sampleTrack = recentTracks.firstOrNull { it.artist.equals(artist, ignoreCase = true) || it.artist.contains(artist, ignoreCase = true) } ?: recentTracks.first()
+            val similarResult = musicRepository.getSimilarTracks(sampleTrack).getOrNull()
+            val tracks = if (!similarResult.isNullOrEmpty()) {
+                similarResult
+            } else {
+                musicRepository.searchOnline(artist).getOrNull() ?: emptyList()
+            }
+
+            if (tracks.isNotEmpty()) {
+                recommendations.add(
+                    SimilarRecommendation(
+                        title = artist,
+                        imageUrl = sampleTrack.albumImageUrl,
+                        items = tracks.distinctBy { it.id }.take(10)
+                    )
+                )
+            }
+        }
+
+        _similarRecommendations.value = recommendations
+    }
+
+    private suspend fun loadQuickPicks(recentTracks: List<Track>) {
+        val liked = musicRepository.getLikedTracks().firstOrNull() ?: emptyList()
+        val discovery = musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
+
+        val ytSimilarSongs = mutableListOf<Track>()
+        val recentSong = recentTracks.firstOrNull()
+        if (recentSong != null) {
+            val similar = musicRepository.getSimilarTracks(recentSong).getOrNull()
+            if (!similar.isNullOrEmpty()) {
+                ytSimilarSongs.addAll(similar.take(10))
+            }
+        }
+
+        val combined = (recentTracks.take(8) + liked.shuffled().take(6) + ytSimilarSongs + discovery.shuffled().take(6))
+            .distinctBy { it.id }
+            .shuffled()
+            .take(20)
+
+        _quickPicks.value = combined.ifEmpty { recentTracks.shuffled().take(20) }
     }
 
     fun onSearchQueryChange(query: String) {

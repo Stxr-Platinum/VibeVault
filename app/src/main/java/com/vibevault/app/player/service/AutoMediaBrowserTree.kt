@@ -361,12 +361,15 @@ class AutoMediaBrowserTree @Inject constructor(
  */
 fun Track.toMediaItem(path: String = "track", isGrid: Boolean = true): MediaItem {
     val cleanId = id.split("/").lastOrNull() ?: id
-    val streamUri = audioUrl ?: "vibevault://stream?id=$cleanId&title=${Uri.encode(title)}&artist=${Uri.encode(artist)}"
+    val durationSec = if (durationMs > 0) durationMs / 1000L else 0L
+    val durationParam = if (durationSec > 0) "&duration=$durationSec" else ""
+    val streamUri = audioUrl ?: "vibevault://stream?id=$cleanId&title=${Uri.encode(title)}&artist=${Uri.encode(artist)}$durationParam"
     val style = if (isGrid) MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM else MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
     val extras = Bundle().apply {
         putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, style)
         putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM, style)
         putBoolean("isLiked", isLiked)
+        if (durationMs > 0) putLong("durationMs", durationMs)
     }
     return MediaItem.Builder()
         .setMediaId("$path/$cleanId")

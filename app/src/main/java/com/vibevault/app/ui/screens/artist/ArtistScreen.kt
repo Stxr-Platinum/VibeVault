@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -83,6 +84,7 @@ fun ArtistScreen(
     artistName: String,
     onTrackClick: (String, List<Track>) -> Unit,
     onPlaylistClick: (String) -> Unit = {},
+    onArtistClick: (String) -> Unit = {},
     onBack: () -> Unit,
     viewModel: ArtistViewModel = hiltViewModel()
 ) {
@@ -125,15 +127,18 @@ fun ArtistScreen(
         ) {
             // ── Header Item ─────────────────────────────────────────────
             item(key = "header") {
+                val screenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+                val headerHeight = if (thumbnail.isNotEmpty()) (screenHeightDp * 0.42f).coerceAtLeast(360.dp) else 0.dp
+
                 Box(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Header Image (Starts directly below status bar, top-aligned so head/face is never cut off)
+                    // Large Header Image (Starts directly below status bar, top-aligned)
                     if (thumbnail.isNotEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(280.dp)
+                                .height(headerHeight)
                         ) {
                             AsyncImage(
                                 model = thumbnail,
@@ -148,8 +153,8 @@ fun ArtistScreen(
                                     .background(
                                         brush = Brush.verticalGradient(
                                             colors = listOf(
-                                                Color.Black.copy(alpha = 0.35f),
-                                                Color.Black.copy(alpha = 0.65f),
+                                                Color.Black.copy(alpha = 0.25f),
+                                                Color.Black.copy(alpha = 0.55f),
                                                 MaterialTheme.colorScheme.background
                                             )
                                         )
@@ -163,7 +168,7 @@ fun ArtistScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(
-                                top = if (thumbnail.isNotEmpty()) 180.dp else systemBarsTopPadding + 16.dp
+                                top = if (thumbnail.isNotEmpty()) headerHeight - 110.dp else systemBarsTopPadding + 16.dp
                             )
                     ) {
                         Column(
@@ -242,28 +247,6 @@ fun ArtistScreen(
                                             )
                                         }
                                     }
-                                }
-                            }
-
-                            // About Artist Bio
-                            val bio = description ?: artistPage?.description
-                            if (!bio.isNullOrEmpty()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(bottom = 16.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.about_artist),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.padding(bottom = 6.dp)
-                                    )
-                                    ExpandableText(
-                                        text = bio,
-                                        collapsedMaxLines = 3
-                                    )
                                 }
                             }
 
@@ -376,7 +359,11 @@ fun ArtistScreen(
                             )
                         }
 
-                        if ((section.items.firstOrNull() as? SongItem) != null) {
+                        val isVerticalSongsSection = section.title.equals("Songs", ignoreCase = true) ||
+                                section.title.equals("Top songs", ignoreCase = true) ||
+                                ((section.items.firstOrNull() as? SongItem)?.album != null && !section.title.contains("Video", ignoreCase = true) && !section.title.contains("Live", ignoreCase = true))
+
+                        if (isVerticalSongsSection) {
                             val songItems = section.items.filterIsInstance<SongItem>()
                             itemsIndexed(
                                 items = songItems,
@@ -421,51 +408,126 @@ fun ArtistScreen(
                                         items = section.items,
                                         key = { "grid_${it.id}" }
                                     ) { gridItem ->
-                                        val itemTitle = when (gridItem) {
-                                            is AlbumItem -> gridItem.title
-                                            is com.music.innertube.models.PlaylistItem -> gridItem.title
-                                            is com.music.innertube.models.ArtistItem -> gridItem.title
-                                            else -> ""
-                                        }
-                                        val itemSubtitle = when (gridItem) {
-                                            is AlbumItem -> gridItem.year?.toString() ?: "Album"
-                                            is com.music.innertube.models.PlaylistItem -> "Playlist"
-                                            is com.music.innertube.models.ArtistItem -> "Artist"
-                                            else -> ""
-                                        }
-                                        val itemThumb = gridItem.thumbnail
-
-                                        Column(
-                                            modifier = Modifier
-                                                .width(130.dp)
-                                                .clickable {
-                                                    if (gridItem is AlbumItem) {
-                                                        onPlaylistClick(gridItem.id)
+                                        if (gridItem is SongItem) {
+                                            // Widescreen 16:9 Video Card for Videos and Live performances
+                                            Column(
+                                                modifier = Modifier
+                                                    .width(160.dp)
+                                                    .clickable {
+                                                        val mappedTrack = Track(
+                                                            id = gridItem.id,
+                                                            title = gridItem.title,
+                                                            artist = gridItem.artists?.joinToString(", ") { it.name } ?: displayArtistName,
+                                                            album = gridItem.album?.name ?: "",
+                                                            albumImageUrl = gridItem.thumbnail ?: "",
+                                                            durationMs = (gridItem.duration ?: 0) * 1000L
+                                                        )
+                                                        val sectionPlaylist = section.items.filterIsInstance<SongItem>().map { item ->
+                                                            Track(
+                                                                id = item.id,
+                                                                title = item.title,
+                                                                artist = item.artists?.joinToString(", ") { it.name } ?: displayArtistName,
+                                                                album = item.album?.name ?: "",
+                                                                albumImageUrl = item.thumbnail ?: "",
+                                                                durationMs = (item.duration ?: 0) * 1000L
+                                                            )
+                                                        }
+                                                        onTrackClick(mappedTrack.id, sectionPlaylist)
+                                                    }
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(90.dp)
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                ) {
+                                                    AsyncImage(
+                                                        model = gridItem.thumbnail,
+                                                        contentDescription = gridItem.title,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(36.dp)
+                                                            .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                                                            .align(Alignment.Center),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.PlayArrow,
+                                                            contentDescription = "Play",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(22.dp)
+                                                        )
                                                     }
                                                 }
-                                        ) {
-                                            AsyncImage(
-                                                model = itemThumb,
-                                                contentDescription = itemTitle,
+                                                Spacer(Modifier.height(8.dp))
+                                                Text(
+                                                    text = gridItem.title,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onBackground,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = gridItem.artists?.joinToString(", ") { it.name } ?: displayArtistName,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        } else {
+                                            val itemTitle = when (gridItem) {
+                                                is AlbumItem -> gridItem.title
+                                                is com.music.innertube.models.PlaylistItem -> gridItem.title
+                                                is com.music.innertube.models.ArtistItem -> gridItem.title
+                                                else -> ""
+                                            }
+                                            val itemSubtitle = when (gridItem) {
+                                                is AlbumItem -> gridItem.year?.toString() ?: "Album"
+                                                is com.music.innertube.models.PlaylistItem -> "Playlist"
+                                                is com.music.innertube.models.ArtistItem -> "Artist"
+                                                else -> ""
+                                            }
+                                            val itemThumb = gridItem.thumbnail
+
+                                            Column(
                                                 modifier = Modifier
-                                                    .size(130.dp)
-                                                    .clip(RoundedCornerShape(12.dp)),
-                                                contentScale = ContentScale.Crop
-                                            )
-                                            Spacer(Modifier.height(8.dp))
-                                            Text(
-                                                text = itemTitle,
-                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                                color = MaterialTheme.colorScheme.onBackground,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = itemSubtitle,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1
-                                            )
+                                                    .width(130.dp)
+                                                    .clickable {
+                                                        when (gridItem) {
+                                                            is AlbumItem -> onPlaylistClick(gridItem.id)
+                                                            is com.music.innertube.models.PlaylistItem -> onPlaylistClick(gridItem.id)
+                                                            is com.music.innertube.models.ArtistItem -> onArtistClick(gridItem.title)
+                                                            else -> {}
+                                                        }
+                                                    }
+                                            ) {
+                                                AsyncImage(
+                                                    model = itemThumb,
+                                                    contentDescription = itemTitle,
+                                                    modifier = Modifier
+                                                        .size(130.dp)
+                                                        .clip(if (gridItem is com.music.innertube.models.ArtistItem) CircleShape else RoundedCornerShape(12.dp)),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                                Spacer(Modifier.height(8.dp))
+                                                Text(
+                                                    text = itemTitle,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                                    color = MaterialTheme.colorScheme.onBackground,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = itemSubtitle,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1
+                                                )
+                                            }
                                         }
                                     }
                                 }

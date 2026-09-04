@@ -17,7 +17,17 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
 import com.vibevault.app.constants.NewHomeScreenDesignKey
+import com.vibevault.app.ui.replay.ReplayScreen
+import com.vibevault.app.ui.replay.ReplayShareSheet
+import com.vibevault.app.ui.replay.ReplayStories
+import com.vibevault.app.ui.replay.ReplayStoryPage
+import com.vibevault.app.ui.replay.rememberReplayState
 import com.vibevault.app.ui.screens.artist.ArtistScreen
 import com.vibevault.app.ui.screens.home.HomeScreen
 import com.vibevault.app.ui.screens.home.ViviHomeScreen
@@ -146,8 +156,13 @@ fun AppNavHost(
                 onNavigateToOnlineSearch = { query ->
                     navController.navigate(Screen.OnlineSearch.createRoute(query))
                 },
-                onPlaylistClick = { playlistId ->
-                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                onPlaylistClick = { id ->
+                    if (id.startsWith("album:") || id.startsWith("MPREb_") || id.startsWith("OLAK5uy_")) {
+                        val albumId = id.removePrefix("album:")
+                        navController.navigate(Screen.Album.createRoute(albumId))
+                    } else {
+                        navController.navigate(Screen.PlaylistDetail.createRoute(id))
+                    }
                 },
                 onArtistClick = { artistName ->
                     navController.navigate(Screen.Artist.createRoute(artistName))
@@ -176,8 +191,13 @@ fun AppNavHost(
                     playerViewModel.playTrack(trackId, tracks)
                     navController.navigate(Screen.Player.createRoute(trackId))
                 },
-                onPlaylistClick = { playlistId ->
-                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                onPlaylistClick = { id ->
+                    if (id.startsWith("album:") || id.startsWith("MPREb_") || id.startsWith("OLAK5uy_")) {
+                        val albumId = id.removePrefix("album:")
+                        navController.navigate(Screen.Album.createRoute(albumId))
+                    } else {
+                        navController.navigate(Screen.PlaylistDetail.createRoute(id))
+                    }
                 },
                 onArtistClick = { artistName ->
                     navController.navigate(Screen.Artist.createRoute(artistName))
@@ -194,8 +214,72 @@ fun AppNavHost(
                 },
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
+                },
+                onReplayClick = {
+                    navController.navigate(Screen.Replay.route)
                 }
             )
+        }
+        composable(Screen.Replay.route) {
+            val (state, onPeriodChange) = rememberReplayState(active = true)
+            var storyPage by remember { mutableStateOf<ReplayStoryPage?>(null) }
+            var sharePage by remember { mutableStateOf<ReplayStoryPage?>(null) }
+            var showShareSheet by remember { mutableStateOf(false) }
+
+            ReplayScreen(
+                state = state,
+                holder = "VIBEVAULT LISTENER",
+                onPeriodChange = onPeriodChange,
+                onOpenStory = { page -> storyPage = page },
+                onPlaySong = { track ->
+                    playerViewModel.playTrack(track.id, listOf(track))
+                    navController.navigate(Screen.Player.createRoute(track.id))
+                },
+                onOpenArtist = { _, artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
+                },
+                onOpenAlbum = { albumId, _, _, _ ->
+                    if (!albumId.isNullOrBlank()) {
+                        navController.navigate(Screen.Album.createRoute(albumId))
+                    }
+                },
+                onShare = {
+                    sharePage = null
+                    showShareSheet = true
+                },
+                contentPadding = PaddingValues(bottom = 90.dp),
+            )
+
+            storyPage?.let { page ->
+                state.summary?.let { summary ->
+                    ReplayStories(
+                        summary = summary,
+                        start = page,
+                        onClose = { storyPage = null },
+                        onShare = { pageToShare ->
+                            sharePage = pageToShare
+                            showShareSheet = true
+                        },
+                        paused = showShareSheet,
+                    )
+                }
+            }
+
+            if (showShareSheet) {
+                state.summary?.let { summary ->
+                    ModalBottomSheet(
+                        onDismissRequest = { showShareSheet = false },
+                    ) {
+                        ReplayShareSheet(
+                            summary = summary,
+                            holder = "VIBEVAULT LISTENER",
+                            memberSince = state.memberSince,
+                            page = sharePage,
+                            onDismiss = { showShareSheet = false },
+                        )
+                    }
+                }
+            }
         }
         composable("likedSongs") {
             LikedSongsScreen(
@@ -244,6 +328,12 @@ fun AppNavHost(
                 trackId = trackId,
                 onBackClick = { navController.popBackStack() },
                 onListenTogetherClick = { navController.navigate(Screen.ListenTogether.route) },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
+                },
+                onAlbumClick = { albumTarget ->
+                    navController.navigate(Screen.Album.createRoute(albumTarget))
+                },
                 viewModel = playerViewModel
             )
         }
@@ -256,8 +346,16 @@ fun AppNavHost(
                     playerViewModel.playTrack(trackId, context)
                     navController.navigate(Screen.Player.createRoute(trackId))
                 },
-                onPlaylistClick = { playlistId ->
-                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                onPlaylistClick = { id ->
+                    if (id.startsWith("album:") || id.startsWith("MPREb_") || id.startsWith("OLAK5uy_")) {
+                        val albumId = id.removePrefix("album:")
+                        navController.navigate(Screen.Album.createRoute(albumId))
+                    } else {
+                        navController.navigate(Screen.PlaylistDetail.createRoute(id))
+                    }
+                },
+                onArtistClick = { nextArtistName ->
+                    navController.navigate(Screen.Artist.createRoute(nextArtistName))
                 }
             )
         }

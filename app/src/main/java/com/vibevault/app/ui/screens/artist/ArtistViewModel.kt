@@ -72,6 +72,23 @@ class ArtistViewModel @Inject constructor(
                 _subscriberCountText.value = page.subscriberCountText
                 _monthlyListenerCount.value = page.monthlyListenerCount
                 _description.value = page.description
+
+                val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
+                if (topSongsSection != null) {
+                    val mapped = topSongsSection.items.filterIsInstance<com.music.innertube.models.SongItem>().map { song ->
+                        Track(
+                            id = song.id,
+                            title = song.title,
+                            artist = page.artist.title,
+                            album = song.album?.name ?: "",
+                            albumImageUrl = song.thumbnail ?: "",
+                            durationMs = (song.duration ?: 0) * 1000L
+                        )
+                    }
+                    if (mapped.isNotEmpty()) {
+                        _topSongs.value = mapped
+                    }
+                }
             }.onFailure {
                 YouTube.searchSummary(nameOrId).onSuccess { summaryPage ->
                     summaryPage.summaries.firstOrNull { it.title.contains("Artist", ignoreCase = true) }?.items?.firstOrNull()?.id?.let { browseId ->
@@ -80,6 +97,23 @@ class ArtistViewModel @Inject constructor(
                             _subscriberCountText.value = page.subscriberCountText
                             _monthlyListenerCount.value = page.monthlyListenerCount
                             _description.value = page.description
+
+                            val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
+                            if (topSongsSection != null) {
+                                val mapped = topSongsSection.items.filterIsInstance<com.music.innertube.models.SongItem>().map { song ->
+                                    Track(
+                                        id = song.id,
+                                        title = song.title,
+                                        artist = page.artist.title,
+                                        album = song.album?.name ?: "",
+                                        albumImageUrl = song.thumbnail ?: "",
+                                        durationMs = (song.duration ?: 0) * 1000L
+                                    )
+                                }
+                                if (mapped.isNotEmpty()) {
+                                    _topSongs.value = mapped
+                                }
+                            }
                         }
                     }
                 }

@@ -98,6 +98,9 @@ fun ViviHomeScreen(
     authViewModel: com.vibevault.app.ui.viewmodel.AuthViewModel = hiltViewModel()
 ) {
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
+    val keepListening by viewModel.keepListening.collectAsStateWithLifecycle()
+    val similarRecommendations by viewModel.similarRecommendations.collectAsStateWithLifecycle()
+    val speedDialPicks by viewModel.speedDialPicks.collectAsStateWithLifecycle()
     val quickPicks by viewModel.quickPicks.collectAsStateWithLifecycle()
     val trendingTracks by viewModel.trendingTracks.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -323,20 +326,20 @@ fun ViviHomeScreen(
                     item(key = "speed_dial_pager") {
                         // Personalized Recommendation Algorithm for Speed Dial:
                         // 60% Familiar Favorites & Similar Songs / 40% Fresh Discoveries, dynamically recalculated on refreshSeed
-                        val speedDialItems = remember(quickPicks, recentlyPlayed, trendingTracks, refreshSeed) {
+                        val speedDialItems = remember(speedDialPicks, recentlyPlayed, trendingTracks, refreshSeed) {
                             val familiarFavoritesPool = mutableListOf<QuickPickItem>()
 
                             // Extract user's favorite artists and albums from history
-                            val favoriteArtists = (recentlyPlayed.map { it.artist } + quickPicks.mapNotNull { it.track?.artist })
+                            val favoriteArtists = (recentlyPlayed.map { it.artist } + speedDialPicks.mapNotNull { it.track?.artist })
                                 .filter { it.isNotBlank() }
                                 .toSet()
 
-                            val favoriteAlbums = (recentlyPlayed.map { it.album } + quickPicks.mapNotNull { it.track?.album })
+                            val favoriteAlbums = (recentlyPlayed.map { it.album } + speedDialPicks.mapNotNull { it.track?.album })
                                 .filter { it.isNotBlank() }
                                 .toSet()
 
                             // 1. Add direct familiar favorites (frequently played, history, liked)
-                            quickPicks.forEach { item ->
+                            speedDialPicks.forEach { item ->
                                 if (familiarFavoritesPool.none { it.id == item.id }) {
                                     familiarFavoritesPool.add(item)
                                 }
@@ -387,36 +390,60 @@ fun ViviHomeScreen(
 
                             val rng = kotlin.random.Random(refreshSeed * 31 + 17)
 
-                            val shuffledFavorites = familiarFavoritesPool.shuffled(rng).toMutableList()
-                            val shuffledDiscoveries = freshDiscoveriesPool.shuffled(rng).toMutableList()
+                            val shuffledFavorites = familiarFavoritesPool.shuffled(rng)
+                            val shuffledDiscoveries = freshDiscoveriesPool.shuffled(rng)
+
+                            // Separate albums and playlists from pure song tracks so Page 0 (1st page) contains ONLY songs
+                            val containerItems = mutableListOf<QuickPickItem>() // Albums & Playlists
+                            val trackFavorites = mutableListOf<QuickPickItem>()
+                            val trackDiscoveries = mutableListOf<QuickPickItem>()
+
+                            shuffledFavorites.forEach { item ->
+                                val isContainer = item.type == "album" || item.type == "playlist" ||
+                                                  item.id.startsWith("album:") || item.id.startsWith("playlist:") ||
+                                                  item.track == null
+                                if (isContainer) {
+                                    containerItems.add(item)
+                                } else {
+                                    trackFavorites.add(item)
+                                }
+                            }
+
+                            shuffledDiscoveries.forEach { item ->
+                                val isContainer = item.type == "album" || item.type == "playlist" ||
+                                                  item.id.startsWith("album:") || item.id.startsWith("playlist:") ||
+                                                  item.track == null
+                                if (isContainer) {
+                                    containerItems.add(item)
+                                } else {
+                                    trackDiscoveries.add(item)
+                                }
+                            }
 
                             val finalSelection = mutableListOf<QuickPickItem>()
 
-                            // Page 0: 60% Favorites (5 items) / 40% Fresh Discoveries (3 items)
-                            val targetFavCountPage0 = 5
-                            val targetDiscCountPage0 = 3
+                            // Page 0: Fill up to 8 slots strictly with track songs
+                            val targetPage0Count = 8
+                            var favIdx = 0
+                            var discIdx = 0
 
-                            repeat(targetFavCountPage0) {
-                                if (shuffledFavorites.isNotEmpty()) {
-                                    finalSelection.add(shuffledFavorites.removeAt(0))
-                                } else if (shuffledDiscoveries.isNotEmpty()) {
-                                    finalSelection.add(shuffledDiscoveries.removeAt(0))
+                            while (finalSelection.size < targetPage0Count && (favIdx < trackFavorites.size || discIdx < trackDiscoveries.size)) {
+                                if (favIdx < trackFavorites.size && finalSelection.size < targetPage0Count) {
+                                    finalSelection.add(trackFavorites[favIdx++])
+                                }
+                                if (discIdx < trackDiscoveries.size && finalSelection.size < targetPage0Count) {
+                                    finalSelection.add(trackDiscoveries[discIdx++])
                                 }
                             }
 
-                            repeat(targetDiscCountPage0) {
-                                if (shuffledDiscoveries.isNotEmpty()) {
-                                    finalSelection.add(shuffledDiscoveries.removeAt(0))
-                                } else if (shuffledFavorites.isNotEmpty()) {
-                                    finalSelection.add(shuffledFavorites.removeAt(0))
-                                }
+                            // Remaining track items and container items (albums & playlists) for Page 1+
+                            while (favIdx < trackFavorites.size) {
+                                finalSelection.add(trackFavorites[favIdx++])
                             }
-
-                            // Remaining items for extra pages
-                            while (shuffledFavorites.isNotEmpty() || shuffledDiscoveries.isNotEmpty()) {
-                                if (shuffledFavorites.isNotEmpty()) finalSelection.add(shuffledFavorites.removeAt(0))
-                                if (shuffledDiscoveries.isNotEmpty()) finalSelection.add(shuffledDiscoveries.removeAt(0))
+                            while (discIdx < trackDiscoveries.size) {
+                                finalSelection.add(trackDiscoveries[discIdx++])
                             }
+                            finalSelection.addAll(containerItems)
 
                             finalSelection
                         }
@@ -475,9 +502,11 @@ fun ViviHomeScreen(
                                                                     isRandomizing = false
                                                                     if (speedDialItems.isNotEmpty()) {
                                                                         val randomItem = speedDialItems.random()
-                                                                        if (randomItem.track != null) {
+                                                                        if (randomItem.type == "playlist" || randomItem.type == "album" || randomItem.id.startsWith("album:") || randomItem.id.startsWith("MPREb_") || randomItem.id.startsWith("OLAK5uy_")) {
+                                                                            onPlaylistClick(randomItem.id)
+                                                                        } else if (randomItem.track != null) {
                                                                             onTrackClick(randomItem.track)
-                                                                        } else if (randomItem.type == "playlist") {
+                                                                        } else {
                                                                             onPlaylistClick(randomItem.id)
                                                                         }
                                                                     }
@@ -496,9 +525,11 @@ fun ViviHomeScreen(
                                                         SpeedDialCardItem(
                                                             item = item,
                                                             onClick = {
-                                                                if (item.track != null) {
+                                                                if (item.type == "playlist" || item.type == "album" || item.id.startsWith("album:") || item.id.startsWith("MPREb_") || item.id.startsWith("OLAK5uy_")) {
+                                                                    onPlaylistClick(item.id)
+                                                                } else if (item.track != null) {
                                                                     onTrackClick(item.track)
-                                                                } else if (item.type == "playlist") {
+                                                                } else {
                                                                     onPlaylistClick(item.id)
                                                                 }
                                                             },
@@ -543,12 +574,12 @@ fun ViviHomeScreen(
                 }
 
                 // ── 4. Quick picks Section ──────────────────────────
-                if (quickPicks.isNotEmpty() || recentlyPlayed.isNotEmpty()) {
+                if (quickPicks.isNotEmpty()) {
                     item(key = "quick_picks_title") {
                         NavigationTitle(
                             title = "Quick picks",
                             onPlayAllClick = {
-                                (quickPicks.mapNotNull { it.track } + recentlyPlayed).firstOrNull()?.let { first ->
+                                quickPicks.firstOrNull()?.let { first ->
                                     onTrackClick(first)
                                 }
                             }
@@ -556,22 +587,21 @@ fun ViviHomeScreen(
                     }
 
                     item(key = "quick_picks_list") {
-                        val songs = remember(quickPicks, recentlyPlayed) {
-                            (quickPicks.mapNotNull { it.track } + recentlyPlayed).distinctBy { it.id }
-                        }
+                        val songs = remember(quickPicks) { quickPicks.distinctBy { it.id } }
+                        val rows = if (songs.size >= 4) 4 else songs.size.coerceAtLeast(1)
 
                         LazyHorizontalGrid(
                             state = rememberLazyGridState(),
-                            rows = GridCells.Fixed(4),
+                            rows = GridCells.Fixed(rows),
                             contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
                                 .asPaddingValues(),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(64.dp * 4)
+                                .height(64.dp * rows)
                         ) {
                             itemsIndexed(
                                 items = songs,
-                                key = { _, track -> track.id }
+                                key = { _, track -> "qp_${track.id}" }
                             ) { index, track ->
                                 ViviSongListItem(
                                     track = track,
@@ -585,7 +615,95 @@ fun ViviHomeScreen(
                     }
                 }
 
-                // ── 5. Trending / Recommended Section ──────────────────────────
+                // ── 5. Keep listening Section (2-row Grid) ──────────────────────────
+                if (keepListening.isNotEmpty()) {
+                    item(key = "keep_listening_title") {
+                        NavigationTitle(
+                            title = "Keep listening",
+                            onPlayAllClick = {
+                                keepListening.firstOrNull()?.let { first ->
+                                    onTrackClick(first)
+                                }
+                            }
+                        )
+                    }
+
+                    item(key = "keep_listening_list") {
+                        val rows = 2
+                        LazyHorizontalGrid(
+                            state = rememberLazyGridState(),
+                            rows = GridCells.Fixed(rows),
+                            contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
+                                .asPaddingValues(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp * rows)
+                        ) {
+                            itemsIndexed(
+                                items = keepListening,
+                                key = { _, track -> "kl_${track.id}" }
+                            ) { index, track ->
+                                ViviSongListItem(
+                                    track = track,
+                                    onClick = {
+                                        onTrackClick(track)
+                                    },
+                                    modifier = Modifier.width(horizontalLazyGridItemWidth)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ── 6. Similar To Recommendations Sections ──────────────────────────
+                similarRecommendations.forEachIndexed { index, recommendation ->
+                    if (recommendation.items.isNotEmpty()) {
+                        item(key = "similar_to_title_$index") {
+                            NavigationTitle(
+                                label = "SIMILAR TO",
+                                title = recommendation.title,
+                                thumbnail = recommendation.imageUrl?.let { url ->
+                                    {
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                },
+                                onPlayAllClick = {
+                                    recommendation.items.firstOrNull()?.let { first ->
+                                        onTrackClick(first)
+                                    }
+                                }
+                            )
+                        }
+
+                        item(key = "similar_to_list_$index") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(
+                                    items = recommendation.items.distinctBy { it.id },
+                                    key = { "sim_${index}_${it.id}" }
+                                ) { track ->
+                                    ViviTrackGridItem(
+                                        track = track,
+                                        onClick = {
+                                            onTrackClick(track)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── 7. Trending / Recommended Section (List Format) ──────────────────────────
                 if (trendingTracks.isNotEmpty()) {
                     item(key = "trending_title") {
                         NavigationTitle(
@@ -599,19 +717,27 @@ fun ViviHomeScreen(
                     }
 
                     item(key = "trending_list") {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        val trendingSongs = remember(trendingTracks) { trendingTracks.distinctBy { it.id } }
+                        val rows = if (trendingSongs.size >= 4) 4 else trendingSongs.size.coerceAtLeast(1)
+                        LazyHorizontalGrid(
+                            state = rememberLazyGridState(),
+                            rows = GridCells.Fixed(rows),
+                            contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
+                                .asPaddingValues(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp * rows)
                         ) {
-                            items(
-                                items = trendingTracks.distinctBy { it.id },
-                                key = { it.id }
-                            ) { track ->
-                                ViviTrackGridItem(
+                            itemsIndexed(
+                                items = trendingSongs,
+                                key = { _, track -> "tr_${track.id}" }
+                            ) { index, track ->
+                                ViviSongListItem(
                                     track = track,
                                     onClick = {
                                         onTrackClick(track)
-                                    }
+                                    },
+                                    modifier = Modifier.width(horizontalLazyGridItemWidth)
                                 )
                             }
                         }

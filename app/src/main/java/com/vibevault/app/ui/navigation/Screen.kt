@@ -44,6 +44,7 @@ sealed class Screen(
     data object Profile : Screen("profile", "Profile")
     data object EditProfile : Screen("edit_profile", "Edit Profile")
     data object ListenTogether : Screen("listen_together", "Listen Together")
+    data object Replay : Screen("replay", "Your Replay")
 
     data object Settings : Screen("settings", "Settings")
     data object AppearanceSettings : Screen("settings/appearance", "Appearance")

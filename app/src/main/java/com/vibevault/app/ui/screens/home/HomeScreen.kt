@@ -59,6 +59,7 @@ fun HomeScreen(
 ) {
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
+    val speedDialPicks by viewModel.speedDialPicks.collectAsStateWithLifecycle()
     val quickPicks by viewModel.quickPicks.collectAsStateWithLifecycle()
     val trendingTracks by viewModel.trendingTracks.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -243,7 +244,7 @@ fun HomeScreen(
             } else {
                 val playlists by viewModel.playlists.collectAsStateWithLifecycle()
                 HomeFeed(
-                    quickPicks = quickPicks,
+                    quickPicks = speedDialPicks,
                     recentlyPlayed = recentlyPlayed,
                     trendingTracks = trendingTracks,
                     playlists = playlists,
