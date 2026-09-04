@@ -43,7 +43,7 @@ class StreamResolver @Inject constructor(
     private fun buildQuery(title: String, artist: String): String {
         val cleanArtist = if (artist.equals("Unknown", ignoreCase = true) || artist.equals("Unknown Artist", ignoreCase = true)) "" else artist
         val cleanTitle = if (title.startsWith("Track ", ignoreCase = true)) "" else title
-        return listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
+        return listOf(cleanArtist, cleanTitle).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     fun preResolve(trackId: String, title: String, artist: String, durationMs: Long = 0L) {
@@ -105,28 +105,36 @@ class StreamResolver @Inject constructor(
         var resolvedId: String? = null
         val isVersionQuery = com.vibevault.app.utils.TrackMatcher.hasVersionModifier(cacheKey)
 
+        val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()
+        val topResultItems = summaryResult?.summaries?.find { it.title.equals("Top result", ignoreCase = true) }?.items.orEmpty()
+        val summaryItems = summaryResult?.summaries?.flatMap { it.items }.orEmpty()
+        val topResultIds = topResultItems.map { it.id }.toSet()
+
         if (isVersionQuery) {
             val videoResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
-            val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
-            val allCandidates = videoResult + summaryResult
+            val allCandidates = (topResultItems + videoResult + summaryItems).distinctBy { it.id }
 
             val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
                 query = cacheKey,
                 items = allCandidates,
                 expectedDurationSec = expectedDurationSec,
                 targetTitle = targetTitle,
-                targetArtist = targetArtist
+                targetArtist = targetArtist,
+                topResultIds = topResultIds
             )
             resolvedId = bestMatch?.id
         } else {
             val songResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty()
-            if (songResult.isNotEmpty()) {
+            val songCandidates = (topResultItems + songResult + summaryItems.filterIsInstance<com.music.innertube.models.SongItem>()).distinctBy { it.id }
+
+            if (songCandidates.isNotEmpty()) {
                 val bestSongMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
                     query = cacheKey,
-                    items = songResult,
+                    items = songCandidates,
                     expectedDurationSec = expectedDurationSec,
                     targetTitle = targetTitle,
-                    targetArtist = targetArtist
+                    targetArtist = targetArtist,
+                    topResultIds = topResultIds
                 )
                 if (bestSongMatch != null && bestSongMatch.id.length == 11) {
                     resolvedId = bestSongMatch.id
@@ -134,15 +142,15 @@ class StreamResolver @Inject constructor(
             }
             if (resolvedId == null) {
                 val videoResult = YouTube.search(cacheKey, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
-                val summaryResult = YouTube.searchSummary(cacheKey).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
-                val allCandidates = videoResult + summaryResult
+                val allCandidates = (topResultItems + songResult + summaryItems + videoResult).distinctBy { it.id }
 
                 val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
                     query = cacheKey,
                     items = allCandidates,
                     expectedDurationSec = expectedDurationSec,
                     targetTitle = targetTitle,
-                    targetArtist = targetArtist
+                    targetArtist = targetArtist,
+                    topResultIds = topResultIds
                 )
                 resolvedId = bestMatch?.id
             }

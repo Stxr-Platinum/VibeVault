@@ -33,4 +33,27 @@ class TrackMatcherTest {
 
         assertTrue(weekndScore > drakeScore)
     }
+
+    @Test
+    fun testNightcallCombinedSelection() = kotlinx.coroutines.runBlocking {
+        val query = "Kavinsky Nightcall"
+        val summary = com.music.innertube.YouTube.searchSummary(query).getOrNull()
+        val topResultItems = summary?.summaries?.firstOrNull { it.title.equals("Top result", ignoreCase = true) }?.items.orEmpty()
+        val otherSummaryItems = summary?.summaries?.filterNot { it.title.equals("Top result", ignoreCase = true) }?.flatMap { it.items }.orEmpty()
+        val songItems = com.music.innertube.YouTube.search(query, com.music.innertube.YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty()
+
+        val allCandidates = (topResultItems + songItems + otherSummaryItems).distinctBy { it.id }
+        val topResultIds = topResultItems.map { it.id }.toSet()
+
+        val best = TrackMatcher.selectBestMatch(
+            query = query,
+            items = allCandidates,
+            expectedDurationSec = 259,
+            targetTitle = "Nightcall",
+            targetArtist = "Kavinsky",
+            topResultIds = topResultIds
+        )
+
+        assertEquals("MV_3Dpw-BRY", best?.id)
+    }
 }

@@ -60,41 +60,49 @@ class YouTubeStreamResolver @Inject constructor(
 
         val isVersionQuery = com.vibevault.app.utils.TrackMatcher.hasVersionModifier(query)
 
+        val summaryResult = YouTube.searchSummary(query).getOrNull()
+        val topResultItems = summaryResult?.summaries?.find { it.title.equals("Top result", ignoreCase = true) }?.items.orEmpty()
+        val summaryItems = summaryResult?.summaries?.flatMap { it.items }.orEmpty()
+        val topResultIds = topResultItems.map { it.id }.toSet()
+
         if (isVersionQuery) {
             val videoResult = YouTube.search(query, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
-            val summaryResult = YouTube.searchSummary(query).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
-            val candidates = videoResult + summaryResult
+            val candidates = (topResultItems + videoResult + summaryItems).distinctBy { it.id }
             val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
                 query = query,
                 items = candidates,
                 expectedDurationSec = spec.durationSeconds,
                 targetTitle = spec.title,
-                targetArtist = spec.artist
+                targetArtist = spec.artist,
+                topResultIds = topResultIds
             )
             return bestMatch?.id?.takeIf { it.length == 11 }
         } else {
             val songResult = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty()
-            if (songResult.isNotEmpty()) {
+            val songCandidates = (topResultItems + songResult + summaryItems.filterIsInstance<SongItem>()).distinctBy { it.id }
+
+            if (songCandidates.isNotEmpty()) {
                 val bestSongMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
                     query = query,
-                    items = songResult,
+                    items = songCandidates,
                     expectedDurationSec = spec.durationSeconds,
                     targetTitle = spec.title,
-                    targetArtist = spec.artist
+                    targetArtist = spec.artist,
+                    topResultIds = topResultIds
                 )
                 if (bestSongMatch != null && bestSongMatch.id.length == 11) {
                     return bestSongMatch.id
                 }
             }
             val videoResult = YouTube.search(query, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()?.items.orEmpty()
-            val summaryResult = YouTube.searchSummary(query).getOrNull()?.summaries?.flatMap { it.items }.orEmpty()
-            val candidates = videoResult + summaryResult
+            val candidates = (topResultItems + songResult + summaryItems + videoResult).distinctBy { it.id }
             val bestMatch = com.vibevault.app.utils.TrackMatcher.selectBestMatch(
                 query = query,
                 items = candidates,
                 expectedDurationSec = spec.durationSeconds,
                 targetTitle = spec.title,
-                targetArtist = spec.artist
+                targetArtist = spec.artist,
+                topResultIds = topResultIds
             )
             return bestMatch?.id?.takeIf { it.length == 11 }
         }

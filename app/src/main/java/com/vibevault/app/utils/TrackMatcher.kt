@@ -36,7 +36,8 @@ object TrackMatcher {
         candidateDurationSec: Int? = null,
         expectedDurationSec: Int? = null,
         targetTitle: String? = null,
-        targetArtist: String? = null
+        targetArtist: String? = null,
+        isTopResult: Boolean = false
     ): Int {
         val qNorm = normalizeText(query)
         val tNorm = normalizeText(itemTitle)
@@ -133,9 +134,13 @@ object TrackMatcher {
                     score -= 40
                 }
             } else {
-                // If query does NOT ask for live/remix/cover/concert, but item title HAS it, penalize heavily
+                // If query does NOT ask for live/remix/cover/concert/instrumental, penalize heavily
                 if (tNorm.contains(kw)) {
-                    score -= 150
+                    if (kw == "instrumental" || kw == "karaoke") {
+                        score -= 250 // Extra penalty for unwanted instrumental/karaoke
+                    } else {
+                        score -= 150
+                    }
                 }
             }
         }
@@ -154,6 +159,11 @@ object TrackMatcher {
             }
         }
 
+        // 6. Bonus for YouTube's authoritative 'Top result' card
+        if (isTopResult) {
+            score += 50
+        }
+
         return score
     }
 
@@ -162,7 +172,8 @@ object TrackMatcher {
         items: List<YTItem>,
         expectedDurationSec: Int? = null,
         targetTitle: String? = null,
-        targetArtist: String? = null
+        targetArtist: String? = null,
+        topResultIds: Set<String> = emptySet()
     ): YTItem? {
         if (items.isEmpty()) return null
 
@@ -177,6 +188,7 @@ object TrackMatcher {
                 else -> null
             }
             val isSong = item is SongItem
+            val isTop = topResultIds.contains(item.id)
             item to scoreMatch(
                 query = query,
                 itemTitle = title,
@@ -185,7 +197,8 @@ object TrackMatcher {
                 candidateDurationSec = durationSec,
                 expectedDurationSec = expectedDurationSec,
                 targetTitle = targetTitle,
-                targetArtist = targetArtist
+                targetArtist = targetArtist,
+                isTopResult = isTop
             )
         }
 

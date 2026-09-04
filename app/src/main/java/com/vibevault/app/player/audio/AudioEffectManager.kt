@@ -139,6 +139,7 @@ object AudioEffectManager {
         _reverbPreDelay.value = p.getFloat("reverb_predelay", 0.54f)
         _reverbPreDelayMix.value = p.getFloat("reverb_predelay_mix", 0.18f)
         _reverbSize.value = p.getFloat("reverb_size", 0.73f)
+        _reverbMix.value = p.getFloat("reverb_mix", 0.00f)
         val loadedPreset = p.getString("preset_name", "Flat") ?: "Flat"
         _currentPreset.value = if (loadedPreset == "Vivi Signature") "Flat" else loadedPreset
         _reverbPreset.value = p.getString("reverb_preset_name", "Studio Room") ?: "Studio Room"
@@ -262,6 +263,7 @@ object AudioEffectManager {
     }
 
     fun setPreset(name: String, gains: List<Float>) {
+        Log.d("EQ_DEBUG", "setPreset('$name'): gains=$gains")
         _currentPreset.value = name
         _bandGains.value = gains
         _eqEnabled.value = true
@@ -271,6 +273,7 @@ object AudioEffectManager {
         editor?.apply()
         audioProcessor.setEqEnabled(true)
         audioProcessor.setBandGains(gains)
+        Log.d("EQ_DEBUG", "setPreset done: processor.equalizerEnabled should be true")
     }
 
     fun setBass(level: Float) {

@@ -4,6 +4,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
+import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.pow
@@ -118,11 +119,16 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         for (i in 0 until minOf(gains.size, 10)) {
             currentGains[i] = gains[i].toDouble()
         }
+        Log.d("EQ_DEBUG", "setBandGains: gains=$gains, eqEnabled=$equalizerEnabled, sampleRate=$sampleRate, filtersCount=${bandFilters.size}")
         if (bandFilters.isEmpty() && sampleRate > 0) {
             initFilters()
         } else {
             updateFilterGains()
             recalculateHeadroomAndPreamp()
+        }
+        // Log actual filter gains after update
+        if (bandFilters.isNotEmpty()) {
+            Log.d("EQ_DEBUG", "Filter gains after update: ${bandFilters.map { String.format("%.2f", it.gain) }}")
         }
     }
 
@@ -267,20 +273,31 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         channelCount = inputAudioFormat.channelCount
         encoding = inputAudioFormat.encoding
 
+        Log.d("EQ_DEBUG", "configure() called: sampleRate=$sampleRate, channels=$channelCount, encoding=$encoding (16bit=${C.ENCODING_PCM_16BIT}, float=${C.ENCODING_PCM_FLOAT})")
+
         if ((encoding != C.ENCODING_PCM_16BIT && encoding != C.ENCODING_PCM_FLOAT) || channelCount > 2) {
+            Log.e("EQ_DEBUG", "REJECTING format! encoding=$encoding channels=$channelCount")
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
 
         initFilters()
         isActive = true
+        Log.d("EQ_DEBUG", "configure() SUCCESS: isActive=$isActive, filtersCount=${bandFilters.size}")
         return inputAudioFormat
     }
 
     override fun isActive(): Boolean = isActive
 
+    private var queueInputCounter = 0L
+
     override fun queueInput(input: ByteBuffer) {
         val inputSize = input.remaining()
         if (inputSize == 0) return
+
+        queueInputCounter++
+        if (queueInputCounter % 500 == 0L) {
+            Log.d("EQ_DEBUG", "queueInput #$queueInputCounter: inputSize=$inputSize, eqEnabled=$equalizerEnabled, encoding=$encoding, channels=$channelCount, preampGain=${String.format("%.4f", effectivePreampGain)}, gains=${currentGains.map { String.format("%.1f", it) }}")
+        }
 
         if (buffer.capacity() < inputSize) {
             buffer = ByteBuffer.allocateDirect(inputSize).order(ByteOrder.nativeOrder())

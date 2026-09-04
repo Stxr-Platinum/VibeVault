@@ -109,17 +109,19 @@ fun EqualizerModalDialog(
     var showPresetDialog by remember { mutableStateOf(false) }
 
     val presets = remember {
+        // Values match vivi-music's AxionEqScreen presets (raw slider values / 50 = dB)
         listOf(
             "Flat" to listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
-            "Bass Boost" to listOf(6.5f, 5.5f, 4.0f, 1.5f, 0f, -0.5f, 0f, 1.5f, 2.5f, 3.5f),
-            "Rock" to listOf(4.5f, 3.5f, 2.0f, 0.5f, -1.5f, 1.5f, 2.5f, 3.5f, 4.5f, 5.0f),
-            "Electronic" to listOf(5.0f, 4.0f, 2.0f, -0.5f, -1.5f, 1.0f, 2.5f, 4.0f, 5.0f, 6.0f),
-            "Pop" to listOf(-1.5f, 0f, 1.5f, 2.5f, 3.5f, 3.0f, 2.0f, 1.0f, -0.5f, -1.5f),
-            "Vocal Boost" to listOf(-2.5f, -1.5f, 0f, 2.5f, 4.5f, 4.0f, 2.5f, 1.5f, 0f, -1.5f),
-            "Pure Clarity" to listOf(1.5f, 1.0f, -1.0f, -2.0f, -0.5f, 2.0f, 3.5f, 3.0f, 2.5f, 2.0f),
-            "Acoustic" to listOf(-0.5f, 1.0f, 2.0f, 1.0f, -0.5f, 1.5f, 2.0f, 3.0f, 2.5f, 1.5f),
-            "Spatial" to listOf(3.0f, 1.5f, 0f, -2.0f, -2.5f, -1.5f, 1.0f, 2.0f, 4.0f, 5.0f),
-            "Jazz" to listOf(2.5f, 1.5f, 1.0f, 2.0f, 2.5f, 2.5f, 1.5f, 2.5f, 3.0f, 2.5f)
+            "Bass Boost" to listOf(10.0f, 8.0f, 5.0f, 2.0f, 0f, -1.0f, 0f, 2.0f, 4.0f, 6.0f),
+            "Rock" to listOf(6.0f, 4.4f, 3.0f, 1.0f, -2.0f, 2.4f, 4.0f, 5.0f, 6.4f, 7.6f),
+            "Electronic" to listOf(7.0f, 5.6f, 2.4f, -1.0f, -3.0f, 1.0f, 3.6f, 6.0f, 8.0f, 10.0f),
+            "Pop" to listOf(-3.0f, 0f, 2.0f, 3.6f, 5.0f, 4.4f, 3.0f, 1.6f, -1.0f, -2.4f),
+            "Vocal Boost" to listOf(-5.0f, -3.0f, 0f, 4.0f, 8.0f, 7.6f, 4.0f, 2.4f, 0f, -2.4f),
+            "Pure Clarity" to listOf(2.0f, 1.0f, -1.6f, -3.0f, -1.0f, 3.0f, 5.0f, 4.0f, 3.0f, 2.0f),
+            "Soft Bass" to listOf(4.0f, 3.6f, 2.8f, 1.6f, 0.6f, 0.4f, 1.2f, 1.8f, 2.2f, 2.6f),
+            "Acoustic" to listOf(-1.0f, 1.0f, 2.4f, 1.0f, -1.0f, 2.0f, 3.0f, 4.4f, 3.6f, 2.0f),
+            "Spatial" to listOf(4.0f, 2.0f, 0f, -3.0f, -4.0f, -2.0f, 1.0f, 3.0f, 6.0f, 8.0f),
+            "Jazz" to listOf(3.0f, 2.0f, 1.2f, 2.8f, 4.0f, 3.6f, 2.4f, 3.6f, 4.4f, 4.0f)
         )
     }
 
