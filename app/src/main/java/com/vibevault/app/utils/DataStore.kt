@@ -31,15 +31,7 @@ operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? =
     if (ViviPrefCache.isInitialized()) {
         ViviPrefCache.get(key)
     } else {
-        runBlocking(Dispatchers.IO) {
-            try {
-                kotlinx.coroutines.withTimeoutOrNull(1500) {
-                    data.first()[key]
-                }
-            } catch (e: Exception) {
-                null
-            }
-        }
+        ViviPrefCache.get(key)
     }
 
 fun <T> DataStore<Preferences>.get(
@@ -49,15 +41,7 @@ fun <T> DataStore<Preferences>.get(
     if (ViviPrefCache.isInitialized()) {
         ViviPrefCache.get(key) ?: defaultValue
     } else {
-        runBlocking(Dispatchers.IO) {
-            try {
-                kotlinx.coroutines.withTimeoutOrNull(1500) {
-                    data.first()[key]
-                } ?: defaultValue
-            } catch (e: Exception) {
-                defaultValue
-            }
-        }
+        ViviPrefCache.get(key) ?: defaultValue
     }
 
 suspend fun <T> DataStore<Preferences>.getAsync(key: Preferences.Key<T>): T? =

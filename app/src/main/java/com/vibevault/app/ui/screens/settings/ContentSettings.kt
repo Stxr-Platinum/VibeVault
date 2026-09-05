@@ -163,6 +163,7 @@ fun ContentSettings(
     val (enableSimpMusic, onEnableSimpMusicChange) = rememberPreference(key = EnableSimpMusicKey, defaultValue = true)
     val (enableYouLyPlus, onEnableYouLyPlusChange) = rememberPreference(key = EnableYouLyPlusKey, defaultValue = true)
     val (enablePaxsenix, onEnablePaxsenixChange) = rememberPreference(key = EnablePaxsenixKey, defaultValue = true)
+    val (lyricsRomanization, onLyricsRomanizationChange) = rememberPreference(key = com.vibevault.app.constants.LyricsRomanizationKey, defaultValue = true)
     val (lyricsProviderOrder, onLyricsProviderOrderChange) = rememberPreference(
         key = LyricsProviderOrderKey,
         defaultValue = "",
@@ -1002,7 +1003,22 @@ fun ContentSettings(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.language_korean_latin),
                     title = { Text(stringResource(R.string.lyrics_romanization)) },
-                    onClick = { navController.navigate("settings/content/romanization") },
+                    trailingContent = {
+                        Switch(
+                            checked = lyricsRomanization,
+                            onCheckedChange = onLyricsRomanizationChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (lyricsRomanization) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onLyricsRomanizationChange(!lyricsRomanization) },
                     isExpressive = true
                 )
             )

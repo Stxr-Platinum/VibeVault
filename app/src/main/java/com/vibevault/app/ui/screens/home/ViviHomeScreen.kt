@@ -109,6 +109,9 @@ fun ViviHomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
+    val quickPicksGridState = rememberLazyGridState()
+    val keepListeningGridState = rememberLazyGridState()
+    val trendingGridState = rememberLazyGridState()
 
     var isRefreshing by remember { mutableStateOf(false) }
     var isRandomizing by remember { mutableStateOf(false) }
@@ -591,7 +594,7 @@ fun ViviHomeScreen(
                         val rows = if (songs.size >= 4) 4 else songs.size.coerceAtLeast(1)
 
                         LazyHorizontalGrid(
-                            state = rememberLazyGridState(),
+                            state = quickPicksGridState,
                             rows = GridCells.Fixed(rows),
                             contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
                                 .asPaddingValues(),
@@ -631,7 +634,7 @@ fun ViviHomeScreen(
                     item(key = "keep_listening_list") {
                         val rows = 2
                         LazyHorizontalGrid(
-                            state = rememberLazyGridState(),
+                            state = keepListeningGridState,
                             rows = GridCells.Fixed(rows),
                             contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
                                 .asPaddingValues(),
@@ -720,7 +723,7 @@ fun ViviHomeScreen(
                         val trendingSongs = remember(trendingTracks) { trendingTracks.distinctBy { it.id } }
                         val rows = if (trendingSongs.size >= 4) 4 else trendingSongs.size.coerceAtLeast(1)
                         LazyHorizontalGrid(
-                            state = rememberLazyGridState(),
+                            state = trendingGridState,
                             rows = GridCells.Fixed(rows),
                             contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)
                                 .asPaddingValues(),

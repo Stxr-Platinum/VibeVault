@@ -60,6 +60,8 @@ import com.vibevault.app.ui.navigation.Screen
 import com.vibevault.app.ui.navigation.VibeBottomBar
 import com.vibevault.app.constants.DynamicBackgroundKey
 import com.vibevault.app.constants.DynamicThemeKey
+import com.vibevault.app.constants.EnableHighRefreshRateKey
+import android.os.Build
 import com.vibevault.app.utils.rememberPreference
 import com.vibevault.app.ui.theme.VibePrimary
 import com.vibevault.app.ui.theme.VibeVaultTheme
@@ -122,9 +124,30 @@ class MainActivity : ComponentActivity() {
         setContent {
             val playerViewModel: PlayerViewModel = hiltViewModel()
             val currentTrack by playerViewModel.currentTrack.collectAsStateWithLifecycle()
+            val (enableHighRefreshRate) = rememberPreference(EnableHighRefreshRateKey, defaultValue = true)
             val (enableDynamicTheme) = rememberPreference(DynamicThemeKey, defaultValue = true)
             var themeColor by remember { androidx.compose.runtime.mutableStateOf<Color?>(null) }
             val context = LocalContext.current
+
+            androidx.compose.runtime.LaunchedEffect(enableHighRefreshRate) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        val window = this@MainActivity.window
+                        val params = window.attributes
+                        val displayManager = getSystemService(android.hardware.display.DisplayManager::class.java)
+                        @Suppress("DEPRECATION")
+                        val display = displayManager?.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                        val modes = display?.supportedModes
+                        val maxMode = modes?.maxByOrNull { it.refreshRate }
+                        if (maxMode != null) {
+                            params.preferredDisplayModeId = if (enableHighRefreshRate) maxMode.modeId else 0
+                            window.attributes = params
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Failed setting high refresh rate display mode", e)
+                    }
+                }
+            }
 
             androidx.compose.runtime.LaunchedEffect(currentTrack, enableDynamicTheme) {
                 if (!enableDynamicTheme) {

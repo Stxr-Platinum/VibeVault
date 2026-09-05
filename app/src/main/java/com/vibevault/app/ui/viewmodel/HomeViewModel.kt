@@ -36,7 +36,8 @@ class HomeViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
     private val spotifyApi: SpotifyApiService,
     private val sessionManager: SessionManager,
-    private val queueManager: com.vibevault.app.player.QueueManager
+    private val queueManager: com.vibevault.app.player.QueueManager,
+    private val streamResolver: com.vibevault.app.player.media.StreamResolver
 ) : ViewModel() {
 
     private val prefs = context.getSharedPreferences("home_cache", android.content.Context.MODE_PRIVATE)
@@ -311,7 +312,18 @@ class HomeViewModel @Inject constructor(
             .shuffled()
             .take(20)
 
-        _quickPicks.value = combined.ifEmpty { recentTracks.shuffled().take(20) }
+        val finalPicks = combined.ifEmpty { recentTracks.shuffled().take(20) }
+        _quickPicks.value = finalPicks
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            finalPicks.take(6).forEach { track ->
+                try {
+                    streamResolver.preResolve(track.id, track.title, track.artist, track.durationMs)
+                } catch (e: Exception) {
+                    // Pre-resolution fallback
+                }
+            }
+        }
     }
 
     fun onSearchQueryChange(query: String) {

@@ -377,7 +377,7 @@ fun AppNavHost(
         }
         composable(Screen.AppearanceSettings.route) {
             val context = androidx.compose.ui.platform.LocalContext.current
-            val activity = context as? android.app.Activity
+            val activity = context.findActivity()
             val snackbarHostState = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }
             if (activity != null) {
                 com.vibevault.app.ui.screens.settings.AppearanceSettings(
@@ -411,5 +411,11 @@ fun AppNavHost(
             )
         }
     }
+}
+
+tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 

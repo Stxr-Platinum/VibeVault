@@ -431,7 +431,7 @@ fun HomeFeed(
                     contentPadding = PaddingValues(horizontal = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(recentlyPlayed) { track ->
+                    items(recentlyPlayed, key = { it.id }) { track ->
                         PlaylistCardTrack(track, onClick = { onTrackClick(track) })
                     }
                 }

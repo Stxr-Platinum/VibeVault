@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -161,7 +162,7 @@ fun AppearanceSettings(
         DynamicThemeKey,
         defaultValue = true
     )
-    val (selectedFontValue) = rememberPreference(
+    val (selectedFontValue, onSelectedFontChange) = rememberPreference(
         SelectedFontKey,
         defaultValue = AppFont.SYSTEM.value
     )
@@ -319,7 +320,7 @@ fun AppearanceSettings(
         CanvasThumbnailAnimationKey,
         defaultValue = true
     )
-    val (canvasSource) = rememberEnumPreference(
+    val (canvasSource, onCanvasSourceChange) = rememberEnumPreference(
         CanvasSourceKey,
         defaultValue = CanvasSource.AUTO
     )
@@ -447,6 +448,57 @@ fun AppearanceSettings(
 
     var showLyricsLineSpacingDialog by rememberSaveable {
         mutableStateOf(false)
+    }
+
+    var showFontDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    var showCanvasSourceDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    if (showFontDialog) {
+        EnumDialog(
+            onDismiss = { showFontDialog = false },
+            onSelect = { font ->
+                onSelectedFontChange(font.value)
+                showFontDialog = false
+            },
+            title = stringResource(R.string.app_font),
+            current = AppFont.fromValue(selectedFontValue),
+            values = AppFont.entries,
+            valueText = { font ->
+                when (font) {
+                    AppFont.SYSTEM -> stringResource(R.string.font_system)
+                    AppFont.GOOGLE_SANS -> stringResource(R.string.font_google_sans)
+                    AppFont.SANS_FLEX -> stringResource(R.string.font_sans_flex)
+                    AppFont.OUTFIT -> stringResource(R.string.font_outfit)
+                    AppFont.PLUS_JAKARTA_SANS -> stringResource(R.string.font_plus_jakarta_sans)
+                }
+            }
+        )
+    }
+
+    if (showCanvasSourceDialog) {
+        EnumDialog(
+            onDismiss = { showCanvasSourceDialog = false },
+            onSelect = { source ->
+                onCanvasSourceChange(source)
+                showCanvasSourceDialog = false
+            },
+            title = stringResource(R.string.vivimusic_canvas),
+            current = canvasSource,
+            values = CanvasSource.entries,
+            valueText = { source ->
+                when (source) {
+                    CanvasSource.AUTO -> stringResource(R.string.canvas_source_auto)
+                    CanvasSource.APPLE_MUSIC -> stringResource(R.string.canvas_source_apple_music)
+                    CanvasSource.VIVIMUSIC -> stringResource(R.string.canvas_source_vivimusic)
+                    CanvasSource.TIDAL -> stringResource(R.string.canvas_source_tidal)
+                }
+            }
+        )
     }
 
     if (showLyricsPositionDialog) {
@@ -1041,13 +1093,14 @@ fun AppearanceSettings(
             )
         }
     ) { innerPadding ->
-        Column(
-            Modifier
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
+        LazyColumn(
+            contentPadding = innerPadding,
+            modifier = Modifier
+                .fillMaxSize()
                 .padding(horizontal = 16.dp),
         ) {
-        Material3SettingsGroup(
+            item {
+                Material3SettingsGroup(
             title = stringResource(R.string.theme),
             items = buildList {
 //                add(
@@ -1094,7 +1147,7 @@ fun AppearanceSettings(
                             }
                             Text(fontLabel)
                         },
-                        onClick = { navController.navigate("settings/appearance/font") },
+                        onClick = { showFontDialog = true },
                         isExpressive = true
                     )
                 )
@@ -1531,7 +1584,7 @@ fun AppearanceSettings(
                         }
                         Text(summary)
                     },
-                    onClick = { navController.navigate("settings/appearance/canvas") },
+                    onClick = { showCanvasSourceDialog = true },
                     isExpressive = true
                 ),
                 Material3SettingsItem(
@@ -2229,6 +2282,7 @@ fun AppearanceSettings(
             )
         )
         Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }

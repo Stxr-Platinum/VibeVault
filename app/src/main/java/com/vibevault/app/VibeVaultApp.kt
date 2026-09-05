@@ -23,6 +23,9 @@ class VibeVaultApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
 
+        // Pre-warm preferences cache asynchronously to prevent main-thread I/O blocking during UI rendering
+        com.vibevault.app.utils.ViviPrefCache.start(this)
+
         // Initialize appContext for cipher deobfuscators, N-transform solvers, and bot mitigators
         com.vibevault.app.utils.cipher.CipherDeobfuscator.initialize(this)
         com.vibevault.app.utils.BotDetectionMitigator.initialize(this)

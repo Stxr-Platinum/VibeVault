@@ -364,37 +364,6 @@ fun ListenTogetherSettings(
                     Material3SettingsItem(
                         isExpressive = true,
                         icon = painterResource(R.drawable.person),
-                        title = { Text(stringResource(R.string.listen_together_blocked_users)) },
-                        description = {
-                            Text(
-                                if (blockedUsernames.isNotEmpty())
-                                    stringResource(R.string.listen_together_blocked_users_count, blockedUsernames.size)
-                                else
-                                    stringResource(R.string.listen_together_no_blocked_users)
-                            )
-                        },
-                        onClick = if (blockedUsernames.isNotEmpty()) {
-                            { showBlockedUsersDialog = true }
-                        } else null
-                    ),
-                    Material3SettingsItem(
-                        isExpressive = true,
-                        icon = painterResource(R.drawable.error),
-                        title = { Text(stringResource(R.string.listen_together_server_url)) },
-                        description = {
-                            Text(
-                                selectedServer?.let { server ->
-                                    "${server.name} - ${server.location}"
-                                } ?: serverUrl,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        onClick = { showServerUrlDialog = true }
-                    ),
-                    Material3SettingsItem(
-                        isExpressive = true,
-                        icon = painterResource(R.drawable.person),
                         title = { Text(stringResource(R.string.listen_together_username)) },
                         description = {
                             Text(username.ifEmpty { stringResource(R.string.not_set) })

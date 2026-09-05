@@ -27,7 +27,7 @@ class SpotifyApiService @Inject constructor(
     suspend fun getUserProfile(): Result<Any> = Result.failure(Exception("Stub"))
 
     suspend fun searchTracks(query: String): Result<SpotifySearchResponse> = Result.failure(Exception("Stub"))
-    suspend fun getRecommendations(seedId: String?): Result<List<SpotifyTrackDto>> = Result.failure(Exception("Stub"))
+    suspend fun getRecommendations(seedId: String?): Result<List<SpotifyTrackDto>> = Result.success(emptyList())
     suspend fun getTrack(trackId: String): Result<SpotifyTrackDto> = Result.failure(Exception("Stub"))
     suspend fun getRecentlyPlayed(): Result<Any> = Result.failure(Exception("Stub"))
     suspend fun getFeaturedPlaylists(): Result<Any> = Result.failure(Exception("Stub"))

@@ -228,45 +228,44 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun getDiscoveryTracks(): Flow<List<Track>> = flow {
         Log.d("SpotifyDebug", "MusicRepo: getDiscoveryTracks called")
-        // Fetch recommendations from Spotify based on a recently liked track
         val recentLikedIds: List<String> = likedSongDao.getRecentLikedIds()
         val seedId: String? = recentLikedIds.firstOrNull()
         Log.d("SpotifyDebug", "MusicRepo: Seed ID for recommendations = $seedId")
-        
-        spotifyApi.getRecommendations(seedId).onSuccess { dtos ->
-            Log.d("SpotifyDebug", "MusicRepo: Recommendations Success - count = ${dtos.size}")
-            val likedIds = likedSongDao.getLikedSongIds().toSet()
-            val tracks = dtos.mapNotNull { dto ->
-                val id = dto.id ?: return@mapNotNull null
-                Track(
-                    id = id,
-                    title = dto.name,
-                    artist = dto.artists.firstOrNull()?.name ?: "Unknown",
-                    album = dto.album?.name ?: "Unknown",
-                    albumImageUrl = dto.album?.images?.firstOrNull()?.url ?: "",
-                    audioUrl = dto.previewUrl,
-                    durationMs = dto.durationMs,
-                    isLiked = likedIds.contains(dto.id),
-                    source = "spotify"
-                )
+
+        var discoveryTracks: List<Track> = emptyList()
+
+        if (!seedId.isNullOrBlank()) {
+            try {
+                val seedTrack = Track(id = seedId, title = "", artist = "", album = "", albumImageUrl = "", durationMs = 0L)
+                val similarResult = getSimilarTracks(seedTrack).getOrNull()
+                if (!similarResult.isNullOrEmpty()) {
+                    discoveryTracks = similarResult
+                    Log.d("SpotifyDebug", "MusicRepo: Found ${discoveryTracks.size} discovery tracks from seed $seedId")
+                }
+            } catch (e: Exception) {
+                Log.w("SpotifyDebug", "MusicRepo: Failed to fetch similar tracks for seed $seedId", e)
             }
-            Log.d("SpotifyDebug", "MusicRepo: Emitting ${tracks.size} discovery tracks")
-            emit(tracks)
-        }.onFailure { err ->
-            Log.e("SpotifyDebug", "MusicRepo: Recommendations FAILURE. Fetching trending tracks.", err)
-            searchSpotifyAll("trending").onSuccess { result ->
-                emit(result.tracks.take(15))
-            }.onFailure {
-                Log.e("SpotifyDebug", "MusicRepo: Trending FAILURE. Mocking 5 discovery tracks.", it)
-                val mockTracks = listOf(
-                    Track(id = "spotify:track:3B54sVLJ402zHx6TmEte1Z", title = "Starlight", artist = "Muse", album = "Black Holes", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2738c82eb57fcd88147ea4dd302", durationMs = 239000, source = "spotify"),
-                    Track(id = "spotify:track:7MXVkk9YMqqclZ63nXGIRC", title = "Starboy", artist = "The Weeknd", album = "Starboy", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2734718e2b124f79258be7bc452", durationMs = 230000, source = "spotify"),
-                    Track(id = "spotify:track:7BKLCZ1jbUBVqRi2FVlTVw", title = "Closer", artist = "The Chainsmokers", album = "Collage EP", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b273d40cc1cb1703e83b8a13539a", durationMs = 244000, source = "spotify"),
-                    Track(id = "spotify:track:5HCyWlXZPP0y6Gqq8TgA20", title = "Stay", artist = "The Kid LAROI", album = "F*CK LOVE 3", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b27386c8f94d30e386a604246820", durationMs = 141000, source = "spotify"),
-                    Track(id = "spotify:track:37BZB0z9T8Xu7U3e65qxFy", title = "Save Your Tears", artist = "The Weeknd", album = "After Hours", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", durationMs = 215000, source = "spotify")
-                )
-                emit(mockTracks)
+        }
+
+        if (discoveryTracks.isEmpty()) {
+            val trendingResult = searchOnline("trending hits").getOrNull()
+            if (!trendingResult.isNullOrEmpty()) {
+                discoveryTracks = trendingResult.take(15)
+                Log.d("SpotifyDebug", "MusicRepo: Found ${discoveryTracks.size} discovery tracks from trending search")
             }
+        }
+
+        if (discoveryTracks.isNotEmpty()) {
+            emit(discoveryTracks)
+        } else {
+            val mockTracks = listOf(
+                Track(id = "3B54sVLJ402zHx6TmEte1Z", title = "Starlight", artist = "Muse", album = "Black Holes", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2738c82eb57fcd88147ea4dd302", durationMs = 239000, source = "youtube"),
+                Track(id = "7MXVkk9YMqqclZ63nXGIRC", title = "Starboy", artist = "The Weeknd", album = "Starboy", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2734718e2b124f79258be7bc452", durationMs = 230000, source = "youtube"),
+                Track(id = "7BKLCZ1jbUBVqRi2FVlTVw", title = "Closer", artist = "The Chainsmokers", album = "Collage EP", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b273d40cc1cb1703e83b8a13539a", durationMs = 244000, source = "youtube"),
+                Track(id = "5HCyWlXZPP0y6Gqq8TgA20", title = "Stay", artist = "The Kid LAROI", album = "F*CK LOVE 3", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b27386c8f94d30e386a604246820", durationMs = 141000, source = "youtube"),
+                Track(id = "37BZB0z9T8Xu7U3e65qxFy", title = "Save Your Tears", artist = "The Weeknd", album = "After Hours", albumImageUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", durationMs = 215000, source = "youtube")
+            )
+            emit(mockTracks)
         }
     }
 

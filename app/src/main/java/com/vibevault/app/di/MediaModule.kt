@@ -42,8 +42,8 @@ object MediaModule {
         .setBufferDurationsMs(
             15000, // minBufferMs
             10 * 60 * 1000, // maxBufferMs (10 mins, enough to pre-fetch next 2 songs)
-            150,   // bufferForPlaybackMs (Ultra-fast initial playback start <200ms!)
-            1000   // bufferForPlaybackAfterRebufferMs
+            100,   // bufferForPlaybackMs (Instant initial playback start <100ms!)
+            500    // bufferForPlaybackAfterRebufferMs
         )
         .setPrioritizeTimeOverSizeThresholds(true)
         .build()
@@ -90,8 +90,18 @@ object MediaModule {
             .setUpstreamDataSourceFactory(resolvingFactory)
             .setFlags(androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
-        return androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(cacheDataSourceFactory)
+        val extractorsFactory = androidx.media3.extractor.ExtractorsFactory {
+            arrayOf(
+                androidx.media3.extractor.mkv.MatroskaExtractor(),        // .webm / Opus
+                androidx.media3.extractor.mp4.FragmentedMp4Extractor(),   // fragmented .mp4 / AAC (YouTube)
+                androidx.media3.extractor.mp4.Mp4Extractor()              // regular .mp4 / AAC (JioSaavn)
+            )
+        }
+
+        return androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+            cacheDataSourceFactory,
+            extractorsFactory
+        )
     }
 
     @OptIn(UnstableApi::class)
