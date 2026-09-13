@@ -1,5 +1,9 @@
 package com.vibevault.app.ui.screens.library
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,6 +28,12 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.vibevault.app.ui.components.FrostedTopBar
+import com.vibevault.app.ui.components.TopFadeBlur
+import com.vibevault.app.ui.components.topBarHeight
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import com.vibevault.app.ui.components.UserAvatar
 import com.vibevault.app.ui.replay.ReplayBanner
 import com.vibevault.app.ui.replay.cards
@@ -104,128 +114,146 @@ fun LibraryScreen(
         )
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize()
-    ) { innerPadding ->
-        Column(
+    val listState = rememberLazyListState()
+    val libraryHaze = remember { HazeState() }
+    val scrolled by remember(listState) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 ||
+                listState.firstVisibleItemScrollOffset > 36
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
+                .hazeSource(libraryHaze)
         ) {
-        // ── Header ──────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                UserAvatar(
-                    avatarUrl = userAvatarUrl,
-                    displayName = userDisplayName,
-                    size = 36.dp
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                    bottom = 120.dp
                 )
-                Spacer(Modifier.width(16.dp))
-                Text(
-                    text = "Your Library",
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
-                    ),
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Row {
-                IconButton(onClick = onSettingsClick) {
-                    Icon(Icons.Default.Settings, "Settings", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
-                }
-                IconButton(onClick = { }) {
-                    Icon(Icons.Default.Search, "Search", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
-                }
-                Box {
-                    IconButton(onClick = { showAddMenu = true }) {
-                        Icon(Icons.Default.Add, "Add", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(32.dp))
-                    }
-                    DropdownMenu(
-                        expanded = showAddMenu,
-                        onDismissRequest = { showAddMenu = false },
-                        modifier = Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh)
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Create playlist", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface) },
-                            leadingIcon = { Icon(Icons.Default.PlaylistAdd, null, tint = androidx.compose.material3.MaterialTheme.colorScheme.primary) },
-                            onClick = { 
-                                showAddMenu = false
-                                showCreateDialog = true
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        // ── Filter Chips ────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("Playlists", "Artists", "Albums").forEach { filter ->
-                FilterChip(
-                    selected = selectedFilter == filter,
-                    onClick = { selectedFilter = filter },
-                    label = {
-                        Text(
-                            filter,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
-                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                        labelColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    shape = CircleShape,
-                    border = null
-                )
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // ── Sort / Layout Controls ──────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { /* Show Sort Menu */ }
             ) {
-                Icon(Icons.Default.Sort, null, tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Recents",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
-                )
-            }
-            IconButton(onClick = { }) {
-                Icon(Icons.Default.GridView, null, tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
-            }
-        }
+                // ── Header ──────────────────────────────────────────
+                item(key = "header") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            UserAvatar(
+                                avatarUrl = userAvatarUrl,
+                                displayName = userDisplayName,
+                                size = 36.dp
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Text(
+                                text = "Your Library",
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = (-0.5).sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Row {
+                            IconButton(onClick = onSettingsClick) {
+                                Icon(Icons.Default.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
+                            }
+                            IconButton(onClick = { }) {
+                                Icon(Icons.Default.Search, "Search", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
+                            }
+                            Box {
+                                IconButton(onClick = { showAddMenu = true }) {
+                                    Icon(Icons.Default.Add, "Add", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(32.dp))
+                                }
+                                DropdownMenu(
+                                    expanded = showAddMenu,
+                                    onDismissRequest = { showAddMenu = false },
+                                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Create playlist", color = MaterialTheme.colorScheme.onSurface) },
+                                        leadingIcon = { Icon(Icons.Default.PlaylistAdd, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = { 
+                                            showAddMenu = false
+                                            showCreateDialog = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 120.dp)
-        ) {
+                // ── Filter Chips ────────────────────────────────────
+                item(key = "filter_chips") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("Playlists", "Artists", "Albums").forEach { filter ->
+                            FilterChip(
+                                selected = selectedFilter == filter,
+                                onClick = { selectedFilter = filter },
+                                label = {
+                                    Text(
+                                        filter,
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                shape = CircleShape,
+                                border = null
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                // ── Sort / Layout Controls ──────────────────────────
+                item(key = "sort_controls") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { /* Show Sort Menu */ }
+                        ) {
+                            Icon(Icons.Default.Sort, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Recents",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(onClick = { }) {
+                            Icon(Icons.Default.GridView, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
             item(key = "replay") {
                 ReplayBanner(
                     card = replayCard,
@@ -357,7 +385,27 @@ fun LibraryScreen(
             }
         }
     }
-}
+
+        AnimatedVisibility(
+            visible = scrolled,
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(220)),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            Box {
+                TopFadeBlur(
+                    hazeState = libraryHaze,
+                    pageColor = MaterialTheme.colorScheme.background,
+                    scrimColor = MaterialTheme.colorScheme.background,
+                )
+
+                FrostedTopBar(
+                    title = "Your Library",
+                    scrolled = true,
+                )
+            }
+        }
+    }
 }
 
 @Composable

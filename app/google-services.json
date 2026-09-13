@@ -1,45 +1,73 @@
 {
   "project_info": {
-    "project_number": "123456789012",
-    "project_id": "demo-app",
-    "storage_bucket": "demo-app.appspot.com"
+    "project_number": "721678895902",
+    "project_id": "vibevault-494414",
+    "storage_bucket": "vibevault-494414.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:1234567890abcdef",
+        "mobilesdk_app_id": "1:721678895902:android:fa3350d64a23c36adb170f",
         "android_client_info": {
           "package_name": "com.vibevault.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "721678895902-heimbi2gbuj8rrcdml3l2qpt31nlas6p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vibevault.app",
+            "certificate_hash": "cd353a403217d3f0d54edef89542bea55c09e4ce"
+          }
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyDummyKeyForBuildValidationOnly"
+          "current_key": "AIzaSyB4KPZ98BK3t0XAwFEdv5xxptwsUd8frp8"
         }
       ],
       "services": {
-        "analytics_service": {
-          "status": 1
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "721678895902-g3h3crf4odmibqopop0nlfktcqeae23i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:1234567890abcdeg",
+        "mobilesdk_app_id": "1:721678895902:android:fa3350d64a23c36adb170f",
         "android_client_info": {
           "package_name": "com.vibevault.app.debug"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "721678895902-heimbi2gbuj8rrcdml3l2qpt31nlas6p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vibevault.app.debug",
+            "certificate_hash": "cd353a403217d3f0d54edef89542bea55c09e4ce"
+          }
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyDummyKeyForBuildValidationOnly"
+          "current_key": "AIzaSyB4KPZ98BK3t0XAwFEdv5xxptwsUd8frp8"
         }
       ],
       "services": {
-        "analytics_service": {
-          "status": 1
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "721678895902-g3h3crf4odmibqopop0nlfktcqeae23i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

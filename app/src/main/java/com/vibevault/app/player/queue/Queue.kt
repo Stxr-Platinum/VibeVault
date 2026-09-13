@@ -4,6 +4,7 @@ import com.vibevault.app.domain.model.Track
 
 interface Queue {
     val preloadItem: Track?
+    val radioChips: kotlinx.coroutines.flow.StateFlow<List<com.music.innertube.pages.RadioChip>>? get() = null
 
     suspend fun getInitialStatus(): Status
 

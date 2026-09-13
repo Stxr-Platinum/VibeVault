@@ -27,8 +27,56 @@ import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
 import android.util.Log
 import com.vibevault.app.extensions.toMediaItem
+import com.vibevault.app.extensions.setOffloadEnabled
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collectLatest
+import com.vibevault.app.constants.AudioNormalizationKey
+import com.vibevault.app.constants.AudioOffload
+import com.vibevault.app.constants.AutoSkipNextOnErrorKey
+import com.vibevault.app.constants.CrossfadeDurationKey
+import com.vibevault.app.constants.CrossfadeEnabledKey
+import com.vibevault.app.constants.CrossfadeGaplessKey
+import com.vibevault.app.constants.CrossfadeManualSkipKey
+import com.vibevault.app.constants.CrossfadeCurveKey
+import com.vibevault.app.constants.CrossfadeCurve
+import com.vibevault.app.constants.PauseOnMute
+import com.vibevault.app.constants.ResumeOnBluetoothConnectKey
+import com.vibevault.app.constants.SkipSilenceKey
+import com.vibevault.app.constants.StopMusicOnTaskClearKey
+import com.vibevault.app.constants.EnableSponsorBlockKey
+import com.vibevault.app.constants.SponsorBlockSkipNonMusicKey
+import com.vibevault.app.constants.SponsorBlockSkipSponsorKey
+import com.vibevault.app.constants.SponsorBlockSkipSelfPromoKey
+import com.vibevault.app.constants.SponsorBlockSkipInteractionKey
+import com.vibevault.app.constants.SponsorBlockSkipIntroOutroKey
+import com.vibevault.app.constants.SponsorBlockSkipPreviewFillerKey
+import com.vibevault.app.constants.SponsorBlockShowToastKey
+import com.vibevault.app.constants.SponsorBlockServerUrlKey
+import com.vibevault.app.sponsorblock.SponsorBlockApi
+import com.vibevault.app.R
+import com.vibevault.app.utils.dataStore
+import com.vibevault.app.utils.get
+import androidx.media3.common.AudioAttributes
+import androidx.media3.exoplayer.LoadControl
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.isActive
 import javax.inject.Inject
+
+private data class SponsorBlockConfig(
+    val enabled: Boolean = false,
+    val serverUrl: String = "https://sponsor.ajay.app",
+    val skipNonMusic: Boolean = true,
+    val skipSponsor: Boolean = true,
+    val skipSelfPromo: Boolean = true,
+    val skipInteraction: Boolean = true,
+    val skipIntroOutro: Boolean = true,
+    val skipPreviewFiller: Boolean = false,
+    val showToast: Boolean = true
+)
 
 @AndroidEntryPoint
 class PlaybackService : MediaLibraryService() {
@@ -51,11 +99,543 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     lateinit var sessionManager: com.vibevault.app.core.session.SessionManager
 
+    @Inject
+    lateinit var playerAudioAttributes: AudioAttributes
+
+    @Inject
+    lateinit var playerLoadControl: LoadControl
+
+    @Inject
+    lateinit var playerMediaSourceFactory: androidx.media3.exoplayer.source.MediaSource.Factory
+
+    private var crossfadeEnabled = false
+    private var crossfadeDuration = 5000f // ms
+    private var crossfadeGapless = true
+    private var crossfadeManualSkipEnabled = true
+    private var crossfadeCurve = CrossfadeCurve.EQUAL_POWER
+    private var isCrossfading = false
+    private var secondaryPlayer: ExoPlayer? = null
+    private var fadingPlayer: ExoPlayer? = null
+    private var secondaryAudioProcessor: com.vibevault.app.player.audio.CustomEqualizerAudioProcessor? = null
+    private var fadingAudioProcessor: com.vibevault.app.player.audio.CustomEqualizerAudioProcessor? = null
+    private var crossfadeTriggerJob: Job? = null
+    private var crossfadeJob: Job? = null
+
     private var mediaLibrarySession: MediaLibrarySession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
     lateinit var sleepTimer: com.vibevault.app.player.SleepTimer
         private set
+
+    private var loudnessEnhancer: android.media.audiofx.LoudnessEnhancer? = null
+    private var audioManager: android.media.AudioManager? = null
+    private var wasPlayingBeforeVolumeMute = false
+    private var isPausedByVolumeMute = false
+
+    private var hasAudioFocus = false
+    private var wasPlayingBeforeAudioFocusLoss = false
+    private var audioFocusRequest: android.media.AudioFocusRequest? = null
+
+    private val audioFocusChangeListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+        handleAudioFocusChange(focusChange)
+    }
+
+    private fun setupAudioFocusRequest() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            audioFocusRequest = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                .setAcceptsDelayedFocusGain(true)
+                .build()
+        }
+    }
+
+    private fun handleAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            android.media.AudioManager.AUDIOFOCUS_GAIN,
+            android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT -> {
+                hasAudioFocus = true
+                if (wasPlayingBeforeAudioFocusLoss && !player.isPlaying) {
+                    player.play()
+                    wasPlayingBeforeAudioFocusLoss = false
+                }
+                player.volume = 1f
+            }
+            android.media.AudioManager.AUDIOFOCUS_LOSS -> {
+                hasAudioFocus = false
+                wasPlayingBeforeAudioFocusLoss = player.isPlaying
+                if (player.isPlaying) {
+                    player.pause()
+                    fadingPlayer?.pause()
+                }
+                abandonAudioFocus()
+            }
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                hasAudioFocus = false
+                wasPlayingBeforeAudioFocusLoss = player.isPlaying
+                if (player.isPlaying) {
+                    player.pause()
+                    fadingPlayer?.pause()
+                }
+            }
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                hasAudioFocus = false
+                wasPlayingBeforeAudioFocusLoss = player.isPlaying
+                if (player.isPlaying) {
+                    player.volume = 0.2f
+                }
+            }
+        }
+    }
+
+    private fun requestAudioFocus(): Boolean {
+        if (hasAudioFocus) return true
+        val am = audioManager ?: return false
+        val result = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { am.requestAudioFocus(it) } ?: android.media.AudioManager.AUDIOFOCUS_REQUEST_FAILED
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(
+                audioFocusChangeListener,
+                android.media.AudioManager.STREAM_MUSIC,
+                android.media.AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+        hasAudioFocus = (result == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        return hasAudioFocus
+    }
+
+    private fun abandonAudioFocus() {
+        if (!hasAudioFocus) return
+        val am = audioManager ?: return
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            am.abandonAudioFocus(audioFocusChangeListener)
+        }
+        hasAudioFocus = false
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun createExoPlayer(): ExoPlayer {
+        val processor = com.vibevault.app.player.audio.AudioEffectManager.createAudioProcessor()
+        secondaryAudioProcessor = processor
+
+        val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessorChain(
+                        androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(
+                            processor
+                        )
+                    )
+                    .build()
+            }
+        }
+
+        val p = ExoPlayer.Builder(this, renderersFactory)
+            .setAudioAttributes(playerAudioAttributes, /* handleAudioFocus = */ false)
+            .setLoadControl(playerLoadControl)
+            .setMediaSourceFactory(playerMediaSourceFactory)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
+
+        p.skipSilenceEnabled = dataStore.get(SkipSilenceKey, false)
+        p.setOffloadEnabled(if (crossfadeEnabled) false else dataStore.get(AudioOffload, false))
+        return p
+    }
+
+    private fun isNextItemGapless(): Boolean {
+        val current = player.currentMediaItem?.mediaMetadata ?: return false
+        val nextIndex = player.nextMediaItemIndex
+        if (nextIndex == androidx.media3.common.C.INDEX_UNSET || nextIndex >= player.mediaItemCount) return false
+        val next = player.getMediaItemAt(nextIndex).mediaMetadata
+        val currentAlbum = current.albumTitle?.toString()?.trim()
+        val nextAlbum = next.albumTitle?.toString()?.trim()
+        return !currentAlbum.isNullOrBlank() && currentAlbum.equals(nextAlbum, ignoreCase = true)
+    }
+
+    fun scheduleCrossfade() {
+        crossfadeTriggerJob?.cancel()
+        crossfadeTriggerJob = null
+        if (!crossfadeEnabled || player.duration == androidx.media3.common.C.TIME_UNSET || player.duration <= crossfadeDuration) return
+        if (crossfadeGapless && isNextItemGapless()) {
+            Log.d("PlaybackService", "Crossfade bypassed: next track is from same gapless album (${player.currentMediaItem?.mediaMetadata?.albumTitle})")
+            return
+        }
+        if (!player.hasNextMediaItem() && player.repeatMode != Player.REPEAT_MODE_ONE) return
+
+        val triggerTime = player.duration - crossfadeDuration.toLong()
+        val delayMs = triggerTime - player.currentPosition
+        if (delayMs <= 0) return
+
+        val targetMediaId = player.currentMediaItem?.mediaId
+
+        crossfadeTriggerJob = serviceScope.launch(Dispatchers.Main) {
+            delay(delayMs)
+            if (isActive && player.isPlaying && player.currentMediaItem?.mediaId == targetMediaId && sleepTimer.isActive != true) {
+                startCrossfade(CrossfadeTrigger.AUTO)
+            }
+        }
+    }
+
+    private enum class CrossfadeTrigger {
+        AUTO,
+        MANUAL_NEXT,
+        MANUAL_PREVIOUS
+    }
+
+    private fun startCrossfade(trigger: CrossfadeTrigger = CrossfadeTrigger.AUTO) {
+        if (isCrossfading || secondaryPlayer != null) return
+
+        val targetIndex = when {
+            trigger == CrossfadeTrigger.MANUAL_PREVIOUS -> {
+                if (!player.hasPreviousMediaItem()) return
+                player.previousMediaItemIndex
+            }
+            trigger == CrossfadeTrigger.AUTO && player.repeatMode == Player.REPEAT_MODE_ONE -> {
+                player.currentMediaItemIndex
+            }
+            else -> player.nextMediaItemIndex
+        }
+        if (targetIndex == androidx.media3.common.C.INDEX_UNSET || targetIndex < 0 || targetIndex >= player.mediaItemCount) return
+
+        val secPlayer = createExoPlayer()
+        secondaryPlayer = secPlayer
+
+        val itemCount = player.mediaItemCount
+        val items = mutableListOf<MediaItem>()
+        for (i in 0 until itemCount) {
+            items.add(player.getMediaItemAt(i))
+        }
+
+        secPlayer.setMediaItems(items)
+        secPlayer.seekTo(targetIndex, 0L)
+        secPlayer.volume = 0f
+        secPlayer.repeatMode = player.repeatMode
+        secPlayer.shuffleModeEnabled = player.shuffleModeEnabled
+
+        secPlayer.prepare()
+        secPlayer.playWhenReady = true
+
+        performCrossfadeSwap()
+    }
+
+    private fun performCrossfadeSwap() {
+        isCrossfading = true
+        val nextPlayer = secondaryPlayer ?: return
+        val currentPlayer = player
+
+        fadingPlayer = currentPlayer
+        fadingAudioProcessor = secondaryAudioProcessor
+        player = nextPlayer
+        secondaryPlayer = null
+
+        fadingPlayer?.removeListener(servicePlayerListener)
+        fadingPlayer?.removeListener(sleepTimer)
+
+        // Add listener to sync play/pause state
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isCrossfading && fadingPlayer != null) {
+                    if (isPlaying) {
+                        fadingPlayer?.play()
+                    } else {
+                        fadingPlayer?.pause()
+                    }
+                } else {
+                    player.removeListener(this)
+                }
+            }
+        })
+
+        nextPlayer.addListener(servicePlayerListener)
+        nextPlayer.addListener(sleepTimer)
+        sleepTimer.player = player
+
+        try {
+            mediaLibrarySession?.player = player
+        } catch (e: Exception) {
+            Log.e("PlaybackService", "Failed to swap player in MediaLibrarySession", e)
+        }
+
+        crossfadeJob?.cancel()
+        crossfadeJob = serviceScope.launch(Dispatchers.Main) {
+            val duration = crossfadeDuration.toLong().coerceAtLeast(500L)
+            val steps = 25
+            val stepTime = duration / steps
+            val startVolume = try { fadingPlayer?.volume ?: 1f } catch (e: Exception) { 1f }
+
+            // Wait until new player is actually producing audio before fading out old track
+            var waitCount = 0
+            while (!player.isPlaying && isActive && waitCount < 100) {
+                delay(100)
+                waitCount++
+            }
+
+            for (i in 0..steps) {
+                if (!isActive) break
+                while (!player.isPlaying && isActive) {
+                    delay(100)
+                }
+
+                val progress = i / steps.toFloat()
+                val fadeIn = crossfadeCurve.fadeIn(progress)
+                val fadeOut = crossfadeCurve.fadeOut(progress)
+
+                try {
+                    player.volume = (startVolume * fadeIn).coerceIn(0f, 1f)
+                    fadingPlayer?.volume = (startVolume * fadeOut).coerceIn(0f, 1f)
+                } catch (e: Exception) {
+                    break
+                }
+                delay(stepTime)
+            }
+
+            try {
+                fadingPlayer?.volume = 0f
+                player.volume = startVolume
+                cleanupCrossfade()
+            } catch (e: Exception) {
+                cleanupCrossfade()
+            }
+        }
+    }
+
+    private fun cleanupCrossfade() {
+        fadingAudioProcessor?.let {
+            com.vibevault.app.player.audio.AudioEffectManager.removeAudioProcessor(it)
+        }
+        fadingAudioProcessor = null
+        fadingPlayer?.stop()
+        fadingPlayer?.clearMediaItems()
+        fadingPlayer?.release()
+        fadingPlayer = null
+        isCrossfading = false
+        Log.d("PlaybackService", "Crossfade completed successfully")
+    }
+
+    fun manualSkipNextWithCrossfade(): Boolean {
+        if (!crossfadeEnabled || !crossfadeManualSkipEnabled) return false
+        if (isCrossfading) return false
+        if (!player.isPlaying) return false
+        if (!player.hasNextMediaItem()) return false
+        if (player.duration == androidx.media3.common.C.TIME_UNSET) return false
+        if (crossfadeGapless && isNextItemGapless()) return false
+
+        crossfadeTriggerJob?.cancel()
+        crossfadeTriggerJob = null
+        startCrossfade(CrossfadeTrigger.MANUAL_NEXT)
+        return isCrossfading
+    }
+
+    fun manualSkipToPreviousWithCrossfade(): Boolean {
+        if (!crossfadeEnabled || !crossfadeManualSkipEnabled) return false
+        if (isCrossfading) return false
+        if (!player.isPlaying) return false
+        if (!player.hasPreviousMediaItem()) return false
+        if (player.duration == androidx.media3.common.C.TIME_UNSET) return false
+
+        crossfadeTriggerJob?.cancel()
+        crossfadeTriggerJob = null
+        startCrossfade(CrossfadeTrigger.MANUAL_PREVIOUS)
+        return isCrossfading
+    }
+
+    fun manualSkipToNextWithCrossfade(): Boolean = manualSkipNextWithCrossfade()
+
+    fun manualSeekToIndexWithCrossfade(targetIndex: Int): Boolean {
+        if (!crossfadeEnabled || !crossfadeManualSkipEnabled) return false
+        if (isCrossfading) return false
+        if (targetIndex < 0 || targetIndex >= player.mediaItemCount) return false
+        if (targetIndex == player.currentMediaItemIndex) return false
+        if (player.duration == androidx.media3.common.C.TIME_UNSET) return false
+        if (!player.isPlaying) return false
+
+        crossfadeTriggerJob?.cancel()
+        crossfadeTriggerJob = null
+        startCrossfadeToIndex(targetIndex)
+        return isCrossfading
+    }
+
+    private fun startCrossfadeToIndex(targetIndex: Int) {
+        if (isCrossfading || secondaryPlayer != null) return
+        if (targetIndex < 0 || targetIndex >= player.mediaItemCount) return
+
+        val secPlayer = createExoPlayer()
+        secondaryPlayer = secPlayer
+
+        val itemCount = player.mediaItemCount
+        val items = mutableListOf<MediaItem>()
+        for (i in 0 until itemCount) {
+            items.add(player.getMediaItemAt(i))
+        }
+
+        secPlayer.setMediaItems(items)
+        secPlayer.seekTo(targetIndex, 0L)
+        secPlayer.volume = 0f
+        secPlayer.repeatMode = player.repeatMode
+        secPlayer.shuffleModeEnabled = player.shuffleModeEnabled
+
+        secPlayer.prepare()
+        secPlayer.playWhenReady = true
+
+        performCrossfadeSwap()
+    }
+
+    private val servicePlayerListener = object : Player.Listener {
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            Log.e("PlaybackService", "[ExoPlayerError] code=${error.errorCode} (${error.errorCodeName}): ${error.message}", error)
+            com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+            handlePlaybackError(error)
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            val stateName = when (playbackState) {
+                Player.STATE_IDLE -> "STATE_IDLE"
+                Player.STATE_BUFFERING -> "STATE_BUFFERING"
+                Player.STATE_READY -> "STATE_READY"
+                Player.STATE_ENDED -> "STATE_ENDED"
+                else -> "UNKNOWN($playbackState)"
+            }
+            Log.d("PlaybackService", "[PlaybackState] state=$stateName, playWhenReady=${player.playWhenReady}, item=${player.currentMediaItem?.mediaId}")
+
+            if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
+                com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+            }
+
+            if (playbackState == Player.STATE_READY) {
+                scheduleCrossfade()
+                val sessionId = (player as? androidx.media3.exoplayer.ExoPlayer)?.audioSessionId ?: 0
+                if (sessionId > 0) {
+                    com.vibevault.app.player.audio.AudioEffectManager.attachAudioSession(this@PlaybackService, sessionId)
+                    setupLoudnessEnhancer()
+                }
+            }
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (playWhenReady) {
+                requestAudioFocus()
+                scheduleCrossfade()
+            }
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                scheduleCrossfade()
+            }
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            Log.d("PlaybackService", "[IsPlaying] isPlaying=$isPlaying")
+            if (!isPlaying) {
+                com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+            } else {
+                scheduleCrossfade()
+            }
+        }
+
+        override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) {
+            super.onDeviceVolumeChanged(volume, muted)
+            val pauseOnMute = dataStore.get(PauseOnMute, false)
+
+            if ((volume == 0 || muted) && pauseOnMute) {
+                if (player.isPlaying) {
+                    wasPlayingBeforeVolumeMute = true
+                    isPausedByVolumeMute = true
+                    player.pause()
+                }
+            } else if (volume > 0 && !muted && pauseOnMute) {
+                if (wasPlayingBeforeVolumeMute && !player.isPlaying) {
+                    wasPlayingBeforeVolumeMute = false
+                    isPausedByVolumeMute = false
+                    player.play()
+                }
+            }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            scheduleCrossfade()
+            if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
+                player.mediaItemCount - player.currentMediaItemIndex <= 5
+            ) {
+                queueManager.fetchNextPage()
+            }
+        }
+    }
+
+    private val audioDeviceCallback = object : android.media.AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
+            super.onAudioDevicesAdded(addedDevices)
+            val hasBluetooth = addedDevices?.any {
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            } == true
+
+            if (hasBluetooth) {
+                if (dataStore.get(ResumeOnBluetoothConnectKey, false)) {
+                    serviceScope.launch(Dispatchers.Main) {
+                        if (player.playbackState == Player.STATE_READY && !player.isPlaying) {
+                            player.play()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun setupLoudnessEnhancer() {
+        val audioSessionId = player.audioSessionId
+        if (audioSessionId == androidx.media3.common.C.AUDIO_SESSION_ID_UNSET || audioSessionId <= 0) {
+            return
+        }
+
+        if (loudnessEnhancer == null) {
+            try {
+                loudnessEnhancer = android.media.audiofx.LoudnessEnhancer(audioSessionId)
+            } catch (e: Exception) {
+                Log.e("PlaybackService", "Failed to create LoudnessEnhancer", e)
+                loudnessEnhancer = null
+                return
+            }
+        }
+
+        val normalizeAudio = dataStore.get(AudioNormalizationKey, true)
+        try {
+            if (normalizeAudio) {
+                loudnessEnhancer?.setTargetGain(300)
+                loudnessEnhancer?.enabled = true
+            } else {
+                loudnessEnhancer?.enabled = false
+            }
+        } catch (e: Exception) {
+            Log.e("PlaybackService", "Failed to apply LoudnessEnhancer setting", e)
+        }
+    }
+
+    private fun releaseLoudnessEnhancer() {
+        try {
+            loudnessEnhancer?.release()
+        } catch (e: Exception) {}
+        loudnessEnhancer = null
+    }
 
     companion object {
         var instance: PlaybackService? = null
@@ -116,50 +696,149 @@ class PlaybackService : MediaLibraryService() {
         com.vibevault.app.player.audio.AudioEffectManager.init(this)
         Log.d("PlaybackService", "onCreate called — initializing fresh ExoPlayer and MediaLibrarySession")
 
-        player.addListener(object : Player.Listener {
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.e("PlaybackService", "[ExoPlayerError] code=${error.errorCode} (${error.errorCodeName}): ${error.message}", error)
-                com.vibevault.app.data.stats.ListeningRecorder.onStopped()
-                handlePlaybackError(error)
+        audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+        setupAudioFocusRequest()
+        audioManager?.registerAudioDeviceCallback(audioDeviceCallback, null)
+
+        serviceScope.launch(Dispatchers.Main) {
+            dataStore.data.map { it[SkipSilenceKey] ?: false }
+                .distinctUntilChanged()
+                .collect { skipSilence ->
+                    player.skipSilenceEnabled = skipSilence
+                }
+        }
+
+        serviceScope.launch(Dispatchers.Main) {
+            dataStore.data.map { it[AudioNormalizationKey] ?: true }
+                .distinctUntilChanged()
+                .collect {
+                    setupLoudnessEnhancer()
+                }
+        }
+
+        serviceScope.launch(Dispatchers.Main) {
+            combine(
+                dataStore.data.map { it[CrossfadeEnabledKey] ?: false },
+                dataStore.data.map { it[CrossfadeDurationKey] ?: 5f },
+                dataStore.data.map { it[CrossfadeGaplessKey] ?: true },
+                dataStore.data.map { it[CrossfadeManualSkipKey] ?: true },
+                dataStore.data.map { it[CrossfadeCurveKey] ?: CrossfadeCurve.EQUAL_POWER.name }
+            ) { enabled, duration, gapless, manualSkip, curveName ->
+                crossfadeEnabled = enabled
+                crossfadeDuration = duration * 1000f
+                crossfadeGapless = gapless
+                crossfadeManualSkipEnabled = manualSkip
+                crossfadeCurve = try {
+                    CrossfadeCurve.valueOf(curveName)
+                } catch (_: Exception) {
+                    CrossfadeCurve.EASE_OUT_QUAD
+                }
+                if (enabled) {
+                    player.setOffloadEnabled(false)
+                    secondaryPlayer?.setOffloadEnabled(false)
+                }
+                scheduleCrossfade()
+            }.collectLatest { }
+        }
+
+        serviceScope.launch(Dispatchers.Main) {
+            combine(
+                dataStore.data.map { it[AudioOffload] ?: false },
+                dataStore.data.map { it[CrossfadeEnabledKey] ?: false }
+            ) { offload, crossfade ->
+                if (crossfade) false else offload
+            }.distinctUntilChanged().collect { offload ->
+                player.setOffloadEnabled(offload)
+                secondaryPlayer?.setOffloadEnabled(offload)
             }
+        }
 
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                val stateName = when (playbackState) {
-                    Player.STATE_IDLE -> "STATE_IDLE"
-                    Player.STATE_BUFFERING -> "STATE_BUFFERING"
-                    Player.STATE_READY -> "STATE_READY"
-                    Player.STATE_ENDED -> "STATE_ENDED"
-                    else -> "UNKNOWN($playbackState)"
+        // SponsorBlock automatic segment skipping flow
+        var sponsorBlockJob: Job? = null
+        serviceScope.launch(Dispatchers.Main) {
+            combine(
+                queueManager.currentTrack,
+                dataStore.data.map { prefs ->
+                    SponsorBlockConfig(
+                        enabled = prefs[EnableSponsorBlockKey] ?: false,
+                        serverUrl = prefs[SponsorBlockServerUrlKey] ?: "https://sponsor.ajay.app",
+                        skipNonMusic = prefs[SponsorBlockSkipNonMusicKey] ?: true,
+                        skipSponsor = prefs[SponsorBlockSkipSponsorKey] ?: true,
+                        skipSelfPromo = prefs[SponsorBlockSkipSelfPromoKey] ?: true,
+                        skipInteraction = prefs[SponsorBlockSkipInteractionKey] ?: true,
+                        skipIntroOutro = prefs[SponsorBlockSkipIntroOutroKey] ?: true,
+                        skipPreviewFiller = prefs[SponsorBlockSkipPreviewFillerKey] ?: false,
+                        showToast = prefs[SponsorBlockShowToastKey] ?: true
+                    )
+                }.distinctUntilChanged()
+            ) { track, config ->
+                track to config
+            }.collectLatest { (track, config) ->
+                sponsorBlockJob?.cancel()
+                sponsorBlockJob = null
+
+                if (!config.enabled || track == null || track.id.isBlank()) {
+                    return@collectLatest
                 }
-                Log.d("PlaybackService", "[PlaybackState] state=$stateName, playWhenReady=${player.playWhenReady}, item=${player.currentMediaItem?.mediaId}")
 
-                if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
-                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                val categories = mutableListOf<String>()
+                if (config.skipNonMusic) categories.add("music_offtopic")
+                if (config.skipSponsor) categories.add("sponsor")
+                if (config.skipSelfPromo) categories.add("selfpromo")
+                if (config.skipInteraction) categories.add("interaction")
+                if (config.skipIntroOutro) {
+                    categories.add("intro")
+                    categories.add("outro")
+                }
+                if (config.skipPreviewFiller) {
+                    categories.add("preview")
+                    categories.add("filler")
                 }
 
-                if (playbackState == Player.STATE_READY) {
-                    val sessionId = (player as? androidx.media3.exoplayer.ExoPlayer)?.audioSessionId ?: 0
-                    if (sessionId > 0) {
-                        com.vibevault.app.player.audio.AudioEffectManager.attachAudioSession(this@PlaybackService, sessionId)
+                if (categories.isEmpty()) {
+                    return@collectLatest
+                }
+
+                val segments = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    SponsorBlockApi.getSkipSegments(track.id, categories, config.serverUrl)
+                        .getOrDefault(emptyList())
+                }
+
+                if (segments.isNotEmpty()) {
+                    sponsorBlockJob = serviceScope.launch(Dispatchers.Main) {
+                        val skippedUuids = mutableSetOf<String>()
+                        while (isActive) {
+                            if (player.isPlaying) {
+                                val currentPos = player.currentPosition
+                                val segmentToSkip = segments.find { segment ->
+                                    currentPos >= segment.startMs && currentPos < (segment.endMs - 300) && !skippedUuids.contains(segment.uuid)
+                                }
+
+                                if (segmentToSkip != null) {
+                                    skippedUuids.add(segmentToSkip.uuid)
+                                    player.seekTo(segmentToSkip.endMs)
+                                    if (config.showToast) {
+                                        val messageRes = when (segmentToSkip.category) {
+                                            "music_offtopic" -> R.string.sponsorblock_skipped_non_music
+                                            "sponsor" -> R.string.sponsorblock_skipped_sponsor
+                                            "selfpromo" -> R.string.sponsorblock_skipped_selfpromo
+                                            "interaction" -> R.string.sponsorblock_skipped_interaction
+                                            "intro" -> R.string.sponsorblock_skipped_intro
+                                            "outro" -> R.string.sponsorblock_skipped_outro
+                                            else -> R.string.sponsorblock_skipped_segment
+                                        }
+                                        android.widget.Toast.makeText(this@PlaybackService, getString(messageRes), android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            delay(250)
+                        }
                     }
                 }
             }
+        }
 
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                Log.d("PlaybackService", "[IsPlaying] isPlaying=$isPlaying")
-                if (!isPlaying) {
-                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
-                }
-            }
-
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
-                    player.mediaItemCount - player.currentMediaItemIndex <= 5
-                ) {
-                    queueManager.fetchNextPage()
-                }
-            }
-        })
+        player.addListener(servicePlayerListener)
 
         sleepTimer = com.vibevault.app.player.SleepTimer(CoroutineScope(Dispatchers.Main), player)
         player.addListener(sleepTimer)
@@ -449,14 +1128,18 @@ class PlaybackService : MediaLibraryService() {
                     Player.COMMAND_SEEK_TO_NEXT,
                     Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
                         serviceScope.launch(Dispatchers.Main) {
-                            queueManager.next()
+                            if (!manualSkipNextWithCrossfade()) {
+                                queueManager.next()
+                            }
                         }
                         return 0
                     }
                     Player.COMMAND_SEEK_TO_PREVIOUS,
                     Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
                         serviceScope.launch(Dispatchers.Main) {
-                            queueManager.previous()
+                            if (!manualSkipToPreviousWithCrossfade()) {
+                                queueManager.previous()
+                            }
                         }
                         return 0
                     }
@@ -496,7 +1179,12 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
+        val stopMusicOnTaskClear = dataStore.get(StopMusicOnTaskClearKey, false)
+        if (stopMusicOnTaskClear) {
+            player.stop()
+            stopSelf()
+            return
+        }
         val p = mediaLibrarySession?.player
         if (p == null || !p.playWhenReady || p.mediaItemCount == 0) {
             stopSelf()
@@ -504,6 +1192,9 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        abandonAudioFocus()
+        audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
+        releaseLoudnessEnhancer()
         if (::sleepTimer.isInitialized) {
             player.removeListener(sleepTimer)
             sleepTimer.clear()
@@ -546,9 +1237,14 @@ class PlaybackService : MediaLibraryService() {
         val mediaId = mediaItem.mediaId.ifBlank { return }
 
         val retries = retryCounts.getOrDefault(mediaId, 0)
-        if (retries >= 3) {
-            Log.w("PlaybackService", "Max retries (3) reached for $mediaId — letting queue proceed.")
+        val autoSkip = dataStore.get(AutoSkipNextOnErrorKey, false)
+
+        if (retries >= 3 || autoSkip) {
+            Log.w("PlaybackService", "Max retries reached or autoSkipNextOnError enabled for $mediaId — advancing to next track.")
             retryCounts.remove(mediaId)
+            serviceScope.launch(Dispatchers.Main) {
+                queueManager.next()
+            }
             return
         }
 

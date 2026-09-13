@@ -234,12 +234,17 @@ private fun getTabIndexForFilter(filter: YouTube.SearchFilter?): Int {
 }
 
 private fun SongItem.toTrack(): Track {
+    val isVideoItem = this.isVideoSong
     return Track(
         id = this.id,
         title = this.title,
         artist = this.artists.joinToString(", ") { it.name },
-        album = this.album?.name ?: "",
+        album = if (isVideoItem) "" else (this.album?.name ?: ""),
         durationMs = (this.duration ?: 0) * 1000L,
-        albumImageUrl = this.thumbnail
+        albumImageUrl = this.thumbnail,
+        source = "youtube",
+        albumId = if (isVideoItem) null else this.album?.id,
+        artistId = this.artists.firstOrNull()?.id,
+        isVideo = isVideoItem
     )
 }

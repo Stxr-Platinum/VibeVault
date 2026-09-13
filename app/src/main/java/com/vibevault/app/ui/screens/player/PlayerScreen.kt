@@ -1,6 +1,12 @@
 package com.vibevault.app.ui.screens.player
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -122,6 +128,7 @@ fun PlayerScreen(
     val (useNewPlayerDesign) = rememberPreference(UseNewPlayerDesignKey, defaultValue = true)
     val (useMinimalisticPlayerDesign) = rememberPreference(UseMinimalisticPlayerDesignKey, defaultValue = false)
     val (sliderStyle) = rememberEnumPreference(SliderStyleKey, SliderStyle.WAVY)
+    val (squigglySlider) = rememberPreference(SquigglySliderKey, defaultValue = false)
     val (playerBackground) = rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.LIVE_MESH)
 
     val fallbackColor = com.vibevault.app.ui.theme.LocalSolidColorScheme.current.surfaceContainer.toArgb()
@@ -860,6 +867,20 @@ fun PlayerScreen(
                             )
                         }
                         SliderStyle.SLIM -> {
+                            val trackInteractionSource = remember { MutableInteractionSource() }
+                            val isTrackDragged by trackInteractionSource.collectIsDraggedAsState()
+                            val isTrackPressed by trackInteractionSource.collectIsPressedAsState()
+                            val isTrackActive = (isTrackDragged || isTrackPressed) && !useNewPlayerDesign
+
+                            val trackHeight by animateDpAsState(
+                                targetValue = if (isTrackActive) 16.dp else 10.dp,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ),
+                                label = "trackHeight"
+                            )
+
                             Slider(
                                 value = displayPosition.coerceIn(0f, safeDuration),
                                 onValueChange = { 
@@ -871,33 +892,61 @@ fun PlayerScreen(
                                     viewModel.seekTo(dragPosition.toLong())
                                 },
                                 valueRange = 0f..safeDuration,
+                                interactionSource = trackInteractionSource,
                                 thumb = { Spacer(modifier = Modifier.size(0.dp)) },
-                                colors = SliderDefaults.colors(
-                                    thumbColor = activeSliderColor,
-                                    activeTrackColor = activeSliderColor,
-                                    inactiveTrackColor = inactiveSliderColor
-                                )
+                                track = { sliderState ->
+                                    com.vibevault.app.ui.components.PlayerSliderTrack(
+                                        sliderState = sliderState,
+                                        trackHeight = trackHeight,
+                                        colors = com.vibevault.app.ui.theme.PlayerSliderColors.getSliderColors(
+                                            activeColor = activeSliderColor,
+                                            playerBackground = playerBackground,
+                                            useDarkTheme = true
+                                        )
+                                    )
+                                }
                             )
                         }
                         SliderStyle.WAVY -> {
-                            com.vibevault.app.ui.components.WavySlider(
-                                value = displayPosition.coerceIn(0f, safeDuration),
-                                onValueChange = { 
-                                    isDragging = true
-                                    dragPosition = it
-                                },
-                                onValueChangeFinished = {
-                                    isDragging = false
-                                    viewModel.seekTo(dragPosition.toLong())
-                                },
-                                valueRange = 0f..safeDuration,
-                                isPlaying = isPlaying,
-                                colors = com.vibevault.app.ui.theme.PlayerSliderColors.getSliderColors(
-                                    activeColor = activeSliderColor,
-                                    playerBackground = playerBackground,
-                                    useDarkTheme = true
+                            if (squigglySlider) {
+                                com.vibevault.app.ui.components.SquigglySlider(
+                                    value = displayPosition.coerceIn(0f, safeDuration),
+                                    onValueChange = { 
+                                        isDragging = true
+                                        dragPosition = it
+                                    },
+                                    onValueChangeFinished = {
+                                        isDragging = false
+                                        viewModel.seekTo(dragPosition.toLong())
+                                    },
+                                    valueRange = 0f..safeDuration,
+                                    isPlaying = isPlaying,
+                                    colors = com.vibevault.app.ui.theme.PlayerSliderColors.getSliderColors(
+                                        activeColor = activeSliderColor,
+                                        playerBackground = playerBackground,
+                                        useDarkTheme = true
+                                    )
                                 )
-                            )
+                            } else {
+                                com.vibevault.app.ui.components.WavySlider(
+                                    value = displayPosition.coerceIn(0f, safeDuration),
+                                    onValueChange = { 
+                                        isDragging = true
+                                        dragPosition = it
+                                    },
+                                    onValueChangeFinished = {
+                                        isDragging = false
+                                        viewModel.seekTo(dragPosition.toLong())
+                                    },
+                                    valueRange = 0f..safeDuration,
+                                    isPlaying = isPlaying,
+                                    colors = com.vibevault.app.ui.theme.PlayerSliderColors.getSliderColors(
+                                        activeColor = activeSliderColor,
+                                        playerBackground = playerBackground,
+                                        useDarkTheme = true
+                                    )
+                                )
+                            }
                         }
                     }
                 }
@@ -1560,8 +1609,7 @@ fun PlayerScreen(
             currentIndex = currentIndex,
             onDismiss = { showQueueSheet = false },
             onTrackClick = { clickedTrack ->
-                val idx = queue.indexOf(clickedTrack)
-                if (idx >= 0) viewModel.loadQueue(queue, idx)
+                viewModel.playTrackFromQueue(clickedTrack)
             },
             onRemoveTrack = { index ->
                 viewModel.removeTrackAt(index)

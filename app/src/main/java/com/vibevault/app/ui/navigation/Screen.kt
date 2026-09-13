@@ -49,6 +49,7 @@ sealed class Screen(
     data object Settings : Screen("settings", "Settings")
     data object AppearanceSettings : Screen("settings/appearance", "Appearance")
     data object PlayerSettings : Screen("settings/player", "Player & Audio")
+    data object SponsorBlockSettings : Screen("settings/player/sponsorblock", "SponsorBlock")
     data object ContentSettings : Screen("settings/content", "Content")
     data object ThemeSettings : Screen("settings/appearance/theme", "Theme")
     data object ListenTogetherSettings : Screen("settings/listen_together", "Listen Together Settings")

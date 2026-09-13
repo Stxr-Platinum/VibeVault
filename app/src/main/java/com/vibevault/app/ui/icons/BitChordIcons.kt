@@ -37,6 +37,27 @@ object BitChordIcons {
         }.build()
     }
 
+    val Search: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_search",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(4.6f, 11f)
+                arcToRelative(6.4f, 6.4f, 0f, isMoreThanHalf = true, isPositiveArc = true, 12.8f, 0f)
+                arcToRelative(6.4f, 6.4f, 0f, isMoreThanHalf = true, isPositiveArc = true, -12.8f, 0f)
+                moveTo(15.9f, 15.9f)
+                lineTo(20.4f, 20.4f)
+            }
+        }.build()
+    }
+
     val Shuffle: ImageVector by lazy {
         ImageVector.Builder(
             name = "bc_shuffle",

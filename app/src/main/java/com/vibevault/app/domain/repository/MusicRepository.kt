@@ -105,4 +105,7 @@ interface MusicRepository {
 
     /** Cache Spotify playlist metadata and tracks into local Room DB for offline/DHU resilience. */
     suspend fun cacheSpotifyPlaylist(playlistId: String, title: String, coverUrl: String?, tracks: List<Track>)
+
+    /** Resolve exact track links (albumId, albumName, artistId, isVideo) from YouTube watch queue. */
+    suspend fun resolveTrackLinks(trackId: String): Result<Track>
 }

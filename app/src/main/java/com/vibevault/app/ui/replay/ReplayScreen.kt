@@ -24,12 +24,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import com.vibevault.app.ui.components.FrostedTopBar
+import com.vibevault.app.ui.components.TopFadeBlur
+import com.vibevault.app.ui.components.topBarHeight
+import com.vibevault.app.ui.components.topBarContentPadding
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +79,7 @@ fun ReplayScreen(
     onShare: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
 ) {
     val summary = state.summary
@@ -78,27 +90,43 @@ fun ReplayScreen(
     val topAlbums = "Top albums"
     val topGenres = "Top genres"
 
+    val replayHaze = remember { HazeState() }
+    val replayScrolled by remember(listState) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 ||
+                listState.firstVisibleItemScrollOffset > 24
+        }
+    }
+
     Box(modifier.fillMaxSize()) {
-        MeshGradientBackground(palette = palette, trackKey = leadArtwork, animated = false)
         Box(
             Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Black.copy(alpha = 0.30f),
-                            Color.Black.copy(alpha = 0.72f),
-                            Color.Black.copy(alpha = 0.88f),
+                .hazeSource(replayHaze)
+        ) {
+            MeshGradientBackground(palette = palette, trackKey = leadArtwork, animated = false)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = 0.30f),
+                                Color.Black.copy(alpha = 0.72f),
+                                Color.Black.copy(alpha = 0.88f),
+                            ),
                         ),
                     ),
-                ),
-        )
+            )
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
-        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = topBarHeight() + 4.dp,
+                    bottom = contentPadding.calculateBottomPadding()
+                ),
+            ) {
             item("heading") { Heading(state, onPeriodChange) }
 
             when {
@@ -176,6 +204,30 @@ fun ReplayScreen(
             }
         }
     }
+
+        TopFadeBlur(
+            hazeState = replayHaze,
+            pageColor = Color.Black,
+            scrimColor = Color.Black,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FrostedTopBar(
+            title = "Replay",
+            scrolled = replayScrolled,
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = onShare) {
+                    Icon(
+                        Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = Color.White
+                    )
+                }
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+    }
 }
 
 // ── Heading ─────────────────────────────────────────────────────────────────
@@ -183,7 +235,7 @@ fun ReplayScreen(
 @Composable
 private fun Heading(state: ReplayState, onPeriodChange: (ReplayPeriod) -> Unit) {
     Column(Modifier.padding(horizontal = PAGE_GUTTER + 10.dp)) {
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = "Replay",
             style = MaterialTheme.typography.displayLarge,

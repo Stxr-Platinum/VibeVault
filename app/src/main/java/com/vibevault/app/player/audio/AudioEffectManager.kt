@@ -31,8 +31,45 @@ object AudioEffectManager {
 
     private var prefs: SharedPreferences? = null
 
-    // ── Direct ExoPlayer AudioProcessor (100% Reliable PCM DSP) ──
-    val audioProcessor = CustomEqualizerAudioProcessor()
+    // ── Multi-Instance ExoPlayer AudioProcessor Support (Dual-Player Crossfade) ──
+    private val activeProcessors = java.util.concurrent.CopyOnWriteArrayList<CustomEqualizerAudioProcessor>()
+
+    val audioProcessor: CustomEqualizerAudioProcessor by lazy { createAudioProcessor() }
+
+    fun createAudioProcessor(): CustomEqualizerAudioProcessor {
+        val p = CustomEqualizerAudioProcessor()
+        syncProcessor(p)
+        activeProcessors.add(p)
+        Log.d(TAG, "Audio processor created. Active count: ${activeProcessors.size}")
+        return p
+    }
+
+    fun removeAudioProcessor(processor: CustomEqualizerAudioProcessor) {
+        activeProcessors.remove(processor)
+        Log.d(TAG, "Audio processor removed. Active count: ${activeProcessors.size}")
+    }
+
+    private fun syncProcessor(p: CustomEqualizerAudioProcessor) {
+        p.setEqEnabled(_eqEnabled.value)
+        p.setToneEnabled(_toneEnabled.value)
+        p.setLimiterEnabled(_limiterEnabled.value)
+        p.setPreamp(_preampGain.value)
+        p.setBandGains(_bandGains.value)
+        p.setBassLevel(_bassLevel.value)
+        p.setTrebleLevel(_trebleLevel.value)
+        p.setBalance(_balance.value)
+        p.setMono(_isMono.value)
+        p.setVolume(_volumeLevel.value)
+
+        p.setReverbEnabled(_reverbEnabled.value)
+        p.setReverbSize(_reverbSize.value)
+        p.setReverbDamp(_reverbDamp.value)
+        p.setReverbFilter(_reverbFilter.value)
+        p.setReverbFade(_reverbFade.value)
+        p.setReverbPreDelay(_reverbPreDelay.value)
+        p.setReverbPreDelayMix(_reverbPreDelayMix.value)
+        p.setReverbMix(_reverbMix.value)
+    }
 
     // ── Optional Spatial Effects ─────────────────────────────────
     private var virtualizer: Virtualizer? = null
@@ -150,26 +187,8 @@ object AudioEffectManager {
         }
         _bandGains.value = gains
 
-        // Synchronize with audio processor immediately
-        audioProcessor.setEqEnabled(_eqEnabled.value)
-        audioProcessor.setToneEnabled(_toneEnabled.value)
-        audioProcessor.setLimiterEnabled(_limiterEnabled.value)
-        audioProcessor.setPreamp(_preampGain.value)
-        audioProcessor.setBandGains(gains)
-        audioProcessor.setBassLevel(_bassLevel.value)
-        audioProcessor.setTrebleLevel(_trebleLevel.value)
-        audioProcessor.setBalance(_balance.value)
-        audioProcessor.setMono(_isMono.value)
-        audioProcessor.setVolume(_volumeLevel.value)
-
-        audioProcessor.setReverbEnabled(_reverbEnabled.value)
-        audioProcessor.setReverbSize(_reverbSize.value)
-        audioProcessor.setReverbDamp(_reverbDamp.value)
-        audioProcessor.setReverbFilter(_reverbFilter.value)
-        audioProcessor.setReverbFade(_reverbFade.value)
-        audioProcessor.setReverbPreDelay(_reverbPreDelay.value)
-        audioProcessor.setReverbPreDelayMix(_reverbPreDelayMix.value)
-        audioProcessor.setReverbMix(_reverbMix.value)
+        // Synchronize with all audio processors immediately
+        activeProcessors.forEach { syncProcessor(it) }
     }
 
     @Synchronized
@@ -222,25 +241,25 @@ object AudioEffectManager {
     fun setEqEnabled(enabled: Boolean) {
         _eqEnabled.value = enabled
         prefs?.edit()?.putBoolean("eq_enabled", enabled)?.apply()
-        audioProcessor.setEqEnabled(enabled)
+        activeProcessors.forEach { it.setEqEnabled(enabled) }
     }
 
     fun setToneEnabled(enabled: Boolean) {
         _toneEnabled.value = enabled
         prefs?.edit()?.putBoolean("tone_enabled", enabled)?.apply()
-        audioProcessor.setToneEnabled(enabled)
+        activeProcessors.forEach { it.setToneEnabled(enabled) }
     }
 
     fun setLimiterEnabled(enabled: Boolean) {
         _limiterEnabled.value = enabled
         prefs?.edit()?.putBoolean("limiter_enabled", enabled)?.apply()
-        audioProcessor.setLimiterEnabled(enabled)
+        activeProcessors.forEach { it.setLimiterEnabled(enabled) }
     }
 
     fun setPreampGain(gain: Float) {
         _preampGain.value = gain
         prefs?.edit()?.putFloat("preamp_gain", gain)?.apply()
-        audioProcessor.setPreamp(gain)
+        activeProcessors.forEach { it.setPreamp(gain) }
     }
 
     fun setBandGain(index: Int, gain: Float) {
@@ -250,7 +269,7 @@ object AudioEffectManager {
             _bandGains.value = list
             _currentPreset.value = "Custom"
             prefs?.edit()?.putFloat("band_$index", gain)?.putString("preset_name", "Custom")?.apply()
-            audioProcessor.setBandGains(list)
+            activeProcessors.forEach { it.setBandGains(list) }
         }
     }
 
@@ -259,7 +278,7 @@ object AudioEffectManager {
         val editor = prefs?.edit()
         gains.forEachIndexed { i, g -> editor?.putFloat("band_$i", g) }
         editor?.apply()
-        audioProcessor.setBandGains(gains)
+        activeProcessors.forEach { it.setBandGains(gains) }
     }
 
     fun setPreset(name: String, gains: List<Float>) {
@@ -271,27 +290,29 @@ object AudioEffectManager {
         editor?.putString("preset_name", name)?.putBoolean("eq_enabled", true)
         gains.forEachIndexed { i, g -> editor?.putFloat("band_$i", g) }
         editor?.apply()
-        audioProcessor.setEqEnabled(true)
-        audioProcessor.setBandGains(gains)
+        activeProcessors.forEach {
+            it.setEqEnabled(true)
+            it.setBandGains(gains)
+        }
         Log.d("EQ_DEBUG", "setPreset done: processor.equalizerEnabled should be true")
     }
 
     fun setBass(level: Float) {
         _bassLevel.value = level
         prefs?.edit()?.putFloat("bass_level", level)?.apply()
-        audioProcessor.setBassLevel(level)
+        activeProcessors.forEach { it.setBassLevel(level) }
     }
 
     fun setTreble(level: Float) {
         _trebleLevel.value = level
         prefs?.edit()?.putFloat("treble_level", level)?.apply()
-        audioProcessor.setTrebleLevel(level)
+        activeProcessors.forEach { it.setTrebleLevel(level) }
     }
 
     fun setBalance(bal: Float) {
         _balance.value = bal
         prefs?.edit()?.putFloat("balance", bal)?.apply()
-        audioProcessor.setBalance(bal)
+        activeProcessors.forEach { it.setBalance(bal) }
     }
 
     fun setStereoExpand(expand: Float) {
@@ -318,20 +339,20 @@ object AudioEffectManager {
     fun setMono(mono: Boolean) {
         _isMono.value = mono
         prefs?.edit()?.putBoolean("is_mono", mono)?.apply()
-        audioProcessor.setMono(mono)
+        activeProcessors.forEach { it.setMono(mono) }
     }
 
     fun setVolume(volume: Float) {
         val clamped = volume.coerceIn(0f, 100f)
         _volumeLevel.value = clamped
         prefs?.edit()?.putFloat("volume_level", clamped)?.apply()
-        audioProcessor.setVolume(clamped)
+        activeProcessors.forEach { it.setVolume(clamped) }
     }
 
     fun setReverbEnabled(enabled: Boolean) {
         _reverbEnabled.value = enabled
         prefs?.edit()?.putBoolean("reverb_enabled", enabled)?.apply()
-        audioProcessor.setReverbEnabled(enabled)
+        activeProcessors.forEach { it.setReverbEnabled(enabled) }
     }
 
     fun setReverbPreset(
@@ -366,63 +387,65 @@ object AudioEffectManager {
             ?.putFloat("reverb_mix", mix)
             ?.apply()
 
-        audioProcessor.setReverbEnabled(true)
-        audioProcessor.setReverbDamp(damp)
-        audioProcessor.setReverbFilter(filter)
-        audioProcessor.setReverbFade(fade)
-        audioProcessor.setReverbPreDelay(preDelay)
-        audioProcessor.setReverbPreDelayMix(preDelayMix)
-        audioProcessor.setReverbSize(size)
-        audioProcessor.setReverbMix(mix)
+        activeProcessors.forEach {
+            it.setReverbEnabled(true)
+            it.setReverbDamp(damp)
+            it.setReverbFilter(filter)
+            it.setReverbFade(fade)
+            it.setReverbPreDelay(preDelay)
+            it.setReverbPreDelayMix(preDelayMix)
+            it.setReverbSize(size)
+            it.setReverbMix(mix)
+        }
     }
 
     fun setReverbDamp(value: Float) {
         _reverbDamp.value = value
         _reverbPreset.value = "Custom"
         prefs?.edit()?.putFloat("reverb_damp", value)?.putString("reverb_preset_name", "Custom")?.apply()
-        audioProcessor.setReverbDamp(value)
+        activeProcessors.forEach { it.setReverbDamp(value) }
     }
 
     fun setReverbFilter(value: Float) {
         _reverbFilter.value = value
         _reverbPreset.value = "Custom"
         prefs?.edit()?.putFloat("reverb_filter", value)?.putString("reverb_preset_name", "Custom")?.apply()
-        audioProcessor.setReverbFilter(value)
+        activeProcessors.forEach { it.setReverbFilter(value) }
     }
 
     fun setReverbFade(value: Float) {
         _reverbFade.value = value
         _reverbPreset.value = "Custom"
         prefs?.edit()?.putFloat("reverb_fade", value)?.putString("reverb_preset_name", "Custom")?.apply()
-        audioProcessor.setReverbFade(value)
+        activeProcessors.forEach { it.setReverbFade(value) }
     }
 
     fun setReverbPreDelay(value: Float) {
         _reverbPreDelay.value = value
         _reverbPreset.value = "Custom"
         prefs?.edit()?.putFloat("reverb_predelay", value)?.putString("reverb_preset_name", "Custom")?.apply()
-        audioProcessor.setReverbPreDelay(value)
+        activeProcessors.forEach { it.setReverbPreDelay(value) }
     }
 
     fun setReverbPreDelayMix(value: Float) {
         _reverbPreDelayMix.value = value
         _reverbPreset.value = "Custom"
         prefs?.edit()?.putFloat("reverb_predelay_mix", value)?.putString("reverb_preset_name", "Custom")?.apply()
-        audioProcessor.setReverbPreDelayMix(value)
+        activeProcessors.forEach { it.setReverbPreDelayMix(value) }
     }
 
     fun setReverbSize(value: Float) {
         _reverbSize.value = value
         _reverbPreset.value = "Custom"
         prefs?.edit()?.putFloat("reverb_size", value)?.putString("reverb_preset_name", "Custom")?.apply()
-        audioProcessor.setReverbSize(value)
+        activeProcessors.forEach { it.setReverbSize(value) }
     }
 
     fun setReverbMix(value: Float) {
         _reverbMix.value = value
         _reverbPreset.value = "Custom"
         prefs?.edit()?.putFloat("reverb_mix", value)?.putString("reverb_preset_name", "Custom")?.apply()
-        audioProcessor.setReverbMix(value)
+        activeProcessors.forEach { it.setReverbMix(value) }
     }
 
     fun resetAll() {

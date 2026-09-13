@@ -51,13 +51,20 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import androidx.compose.material3.surfaceColorAtElevation
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import com.vibevault.app.ui.components.FrostedTopBar
+import com.vibevault.app.ui.components.TopFadeBlur
+import com.vibevault.app.ui.components.topBarHeight
+import com.vibevault.app.ui.components.topBarContentPadding
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -191,95 +198,29 @@ fun ViviHomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopStart
         ) {
-            val horizontalLazyGridItemWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
-            val horizontalLazyGridItemWidth = maxWidth * horizontalLazyGridItemWidthFactor
+            val screenMaxWidth = maxWidth
+            val horizontalLazyGridItemWidthFactor = if (screenMaxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
+            val horizontalLazyGridItemWidth = screenMaxWidth * horizontalLazyGridItemWidthFactor
 
-            LazyColumn(
-                state = lazyListState,
+            val homeHaze = remember { HazeState() }
+            val scrolled by remember(lazyListState) {
+                derivedStateOf {
+                    lazyListState.firstVisibleItemIndex > 0 ||
+                        lazyListState.firstVisibleItemScrollOffset > 24
+                }
+            }
+
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
+                    .hazeSource(homeHaze)
             ) {
-                // ── 1. Top Header Row (User Avatar + Welcome Greeting + Action Buttons) ──────────────────────────
-                item(key = "header") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // User Avatar & "Welcome back, {Name}"
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.clickable { onProfileClick() }
-                        ) {
-                            UserAvatar(
-                                avatarUrl = userAvatarUrl,
-                                displayName = userDisplayName ?: "D",
-                                size = 44.dp
-                            )
-
-                            Column(verticalArrangement = Arrangement.Center) {
-                                Text(
-                                    text = "Welcome back,",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = userDisplayName?.ifBlank { "User" } ?: "User",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.weight(1f))
-
-                        // Action Icons: Spotify, Listen Together & Settings
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    if (isSpotifyConnected) {
-                                        showSpotifyDisconnectConfirm = true
-                                    } else {
-                                        showSpotifyConnectDialog = true
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.spotify),
-                                    contentDescription = if (isSpotifyConnected) "Disconnect Spotify" else "Connect Spotify",
-                                    tint = if (isSpotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-                            IconButton(onClick = onListenTogetherClick) {
-                                Icon(
-                                    painter = painterResource(R.drawable.group),
-                                    contentDescription = "Listen Together",
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-                            IconButton(onClick = onSettingsClick) {
-                                Icon(
-                                    painter = painterResource(R.drawable.settings),
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ── 2. Category Filter Chips ──────────────────────────
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = topBarHeight() + 8.dp, bottom = 120.dp)
+                ) {
+                // ── 1. Category Filter Chips ──────────────────────────
                 item(key = "chips_row") {
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -458,7 +399,7 @@ fun ViviHomeScreen(
                         val pageCount = ((speedDialItems.size + itemsPerPage - 1) / itemsPerPage).coerceAtLeast(1)
                         val pagerState = rememberPagerState(pageCount = { pageCount })
 
-                        val targetItemSize = (maxWidth - 48.dp) / 3
+                        val targetItemSize = (screenMaxWidth - 48.dp) / 3
 
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -753,7 +694,92 @@ fun ViviHomeScreen(
                 }
             }
         }
+
+        // ── TopFadeBlur & FrostedTopBar ──────────────────────────────────
+        TopFadeBlur(
+            hazeState = homeHaze,
+            pageColor = MaterialTheme.colorScheme.background,
+            scrimColor = MaterialTheme.colorScheme.background,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FrostedTopBar(
+            title = "Listen Now",
+            scrolled = scrolled,
+            refreshing = isRefreshing,
+            pullFraction = { pullRefreshState.distanceFraction },
+            fadeActionsOnScroll = true,
+            unscrolledStartContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onProfileClick() }
+                ) {
+                    UserAvatar(
+                        avatarUrl = userAvatarUrl,
+                        displayName = userDisplayName ?: "D",
+                        size = 36.dp
+                    )
+
+                    Column(verticalArrangement = Arrangement.Center) {
+                        Text(
+                            text = "Welcome back,",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = userDisplayName?.ifBlank { "User" } ?: "User",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            },
+            actions = {
+                IconButton(
+                    onClick = {
+                        if (isSpotifyConnected) {
+                            showSpotifyDisconnectConfirm = true
+                        } else {
+                            showSpotifyConnectDialog = true
+                        }
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.spotify),
+                        contentDescription = if (isSpotifyConnected) "Disconnect Spotify" else "Connect Spotify",
+                        tint = if (isSpotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                IconButton(onClick = onListenTogetherClick) {
+                    Icon(
+                        painter = painterResource(R.drawable.group),
+                        contentDescription = "Listen Together",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        painter = painterResource(R.drawable.settings),
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
+}
 }
 
 // ── Speed Dial Card Item ──────────────────────────
@@ -993,6 +1019,7 @@ fun ViviShimmerHost() {
         }
     }
 }
+
 
 @Composable
 private fun ShimmerPlaceholder(modifier: Modifier = Modifier) {

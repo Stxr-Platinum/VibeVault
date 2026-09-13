@@ -23,6 +23,7 @@ val SelectedThemeColorKey = intPreferencesKey("selectedThemeColor")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val DynamicBackgroundKey = booleanPreferencesKey("dynamicBackground")
+val ReduceDynamicBlurKey = booleanPreferencesKey("reduce_dynamic_blur")
 val PureBlackMiniPlayerKey = booleanPreferencesKey("pureBlackMiniPlayer")
 val MiniPlayerOutlineKey = booleanPreferencesKey("miniPlayerOutline")
 val SelectedFontKey = stringPreferencesKey("selected_font")
@@ -182,9 +183,48 @@ val PreventDuplicateTracksInQueueKey = booleanPreferencesKey("preventDuplicateTr
 val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
 val CrossfadeDurationKey = floatPreferencesKey("crossfadeDuration")
 val CrossfadeGaplessKey = booleanPreferencesKey("crossfadeGapless")
+val CrossfadeManualSkipKey = booleanPreferencesKey("crossfadeManualSkip")
+val CrossfadeCurveKey = stringPreferencesKey("crossfadeCurve")
+
+/**
+ * Shape of the volume ramp used while crossfading between two tracks.
+ * [fadeOut] drives the outgoing (currently playing) track and [fadeIn] drives the
+ * incoming (next) track, both as a function of normalized progress `t` in `[0, 1]`.
+ */
+enum class CrossfadeCurve {
+    EQUAL_POWER,
+    EASE_OUT_QUAD,
+    EASE_OUT_CUBIC,
+    SMOOTHSTEP;
+
+    fun fadeOut(t: Float): Float =
+        when (this) {
+            EQUAL_POWER -> kotlin.math.cos(t * Math.PI / 2.0).toFloat()
+            EASE_OUT_QUAD -> (1f - t) * (1f - t)
+            EASE_OUT_CUBIC -> 1f - t * t * t
+            SMOOTHSTEP -> 1f - (3f * t * t - 2f * t * t * t)
+        }
+
+    fun fadeIn(t: Float): Float =
+        when (this) {
+            SMOOTHSTEP -> 3f * t * t - 2f * t * t * t
+            else -> kotlin.math.sin(t * Math.PI / 2.0).toFloat()
+        }
+}
 
 val MaxImageCacheSizeKey = intPreferencesKey("maxImageCacheSize")
 val MaxSongCacheSizeKey = intPreferencesKey("maxSongCacheSize")
+
+// SponsorBlock keys
+val EnableSponsorBlockKey = booleanPreferencesKey("enableSponsorBlock")
+val SponsorBlockSkipNonMusicKey = booleanPreferencesKey("sponsorBlockSkipNonMusic")
+val SponsorBlockSkipSponsorKey = booleanPreferencesKey("sponsorBlockSkipSponsor")
+val SponsorBlockSkipSelfPromoKey = booleanPreferencesKey("sponsorBlockSkipSelfPromo")
+val SponsorBlockSkipInteractionKey = booleanPreferencesKey("sponsorBlockSkipInteraction")
+val SponsorBlockSkipIntroOutroKey = booleanPreferencesKey("sponsorBlockSkipIntroOutro")
+val SponsorBlockSkipPreviewFillerKey = booleanPreferencesKey("sponsorBlockSkipPreviewFiller")
+val SponsorBlockShowToastKey = booleanPreferencesKey("sponsorBlockShowToast")
+val SponsorBlockServerUrlKey = stringPreferencesKey("sponsorBlockServerUrl")
 
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")

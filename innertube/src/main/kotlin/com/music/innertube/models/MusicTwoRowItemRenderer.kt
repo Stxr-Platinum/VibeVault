@@ -22,7 +22,9 @@ data class MusicTwoRowItemRenderer(
     val thumbnailOverlay: MusicResponsiveListItemRenderer.Overlay?,
 ) {
     val isSong: Boolean
-        get() = navigationEndpoint.endpoint is WatchEndpoint
+        get() = navigationEndpoint.endpoint is WatchEndpoint ||
+                navigationEndpoint.watchEndpoint != null ||
+                navigationEndpoint.watchPlaylistEndpoint != null
     val isPlaylist: Boolean
         get() =
             navigationEndpoint.browseEndpoint

@@ -16,5 +16,9 @@ data class Track(
     val localPath: String? = null,
     val source: String = "stream",
     val externalUrl: String? = null,
-    val playedAt: Long = 0L
+    val playedAt: Long = 0L,
+    val isExplicit: Boolean = false,
+    val albumId: String? = null,
+    val artistId: String? = null,
+    val isVideo: Boolean = false
 )

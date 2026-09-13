@@ -6,6 +6,11 @@ import com.vibevault.app.domain.model.Track
 import com.vibevault.app.player.queue.ListQueue
 import com.vibevault.app.player.queue.Queue
 import com.vibevault.app.player.queue.YouTubeQueue
+import com.vibevault.app.extensions.toTrack
+import com.vibevault.app.player.queue.filterDiverseCharacteristics
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +30,8 @@ class QueueManager @Inject constructor(
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var activeQueue: Queue? = null
+    private var dynamicRefreshJob: Job? = null
+    private var lastRefreshedTrackId: String? = null
 
     private val originalQueue = mutableListOf<Track>()
     private val currentQueue = mutableListOf<Track>()
@@ -50,8 +57,49 @@ class QueueManager @Inject constructor(
     private val _isLoadingNextPage = MutableStateFlow(false)
     val isLoadingNextPage: StateFlow<Boolean> = _isLoadingNextPage.asStateFlow()
 
+    private val _radioChips = MutableStateFlow<List<com.music.innertube.pages.RadioChip>>(emptyList())
+    val radioChips: StateFlow<List<com.music.innertube.pages.RadioChip>> = _radioChips.asStateFlow()
+    private var radioChipsJob: Job? = null
+
+    init {
+        restorePersistedQueue()
+    }
+
+    private fun restorePersistedQueue() {
+        try {
+            val savedQueue = sessionManager.lastPlayedQueue
+            val savedIndex = sessionManager.lastPlayedQueueIndex
+            val savedTrack = sessionManager.lastPlayedTrack
+            if (savedQueue.isNotEmpty()) {
+                val validIndex = savedIndex.coerceIn(0, savedQueue.size - 1)
+                originalQueue.clear()
+                originalQueue.addAll(savedQueue)
+                currentQueue.clear()
+                currentQueue.addAll(savedQueue)
+                _currentIndex.value = validIndex
+                _currentTrack.value = savedQueue[validIndex]
+                _queueState.value = savedQueue.toList()
+                lastRefreshedTrackId = savedQueue[validIndex].id
+                Log.d("QueueManager", "Restored persisted queue: ${savedQueue.size} tracks, index=$validIndex, currentTrack=${savedQueue[validIndex].title}")
+            } else if (savedTrack != null && savedTrack.id.isNotBlank()) {
+                originalQueue.clear()
+                originalQueue.add(savedTrack)
+                currentQueue.clear()
+                currentQueue.add(savedTrack)
+                _currentIndex.value = 0
+                _currentTrack.value = savedTrack
+                _queueState.value = listOf(savedTrack)
+                lastRefreshedTrackId = savedTrack.id
+                Log.d("QueueManager", "Restored persisted track: ${savedTrack.title}")
+            }
+        } catch (e: Exception) {
+            Log.e("QueueManager", "Failed to restore persisted queue in init", e)
+        }
+    }
+
     fun setQueue(queue: Queue) {
         activeQueue = queue
+        observeRadioChips(queue)
         queue.preloadItem?.let { item ->
             setQueueInternal(listOf(item), 0)
         }
@@ -106,6 +154,7 @@ class QueueManager @Inject constructor(
             _currentIndex.value = validIndex
         }
 
+        lastRefreshedTrackId = selectedTrack.id
         updateState()
         checkAndFetchNextPage()
         debugLog()
@@ -117,8 +166,114 @@ class QueueManager @Inject constructor(
         setQueue(context, index)
     }
 
+    fun playTrackAtIndex(index: Int) {
+        if (index in currentQueue.indices) {
+            _currentIndex.value = index
+            updateState()
+            refreshDynamicQueue(currentQueue[index], force = true)
+            debugLog()
+        }
+    }
+
     fun playRadio(track: Track) {
         setQueue(YouTubeQueue.radio(track))
+    }
+
+    private fun observeRadioChips(queue: Queue) {
+        radioChipsJob?.cancel()
+        radioChipsJob = null
+        val chipsFlow = queue.radioChips
+        if (chipsFlow != null) {
+            radioChipsJob = scope.launch {
+                chipsFlow.collect {
+                    _radioChips.value = it
+                }
+            }
+        } else {
+            _radioChips.value = emptyList()
+        }
+    }
+
+    fun applyRadioChip(chip: com.music.innertube.pages.RadioChip) {
+        val current = _currentTrack.value ?: return
+        val currentIdx = _currentIndex.value
+        scope.launch {
+            try {
+                val endpoint = com.music.innertube.models.WatchEndpoint(
+                    videoId = current.id,
+                    playlistId = "RDAMVM${current.id}",
+                    params = chip.params
+                )
+                val newQueue = YouTubeQueue(endpoint = endpoint, preloadItem = current)
+                val status = withContext(Dispatchers.IO) {
+                    newQueue.getInitialStatus()
+                }
+                _radioChips.value = _radioChips.value.map { rc ->
+                    rc.copy(isSelected = (rc.title == chip.title))
+                }
+                val freshItems = status.items.filter { it.id != current.id }
+                if (freshItems.isNotEmpty()) {
+                    val preserved = currentQueue.take(currentIdx + 1).toMutableList()
+                    preserved.addAll(freshItems)
+                    currentQueue.clear()
+                    currentQueue.addAll(preserved)
+                    originalQueue.clear()
+                    originalQueue.addAll(preserved)
+                    activeQueue = newQueue
+                    observeRadioChips(newQueue)
+                    updateState()
+                    debugLog()
+                }
+            } catch (e: Exception) {
+                Log.e("QueueManager", "Failed to apply radio chip", e)
+            }
+        }
+    }
+
+    fun refreshDynamicQueue(targetTrack: Track? = null, force: Boolean = false) {
+        val track = targetTrack ?: _currentTrack.value ?: return
+        if (!force && track.id == lastRefreshedTrackId) {
+            return
+        }
+        lastRefreshedTrackId = track.id
+
+        dynamicRefreshJob?.cancel()
+        dynamicRefreshJob = scope.launch {
+            try {
+                val radioQueue = YouTubeQueue.radio(track)
+                val status = withContext(Dispatchers.IO) {
+                    radioQueue.getInitialStatus()
+                }
+
+                val currentIdx = _currentIndex.value
+                val historyIds = currentQueue.take(currentIdx + 1).map { it.id }.toSet()
+
+                // Filter out tracks in current history / active track
+                val freshCandidates = status.items.filter { it.id !in historyIds && it.id != track.id }
+                val diverseFresh = freshCandidates.filterDiverseCharacteristics(maxPerArtist = 1, currentlyPlayingTrackId = track.id).shuffled()
+
+                if (diverseFresh.isNotEmpty()) {
+                    activeQueue = radioQueue
+                    observeRadioChips(radioQueue)
+
+                    // Preserve history up to current track, replace upcoming with fresh recommendations
+                    val newQueue = currentQueue.take(currentIdx + 1).toMutableList()
+                    newQueue.addAll(diverseFresh)
+
+                    currentQueue.clear()
+                    currentQueue.addAll(newQueue)
+
+                    originalQueue.clear()
+                    originalQueue.addAll(newQueue)
+
+                    updateState()
+                    debugLog()
+                    Log.d("QueueManager", "Dynamically refreshed queue with ${diverseFresh.size} recommendations for ${track.title}")
+                }
+            } catch (e: Exception) {
+                Log.e("QueueManager", "Failed to dynamically refresh queue for track ${track.title}", e)
+            }
+        }
     }
 
     fun next() {
@@ -127,6 +282,8 @@ class QueueManager @Inject constructor(
         val newIndex = _currentIndex.value + 1
         if (newIndex < currentQueue.size) {
             _currentIndex.value = newIndex
+            updateState()
+            refreshDynamicQueue(currentQueue[newIndex])
             checkAndFetchNextPage()
         } else {
             val queue = activeQueue
@@ -137,7 +294,11 @@ class QueueManager @Inject constructor(
                 return
             }
             when (_repeatMode.value) {
-                Player.REPEAT_MODE_ALL -> _currentIndex.value = 0
+                Player.REPEAT_MODE_ALL -> {
+                    _currentIndex.value = 0
+                    updateState()
+                    refreshDynamicQueue(currentQueue[0])
+                }
                 else -> {
                     _queueEnded.tryEmit(Unit)
                     autoPlaySimilarSongs()
@@ -187,6 +348,9 @@ class QueueManager @Inject constructor(
             }
         }
         updateState()
+        if (_currentIndex.value in currentQueue.indices) {
+            refreshDynamicQueue(currentQueue[_currentIndex.value])
+        }
         debugLog()
     }
 
@@ -285,6 +449,7 @@ class QueueManager @Inject constructor(
         if (index in currentQueue.indices && index != _currentIndex.value) {
             _currentIndex.value = index
             updateState()
+            refreshDynamicQueue(currentQueue[index], force = false)
             checkAndFetchNextPage()
             debugLog()
         }

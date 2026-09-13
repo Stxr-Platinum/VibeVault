@@ -124,7 +124,7 @@ object MediaModule {
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessorChain(
                         androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(
-                            com.vibevault.app.player.audio.AudioEffectManager.audioProcessor
+                            com.vibevault.app.player.audio.AudioEffectManager.createAudioProcessor()
                         )
                     )
                     .build()
@@ -132,7 +132,7 @@ object MediaModule {
         }
 
         return ExoPlayer.Builder(context, renderersFactory)
-            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ false)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setHandleAudioBecomingNoisy(true)   // Pause on headphone disconnect

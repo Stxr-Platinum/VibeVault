@@ -12,6 +12,8 @@ import com.vibevault.app.domain.model.Track
 import com.vibevault.app.domain.repository.MusicRepository
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import com.vibevault.app.domain.model.*
@@ -1446,10 +1448,30 @@ class MusicRepositoryImpl @Inject constructor(
             cleanId
         } else {
             val parts = cleanId.split("::")
-            val searchQuery = if (parts.size >= 2) "${parts[0]} ${parts[1]}" else cleanId
+            val (albumQuery, artistQuery) = if (parts.size >= 2) {
+                parts[0].trim() to parts[1].trim()
+            } else {
+                cleanId.trim() to ""
+            }
+            if (albumQuery.isBlank() || albumQuery.equals("Unknown Album", ignoreCase = true) || albumQuery.equals("Unknown", ignoreCase = true)) {
+                throw IllegalArgumentException("Invalid album query: $cleanId")
+            }
+            val searchQuery = if (artistQuery.isNotBlank()) "$albumQuery $artistQuery" else albumQuery
             val searchResult = com.music.innertube.YouTube.search(searchQuery, com.music.innertube.YouTube.SearchFilter.FILTER_ALBUM).getOrNull()
-            val foundAlbum = searchResult?.items?.filterIsInstance<com.music.innertube.models.AlbumItem>()?.firstOrNull()
-            foundAlbum?.id ?: throw IllegalArgumentException("Could not resolve YouTube Music album ID for: $cleanId")
+            val albumCandidates = searchResult?.items?.filterIsInstance<com.music.innertube.models.AlbumItem>().orEmpty()
+
+            // Strictly match album title and optionally artist name to prevent incorrect album matching
+            val matchedAlbum = albumCandidates.firstOrNull { cand ->
+                val titleMatches = cand.title.equals(albumQuery, ignoreCase = true) ||
+                        cand.title.contains(albumQuery, ignoreCase = true) ||
+                        albumQuery.contains(cand.title, ignoreCase = true)
+                val artistMatches = artistQuery.isBlank() || cand.artists.orEmpty().any { 
+                    it.name.contains(artistQuery, ignoreCase = true) || artistQuery.contains(it.name, ignoreCase = true)
+                }
+                titleMatches && artistMatches
+            } ?: albumCandidates.firstOrNull()
+
+            matchedAlbum?.id ?: throw IllegalArgumentException("Could not resolve YouTube Music album ID for: $cleanId")
         }
 
         val albumPage = com.music.innertube.YouTube.album(targetBrowseId).getOrThrow()
@@ -1462,7 +1484,10 @@ class MusicRepositoryImpl @Inject constructor(
                 album = albumItem.title,
                 albumImageUrl = albumItem.thumbnail,
                 durationMs = (song.duration ?: 0) * 1000L,
-                source = "youtube"
+                source = "youtube",
+                albumId = targetBrowseId,
+                artistId = song.artists.firstOrNull()?.id,
+                isVideo = false
             )
         }
         val otherVersions = albumPage.otherVersions.map { other ->
@@ -1485,5 +1510,28 @@ class MusicRepositoryImpl @Inject constructor(
             description = albumPage.description,
             otherVersions = otherVersions
         )
+    }
+
+    override suspend fun resolveTrackLinks(trackId: String): Result<Track> = withContext(Dispatchers.IO) {
+        runCatching {
+            val watchEndpoint = com.music.innertube.models.WatchEndpoint(videoId = trackId)
+            val nextResult = com.music.innertube.YouTube.next(watchEndpoint).getOrThrow()
+            val song = nextResult.items.firstOrNull { it.id == trackId }
+                ?: nextResult.items.firstOrNull()
+                ?: throw IllegalStateException("No watch queue entry found for $trackId")
+            val isVideoSong = song.isVideoSong
+            Track(
+                id = song.id,
+                title = song.title,
+                artist = song.artists.joinToString(", ") { it.name },
+                album = if (isVideoSong) "" else (song.album?.name ?: ""),
+                albumImageUrl = song.thumbnail,
+                durationMs = (song.duration ?: 0) * 1000L,
+                source = "youtube",
+                albumId = if (isVideoSong) null else song.album?.id,
+                artistId = song.artists.firstOrNull()?.id,
+                isVideo = isVideoSong
+            )
+        }
     }
 }

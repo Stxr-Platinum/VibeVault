@@ -17,6 +17,7 @@ import com.music.innertube.models.YTItem
 import com.music.innertube.models.getItems
 import com.music.innertube.models.oddElements
 import com.music.innertube.models.splitBySeparator
+import com.music.innertube.models.findViewCountText
 
 data class ArtistSection(
     val title: String,
@@ -47,7 +48,18 @@ data class ArtistPage(
                 items = renderer.contents?.getItems()?.mapNotNull {
                     fromMusicResponsiveListItemRenderer(it)
                 }?.ifEmpty { null } ?: return null,
-                moreEndpoint = renderer.title?.runs?.firstOrNull()?.navigationEndpoint?.browseEndpoint
+                moreEndpoint = renderer.title?.runs?.firstNotNullOfOrNull { it.navigationEndpoint?.browseEndpoint }
+                    ?: renderer.bottomEndpoint?.browseEndpoint
+                    ?: renderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
+                    ?: renderer.moreContentButton?.buttonRenderer?.command?.browseEndpoint
+                    ?: renderer.title?.runs?.firstNotNullOfOrNull {
+                        (it.navigationEndpoint?.watchPlaylistEndpoint ?: it.navigationEndpoint?.watchEndpoint)?.playlistId?.let { plId ->
+                            com.music.innertube.models.BrowseEndpoint(browseId = if (plId.startsWith("VL")) plId else "VL$plId")
+                        }
+                    }
+                    ?: (renderer.bottomEndpoint?.watchPlaylistEndpoint ?: renderer.bottomEndpoint?.watchEndpoint)?.playlistId?.let { plId ->
+                        com.music.innertube.models.BrowseEndpoint(browseId = if (plId.startsWith("VL")) plId else "VL$plId")
+                    }
             )
         }
 
@@ -62,6 +74,7 @@ data class ArtistPage(
                     }
                 }.ifEmpty { null } ?: return null,
                 moreEndpoint = renderer.header.musicCarouselShelfBasicHeaderRenderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
+                    ?: renderer.header.musicCarouselShelfBasicHeaderRenderer.title?.runs?.firstNotNullOfOrNull { it.navigationEndpoint?.browseEndpoint }
             )
         }
 
@@ -120,30 +133,36 @@ data class ArtistPage(
         private fun fromMusicTwoRowItemRenderer(renderer: MusicTwoRowItemRenderer): YTItem? {
             return when {
                 renderer.isSong -> {
-                    val subtitleRuns = renderer.subtitle?.runs?.oddElements() ?: return null
+                    val subtitleRuns = renderer.subtitle?.runs?.oddElements()
+                    val artists = subtitleRuns?.filter { 
+                        it.navigationEndpoint?.browseEndpoint?.browseId?.startsWith("UC") == true ||
+                        it.navigationEndpoint?.browseEndpoint != null
+                    }?.map {
+                        Artist(
+                            name = it.text,
+                            id = it.navigationEndpoint?.browseEndpoint?.browseId
+                        )
+                    }?.ifEmpty { null } ?: subtitleRuns?.firstOrNull()?.let { 
+                        listOf(Artist(name = it.text, id = null)) 
+                    } ?: emptyList()
+
+                    val videoId = renderer.navigationEndpoint.anyWatchEndpoint?.videoId
+                        ?: renderer.navigationEndpoint.watchEndpoint?.videoId
+                        ?: renderer.navigationEndpoint.watchPlaylistEndpoint?.videoId
+                        ?: return null
+
                     SongItem(
-                        id = renderer.navigationEndpoint.watchEndpoint?.videoId ?: return null,
+                        id = videoId,
                         title = renderer.title.runs?.firstOrNull()?.text ?: return null,
-                        artists = subtitleRuns.filter { 
-                            it.navigationEndpoint?.browseEndpoint?.browseId?.startsWith("UC") == true ||
-                            it.navigationEndpoint?.browseEndpoint != null
-                        }.map {
-                            Artist(
-                                name = it.text,
-                                id = it.navigationEndpoint?.browseEndpoint?.browseId
-                            )
-                        }.ifEmpty {
-                            subtitleRuns.firstOrNull()?.let { 
-                                listOf(Artist(name = it.text, id = null)) 
-                            } ?: emptyList()
-                        },
+                        artists = artists,
                         album = null,
                         duration = null,
                         musicVideoType = renderer.musicVideoType,
                         thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                         explicit = renderer.subtitleBadges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
-                        } != null
+                        } != null,
+                        viewCountText = renderer.subtitle?.runs?.splitBySeparator()?.findViewCountText()
                     )
                 }
 

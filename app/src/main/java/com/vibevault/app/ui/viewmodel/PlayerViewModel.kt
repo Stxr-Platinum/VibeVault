@@ -133,6 +133,20 @@ class PlayerViewModel @Inject constructor(
                 } else {
                     // Ensure player is strictly paused when initializing state on app launch
                     player?.playWhenReady = false
+                    val restoredTrack = queueManager.currentTrack.value ?: sessionManager.lastPlayedTrack
+                    if (restoredTrack != null && restoredTrack.id.isNotBlank() && player?.currentMediaItem == null) {
+                        try {
+                            val mediaItem = buildMediaItem(restoredTrack)
+                            player?.setMediaItem(mediaItem)
+                            val pos = sessionManager.lastPlayedPositionMs
+                            if (pos > 0) {
+                                player?.seekTo(pos)
+                            }
+                            player?.prepare()
+                        } catch (e: Exception) {
+                            Log.e("PlayerViewModel", "Failed to pre-set mediaItem on launch restoration", e)
+                        }
+                    }
                 }
             },
             ContextCompat.getMainExecutor(context)
@@ -142,33 +156,43 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             isRestoringSavedState = true
             try {
-                val savedQueue = sessionManager.lastPlayedQueue
-                val savedIndex = sessionManager.lastPlayedQueueIndex
-                if (savedQueue.isNotEmpty()) {
-                    val validIndex = savedIndex.coerceIn(0, savedQueue.size - 1)
-                    val savedTrack = savedQueue[validIndex]
+                val currentQ = queueManager.queueState.value
+                val currentIdx = queueManager.currentIndex.value
+                if (currentQ.isNotEmpty() && currentIdx in currentQ.indices) {
+                    val savedTrack = currentQ[currentIdx]
                     currentlyPlayingTrackId = savedTrack.id
-                    queueManager.setQueue(savedQueue, validIndex)
                     val pos = sessionManager.lastPlayedPositionMs
                     if (pos > 0) _currentPosition.value = pos
                     if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
                 } else {
-                    val savedTrack = sessionManager.lastPlayedTrack
-                    if (savedTrack != null && savedTrack.id.isNotBlank()) {
+                    val savedQueue = sessionManager.lastPlayedQueue
+                    val savedIndex = sessionManager.lastPlayedQueueIndex
+                    if (savedQueue.isNotEmpty()) {
+                        val validIndex = savedIndex.coerceIn(0, savedQueue.size - 1)
+                        val savedTrack = savedQueue[validIndex]
                         currentlyPlayingTrackId = savedTrack.id
-                        queueManager.syncExternalTrack(savedTrack)
+                        queueManager.setQueue(savedQueue, validIndex)
                         val pos = sessionManager.lastPlayedPositionMs
                         if (pos > 0) _currentPosition.value = pos
                         if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
                     } else {
-                        sessionManager.lastPlayedTrackId?.let { trackId ->
-                            try {
-                                val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
-                                if (localTrackResult != null) {
-                                    queueManager.syncExternalTrack(localTrackResult)
+                        val savedTrack = sessionManager.lastPlayedTrack
+                        if (savedTrack != null && savedTrack.id.isNotBlank()) {
+                            currentlyPlayingTrackId = savedTrack.id
+                            queueManager.syncExternalTrack(savedTrack)
+                            val pos = sessionManager.lastPlayedPositionMs
+                            if (pos > 0) _currentPosition.value = pos
+                            if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
+                        } else {
+                            sessionManager.lastPlayedTrackId?.let { trackId ->
+                                try {
+                                    val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
+                                    if (localTrackResult != null) {
+                                        queueManager.syncExternalTrack(localTrackResult)
+                                    }
+                                } catch (e: Exception) {
+                                    // Ignore
                                 }
-                            } catch (e: Exception) {
-                                // Ignore
                             }
                         }
                     }
@@ -222,6 +246,37 @@ class PlayerViewModel @Inject constructor(
                     lastFetchedLyricsTrackId = null
                     cancelFetchLyrics()
                     _lyricsList.value = emptyList()
+                }
+            }
+        }
+
+        // 1c. Observe currentTrack to resolve YouTube album/video links (mirroring BitChord)
+        var lastResolvedLinksTrackId: String? = null
+        viewModelScope.launch {
+            queueManager.currentTrack.collect { track ->
+                if (track == null) return@collect
+                val isYouTubeTrack = track.source == "youtube" || (track.id.length == 11 && !track.id.contains(" ") && !track.id.contains(":") && !track.id.startsWith("http"))
+                if (isYouTubeTrack && track.albumId == null && !track.isVideo && track.id != lastResolvedLinksTrackId) {
+                    lastResolvedLinksTrackId = track.id
+                    launch(Dispatchers.IO) {
+                        try {
+                            musicRepository.resolveTrackLinks(track.id).onSuccess { resolved ->
+                                if (queueManager.currentTrack.value?.id == track.id) {
+                                    val updated = track.copy(
+                                        album = resolved.album.takeIf { it.isNotBlank() } ?: (if (resolved.isVideo) "" else track.album),
+                                        albumId = resolved.albumId,
+                                        artistId = track.artistId ?: resolved.artistId,
+                                        isVideo = resolved.isVideo
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        queueManager.syncExternalTrack(updated)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("PlayerViewModel", "Failed to resolve track links for ${track.id}", e)
+                        }
+                    }
                 }
             }
         }
@@ -426,8 +481,20 @@ class PlayerViewModel @Inject constructor(
             override fun play() { player?.play() }
             override fun pause() { player?.pause() }
             override fun seekTo(position: Long) { player?.seekTo(position) }
-            override fun seekToNext() { queueManager.next() }
-            override fun seekToPrevious() { queueManager.previous() }
+            override fun seekToNext() {
+                val service = PlaybackService.instance
+                if (service != null && service.manualSkipNextWithCrossfade()) {
+                    return
+                }
+                queueManager.next()
+            }
+            override fun seekToPrevious() {
+                val service = PlaybackService.instance
+                if (service != null && service.manualSkipToPreviousWithCrossfade()) {
+                    return
+                }
+                queueManager.previous()
+            }
             
             override fun playQueue(queue: com.vibevault.app.playback.queues.YouTubeQueue) {
                 // In VibeVault, we just play the single track endpoint provided.
@@ -482,14 +549,20 @@ class PlayerViewModel @Inject constructor(
             }
             
             private fun mediaItemToTrack(mediaItem: MediaItem): com.vibevault.app.domain.model.Track {
+                val tag = mediaItem.localConfiguration?.tag as? com.vibevault.app.models.MediaMetadata
                 val md = mediaItem.mediaMetadata
+                val isVideoItem = tag?.isVideoSong ?: false
                 return com.vibevault.app.domain.model.Track(
                     id = mediaItem.mediaId,
-                    title = md.title?.toString() ?: "Unknown",
-                    artist = md.artist?.toString() ?: "Unknown",
-                    album = md.albumTitle?.toString() ?: "Unknown",
-                    albumImageUrl = md.artworkUri?.toString() ?: "",
-                    durationMs = 0L // Placeholder
+                    title = tag?.title ?: md.title?.toString() ?: "Unknown",
+                    artist = tag?.artists?.joinToString(", ") { it.name } ?: md.artist?.toString() ?: "Unknown",
+                    album = if (isVideoItem) "" else (tag?.album?.title ?: md.albumTitle?.toString() ?: ""),
+                    albumImageUrl = tag?.thumbnailUrl ?: md.artworkUri?.toString() ?: "",
+                    durationMs = (tag?.duration?.toLong() ?: 0L) * 1000L,
+                    source = "youtube",
+                    albumId = if (isVideoItem) null else tag?.album?.id,
+                    artistId = tag?.artists?.firstOrNull()?.id,
+                    isVideo = isVideoItem
                 )
             }
         }
@@ -561,12 +634,6 @@ class PlayerViewModel @Inject constructor(
             if (idx < 0 || idx >= q.size) return@launch
             
             player?.let { controller ->
-                // Clean up already played tracks prior to current position in ExoPlayer's playlist
-                val currentControllerIndex = controller.currentMediaItemIndex
-                if (currentControllerIndex > 0) {
-                    controller.removeMediaItems(0, currentControllerIndex)
-                }
-
                 val desiredUpcoming = 2
                 val currentControllerCount = controller.mediaItemCount
                 val activeIndex = controller.currentMediaItemIndex
@@ -652,17 +719,24 @@ class PlayerViewModel @Inject constructor(
             if (needsMetadataFetch) {
                 launch(Dispatchers.IO) {
                     try {
-                        val onlineResult = musicRepository.searchOnline(trackId).getOrNull()?.firstOrNull { it.id == trackId }
-                            ?: musicRepository.searchOnline(trackId).getOrNull()?.firstOrNull()
-                            ?: musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
+                        val onlineResult = if (isYouTubeId) {
+                            musicRepository.resolveTrackLinks(trackId).getOrNull()
+                        } else {
+                            musicRepository.searchOnline(trackId).getOrNull()?.firstOrNull { it.id == trackId }
+                                ?: musicRepository.searchOnline(trackId).getOrNull()?.firstOrNull()
+                                ?: musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
+                        }
                         
                         if (onlineResult != null && onlineResult.title.isNotBlank()) {
                             val updatedTrack = selectedTrack.copy(
                                 title = onlineResult.title.takeIf { it.isNotBlank() } ?: selectedTrack.title,
                                 artist = onlineResult.artist.takeIf { it.isNotBlank() && it != "Unknown" } ?: selectedTrack.artist,
-                                album = onlineResult.album.takeIf { it.isNotBlank() && it != "Unknown" } ?: selectedTrack.album,
+                                album = if (onlineResult.isVideo) "" else (onlineResult.album.takeIf { it.isNotBlank() && it != "Unknown" } ?: selectedTrack.album),
                                 albumImageUrl = onlineResult.albumImageUrl.takeIf { it.isNotBlank() } ?: selectedTrack.albumImageUrl,
-                                durationMs = if (onlineResult.durationMs > 0) onlineResult.durationMs else selectedTrack.durationMs
+                                durationMs = if (onlineResult.durationMs > 0) onlineResult.durationMs else selectedTrack.durationMs,
+                                albumId = onlineResult.albumId ?: selectedTrack.albumId,
+                                artistId = onlineResult.artistId ?: selectedTrack.artistId,
+                                isVideo = onlineResult.isVideo
                             )
                             withContext(Dispatchers.Main) {
                                 queueManager.syncExternalTrack(updatedTrack)
@@ -678,6 +752,14 @@ class PlayerViewModel @Inject constructor(
 
     fun loadQueue(tracks: List<Track>, startIndex: Int = 0) {
         queueManager.setQueue(tracks, startIndex)
+    }
+
+    fun playTrackFromQueue(track: Track) {
+        val index = queueManager.queueState.value.indexOfFirst { it.id == track.id }
+        if (index >= 0) {
+            queueManager.playTrackAtIndex(index)
+            playInternal(track)
+        }
     }
 
     fun removeTrackAt(index: Int) {
@@ -721,6 +803,10 @@ class PlayerViewModel @Inject constructor(
 
     fun skipNext() {
         Log.d("PlaybackDebug", "skipNext called")
+        val service = PlaybackService.instance
+        if (service != null && service.manualSkipNextWithCrossfade()) {
+            return
+        }
         queueManager.next()
     }
 
@@ -730,6 +816,10 @@ class PlayerViewModel @Inject constructor(
         if (_currentPosition.value > 5000L) {
             seekTo(0L)
         } else {
+            val service = PlaybackService.instance
+            if (service != null && service.manualSkipToPreviousWithCrossfade()) {
+                return
+            }
             queueManager.previous()
         }
     }

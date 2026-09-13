@@ -5,6 +5,10 @@ import android.net.ConnectivityManager
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.ResolvingDataSource
 import com.vibevault.app.constants.AudioQuality
+import com.vibevault.app.constants.AudioQualityKey
+import com.vibevault.app.utils.dataStore
+import com.vibevault.app.utils.get
+import com.vibevault.app.extensions.toEnum
 import com.vibevault.app.data.youtube.YTPlayerUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -179,9 +183,10 @@ class StreamResolver @Inject constructor(
             resolverScope.async {
                 try {
                     val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val currentQuality = context.dataStore[AudioQualityKey].toEnum(defaultValue = AudioQuality.AUTO)
                     val result = YTPlayerUtils.playerResponseForPlayback(
                         videoId = videoId,
-                        audioQuality = AudioQuality.HIGH,
+                        audioQuality = currentQuality,
                         connectivityManager = connectivityManager,
                         context = context
                     )

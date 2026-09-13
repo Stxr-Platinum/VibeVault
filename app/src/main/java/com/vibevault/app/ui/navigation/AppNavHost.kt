@@ -248,6 +248,7 @@ fun AppNavHost(
                     showShareSheet = true
                 },
                 contentPadding = PaddingValues(bottom = 90.dp),
+                onBack = { navController.popBackStack() },
             )
 
             storyPage?.let { page ->
@@ -301,6 +302,12 @@ fun AppNavHost(
                 },
                 onAlbumClick = { nextAlbumId ->
                     navController.navigate(Screen.Album.createRoute(nextAlbumId))
+                },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.Artist.createRoute(artistName))
+                },
+                onSwipeToQueue = { track ->
+                    playerViewModel.addToQueue(track)
                 }
             )
         }
@@ -356,7 +363,8 @@ fun AppNavHost(
                 },
                 onArtistClick = { nextArtistName ->
                     navController.navigate(Screen.Artist.createRoute(nextArtistName))
-                }
+                },
+                onProfileClick = { navController.navigate(Screen.Profile.route) }
             )
         }
         composable(Screen.ListenTogether.route) {
@@ -390,6 +398,12 @@ fun AppNavHost(
         }
         composable(Screen.PlayerSettings.route) {
             com.vibevault.app.ui.screens.settings.PlayerSettings(
+                navController = navController,
+                scrollBehavior = androidx.compose.material3.TopAppBarDefaults.pinnedScrollBehavior()
+            )
+        }
+        composable(Screen.SponsorBlockSettings.route) {
+            com.vibevault.app.ui.screens.settings.SponsorBlockSettings(
                 navController = navController,
                 scrollBehavior = androidx.compose.material3.TopAppBarDefaults.pinnedScrollBehavior()
             )

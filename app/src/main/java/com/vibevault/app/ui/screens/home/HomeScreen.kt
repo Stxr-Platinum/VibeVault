@@ -41,6 +41,14 @@ import coil.compose.AsyncImage
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.data.local.entity.PlaylistEntity
 import com.vibevault.app.data.remote.dto.SpotifySearchResponse
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import com.vibevault.app.ui.components.FrostedTopBar
+import com.vibevault.app.ui.components.TopFadeBlur
+import com.vibevault.app.ui.components.topBarContentPadding
 import com.vibevault.app.ui.components.UserAvatar
 import com.vibevault.app.ui.theme.*
 import com.vibevault.app.ui.viewmodel.HomeViewModel
@@ -122,142 +130,160 @@ fun HomeScreen(
         )
     }
 
-    Column(
+    val homeHaze = remember { HazeState() }
+    val homeListState = rememberLazyListState()
+    val scrolled by remember(homeListState) {
+        derivedStateOf {
+            homeListState.firstVisibleItemIndex > 0 ||
+                homeListState.firstVisibleItemScrollOffset > 24
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
     ) {
-        // ── Top Header and Chips ──────────────────────────
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                UserAvatar(
-                    avatarUrl = userAvatarUrl,
-                    displayName = userDisplayName ?: "D",
-                    size = 38.dp,
-                    modifier = Modifier.clickable { onProfileClick() }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(homeHaze)
+                .statusBarsPadding()
+        ) {
+            // ── Horizontally scrolling chips ──────────────────────────
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item { ChipFilter("All", true) }
+                    item { ChipFilter("Music", false) }
+                    item { ChipFilter("Podcasts", false) }
+                    item { ChipFilter("Workout", false) }
+                    item { ChipFilter("Feel good", false) }
+                    item { ChipFilter("Romance", false) }
+                }
+                Spacer(Modifier.height(12.dp))
+
+            if (searchQuery.isNotBlank()) {
+                // Search UI
+                SearchHeader(
+                    query = searchQuery,
+                    onQueryChange = viewModel::onSearchQueryChange
                 )
-                Spacer(Modifier.weight(1f))
                 
-                // Listen Together Button
+                if (isSearching) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                    }
+                } else {
+                    SearchResults(viewModel = viewModel, searchResponse = searchResults, onTrackClick = { onTrackClick(it) }, onSwipeToQueue = onSwipeToQueue)
+                }
+            } else {
+                if (isLoading) {
+                    Box(Modifier.fillMaxSize()) {
+                        SkeletonFeed()
+                    }
+                } else {
+                    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+                    HomeFeed(
+                        quickPicks = speedDialPicks,
+                        recentlyPlayed = recentlyPlayed,
+                        trendingTracks = trendingTracks,
+                        playlists = playlists,
+                        onTrackClick = onTrackClick,
+                        onPlaylistClick = onPlaylistClick,
+                        onSearchClick = { /* Scroll to top or focus search */ },
+                        onProfileClick = onProfileClick,
+                        onSwipeToQueue = onSwipeToQueue,
+                        onAddToPlaylist = { playlistId, track -> viewModel.addTrackToPlaylist(playlistId, track) },
+                        onCreatePlaylist = { name -> viewModel.createPlaylist(name) },
+                        listState = homeListState
+                    )
+                }
+            }
+        }
+
+        TopFadeBlur(
+            hazeState = homeHaze,
+            pageColor = MaterialTheme.colorScheme.background,
+            scrimColor = MaterialTheme.colorScheme.background,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        FrostedTopBar(
+            title = "Listen Now",
+            scrolled = scrolled,
+            fadeActionsOnScroll = true,
+            unscrolledStartContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onProfileClick() }
+                ) {
+                    UserAvatar(
+                        avatarUrl = userAvatarUrl,
+                        displayName = userDisplayName ?: "D",
+                        size = 36.dp
+                    )
+
+                    Column(verticalArrangement = Arrangement.Center) {
+                        Text(
+                            text = "Welcome back,",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = userDisplayName?.ifBlank { "User" } ?: "User",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            },
+            actions = {
+                IconButton(
+                    onClick = {
+                        if (isSpotifyConnected) {
+                            showSpotifyDisconnectConfirm = true
+                        } else {
+                            showSpotifyCookieDialog = true
+                        }
+                    }
+                ) {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(com.vibevault.app.R.drawable.spotify),
+                        contentDescription = if (isSpotifyConnected) "Disconnect Spotify" else "Connect Spotify",
+                        tint = if (isSpotifyConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
                 IconButton(onClick = onListenTogetherClick) {
                     Icon(
                         painter = androidx.compose.ui.res.painterResource(com.vibevault.app.R.drawable.group),
                         contentDescription = "Listen Together",
-                        tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(28.dp)
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                
-                // Settings Button
                 IconButton(onClick = onSettingsClick) {
                     Icon(
                         Icons.Default.Settings,
                         contentDescription = "Settings",
-                        tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(28.dp)
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                
-                // Connect to Spotify Button
-                if (!isSpotifyConnected) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
-                            .clickable { showSpotifyCookieDialog = true }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "Connect to Spotify",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color.Black
-                        )
-                    }
-                } else {
-                    // Connected indicator (Click to disconnect)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .padding(horizontal = 8.dp)
-                            .clickable { showSpotifyDisconnectConfirm = true }
-                            .padding(4.dp) // extra touch target
-                    ) {
-                        Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Default.CheckCircle,
-                            contentDescription = "Spotify Connected",
-                            tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "Spotify Connected",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-
-            // Horizontally scrolling chips
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item { ChipFilter("All", true) }
-                item { ChipFilter("Music", false) }
-                item { ChipFilter("Podcasts", false) }
-                item { ChipFilter("Workout", false) }
-                item { ChipFilter("Feel good", false) }
-                item { ChipFilter("Romance", false) }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
-        if (searchQuery.isNotBlank()) {
-            // Search UI
-            SearchHeader(
-                query = searchQuery,
-                onQueryChange = viewModel::onSearchQueryChange
-            )
-            
-            if (isSearching) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
-                }
-            } else {
-                SearchResults(viewModel = viewModel, searchResponse = searchResults, onTrackClick = { onTrackClick(it) }, onSwipeToQueue = onSwipeToQueue)
-            }
-        } else {
-            if (isLoading) {
-                Box(Modifier.fillMaxSize()) {
-                    SkeletonFeed()
-                }
-            } else {
-                val playlists by viewModel.playlists.collectAsStateWithLifecycle()
-                HomeFeed(
-                    quickPicks = speedDialPicks,
-                    recentlyPlayed = recentlyPlayed,
-                    trendingTracks = trendingTracks,
-                    playlists = playlists,
-                    onTrackClick = onTrackClick,
-                    onPlaylistClick = onPlaylistClick,
-                    onSearchClick = { /* Scroll to top or focus search */ },
-                    onProfileClick = onProfileClick,
-                    onSwipeToQueue = onSwipeToQueue,
-                    onAddToPlaylist = { playlistId, track -> viewModel.addTrackToPlaylist(playlistId, track) },
-                    onCreatePlaylist = { name -> viewModel.createPlaylist(name) }
-                )
-            }
-        }
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 
@@ -377,9 +403,11 @@ fun HomeFeed(
     onProfileClick: () -> Unit,
     onSwipeToQueue: (Track) -> Unit,
     onAddToPlaylist: (playlistId: String, track: Track) -> Unit,
-    onCreatePlaylist: (name: String) -> Unit
+    onCreatePlaylist: (name: String) -> Unit,
+    listState: LazyListState = rememberLazyListState()
 ) {
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
     ) {

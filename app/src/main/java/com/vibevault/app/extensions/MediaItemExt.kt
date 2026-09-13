@@ -110,7 +110,7 @@ fun MediaMetadata.toMediaItem(): MediaItem {
 fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
     val safeTitle = title.takeIf { it.isNotBlank() } ?: "Track $id"
     val safeArtist = artist.takeIf { it.isNotBlank() && it != "Unknown" } ?: "Unknown Artist"
-    val safeAlbum = album.takeIf { it.isNotBlank() && it != "Unknown" } ?: "Unknown Album"
+    val safeAlbum = if (isVideo) "" else album.takeIf { it.isNotBlank() && it != "Unknown" && it != "Unknown Album" }.orEmpty()
     val safeArtUri = albumImageUrl.takeIf { it.isNotBlank() }?.toUri()
 
     val streamUri = if (id.startsWith("http://") || id.startsWith("https://")) {
@@ -126,6 +126,14 @@ fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
             .build()
     }
 
+    val metadataAlbum = if (!isVideo && !albumId.isNullOrBlank()) {
+        MediaMetadata.Album(albumId, safeAlbum.ifBlank { "Album" })
+    } else if (!isVideo && safeAlbum.isNotBlank()) {
+        MediaMetadata.Album("", safeAlbum)
+    } else {
+        null
+    }
+
     return MediaItem.Builder()
         .setMediaId(id)
         .setUri(streamUri)
@@ -133,10 +141,11 @@ fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
         .setTag(MediaMetadata(
             id = id,
             title = safeTitle,
-            artists = listOf(MediaMetadata.Artist(null, safeArtist)),
+            artists = listOf(MediaMetadata.Artist(artistId, safeArtist)),
             duration = (durationMs / 1000).toInt(),
             thumbnailUrl = albumImageUrl,
-            album = MediaMetadata.Album("", safeAlbum)
+            album = metadataAlbum,
+            musicVideoType = if (isVideo) "MUSIC_VIDEO_TYPE_OMV" else null
         ))
         .setMediaMetadata(
             androidx.media3.common.MediaMetadata.Builder()
@@ -144,7 +153,7 @@ fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
                 .setSubtitle(safeArtist)
                 .setArtist(safeArtist)
                 .setArtworkUri(safeArtUri)
-                .setAlbumTitle(safeAlbum)
+                .setAlbumTitle(safeAlbum.takeIf { it.isNotBlank() })
                 .setAlbumArtist(safeArtist)
                 .setDisplayTitle(safeTitle)
                 .setMediaType(MEDIA_TYPE_MUSIC)
@@ -161,13 +170,17 @@ fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
 fun SongItem.toTrack(): Track {
     val safeTitle = title.takeIf { it.isNotBlank() } ?: "Track $id"
     val safeArtist = artists.joinToString(", ") { it.name }.takeIf { it.isNotBlank() } ?: "Unknown Artist"
+    val isVideoItem = isVideoSong
     return Track(
         id = id,
         title = safeTitle,
         artist = safeArtist,
-        album = album?.name ?: "Unknown Album",
+        album = if (isVideoItem) "" else (album?.name ?: ""),
         albumImageUrl = thumbnail,
         durationMs = (duration ?: 0) * 1000L,
-        source = "youtube"
+        source = "youtube",
+        albumId = if (isVideoItem) null else album?.id,
+        artistId = artists.firstOrNull()?.id,
+        isVideo = isVideoItem
     )
 }

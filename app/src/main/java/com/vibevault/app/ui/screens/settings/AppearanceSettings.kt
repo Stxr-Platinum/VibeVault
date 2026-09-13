@@ -35,6 +35,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BlurOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -75,6 +77,7 @@ import com.vibevault.app.constants.DefaultOpenTabKey
 import com.vibevault.app.constants.DensityScale
 import com.vibevault.app.constants.DensityScaleKey
 import com.vibevault.app.constants.DynamicThemeKey
+import com.vibevault.app.constants.ReduceDynamicBlurKey
 import com.vibevault.app.constants.EnableDynamicIconKey
 import com.vibevault.app.constants.EnableSettingsPopupKey
 import com.vibevault.app.constants.EnableHighRefreshRateKey
@@ -1228,6 +1231,41 @@ fun AppearanceSettings(
                         )
                     )
                 }
+                val (reduceDynamicBlur, onReduceDynamicBlurChange) = rememberPreference(
+                    ReduceDynamicBlurKey,
+                    defaultValue = false
+                )
+                add(
+                    Material3SettingsItem(
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Rounded.BlurOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        title = { Text(stringResource(R.string.reduce_dynamic_blur)) },
+                        description = { Text(stringResource(R.string.reduce_dynamic_blur_subtitle)) },
+                        trailingContent = {
+                            Switch(
+                                checked = reduceDynamicBlur,
+                                onCheckedChange = onReduceDynamicBlurChange,
+                                thumbContent = {
+                                    Icon(
+                                        painter = painterResource(
+                                            id = if (reduceDynamicBlur) R.drawable.check else R.drawable.close
+                                        ),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = { onReduceDynamicBlurChange(!reduceDynamicBlur) },
+                        isExpressive = true,
+                        descriptionBelow = true
+                    )
+                )
             }
         )
 

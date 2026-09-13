@@ -460,6 +460,10 @@ object YouTube {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
         val sectionContent = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
+            ?: response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
+                ?.contents?.firstOrNull()
+            ?: response.contents?.twoColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+                ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
         
         val gridRenderer = sectionContent?.gridRenderer
         val musicCarouselShelfRenderer = sectionContent?.musicCarouselShelfRenderer
@@ -495,6 +499,7 @@ object YouTube {
                 ArtistItemsPage(
                     title = musicShelfRenderer.title?.runs?.firstOrNull()?.text 
                         ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text 
+                        ?: response.header?.musicDetailHeaderRenderer?.title?.runs?.firstOrNull()?.text 
                         ?: "",
                     items = musicShelfRenderer.contents?.getItems()?.mapNotNull {
                         ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
@@ -504,8 +509,11 @@ object YouTube {
             }
             else -> {
                 ArtistItemsPage(
-                    title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text ?: "",
-                    items = musicPlaylistShelfRenderer?.contents?.getItems()?.mapNotNull {
+                    title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text
+                        ?: response.header?.musicDetailHeaderRenderer?.title?.runs?.firstOrNull()?.text
+                        ?: "",
+                    items = (musicPlaylistShelfRenderer?.contents?.getItems()
+                        ?: musicShelfRenderer?.contents?.getItems())?.mapNotNull {
                         ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
                     } ?: emptyList(),
                     continuation = musicPlaylistShelfRenderer?.contents?.getContinuation()
@@ -1303,6 +1311,19 @@ object YouTube {
             ?: throw IllegalStateException("Playlist panel renderer not found for videoId=${endpoint.videoId}")
 
         val title = watchNextTab?.musicQueueRenderer?.header?.musicQueueHeaderRenderer?.subtitle?.runs?.firstOrNull()?.text
+
+        val chipsData = watchNextTab?.musicQueueRenderer?.subHeaderChipCloud?.chipCloudRenderer?.chips
+        val radioChips = chipsData?.mapNotNull { chip ->
+            val renderer = chip.chipCloudChipRenderer ?: return@mapNotNull null
+            val text = renderer.text?.runs?.firstOrNull()?.text ?: return@mapNotNull null
+            val params = renderer.navigationEndpoint?.watchEndpoint?.params ?: ""
+            com.music.innertube.pages.RadioChip(
+                title = text,
+                params = params,
+                isSelected = renderer.isSelected
+            )
+        } ?: emptyList()
+
         val items = playlistPanelRenderer.contents.mapNotNull { content ->
             content.playlistPanelVideoRenderer
                 ?.let(NextPage::fromPlaylistPanelVideoRenderer)
@@ -1324,7 +1345,8 @@ object YouTube {
                     lyricsEndpoint = lyricsEndpoint,
                     relatedEndpoint = relatedEndpoint,
                     currentIndex = currentIndex,
-                    endpoint = watchPlaylistEndpoint
+                    endpoint = watchPlaylistEndpoint,
+                    radioChips = radioChips
                 )
             }
         }
@@ -1335,7 +1357,8 @@ object YouTube {
             lyricsEndpoint = lyricsEndpoint,
             relatedEndpoint = relatedEndpoint,
             continuation = playlistPanelRenderer.continuations?.getContinuation(),
-            endpoint = endpoint
+            endpoint = endpoint,
+            radioChips = radioChips
         )
     }
 

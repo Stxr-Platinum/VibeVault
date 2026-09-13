@@ -152,6 +152,7 @@ fun PlayerMenuBottomSheet(
             ) {
                 // Group 1: Navigation Actions (Artist & Album)
                 item {
+                    val hasAlbum = !track.isVideo && (!track.albumId.isNullOrBlank() || (track.album.isNotBlank() && track.album != "Unknown Album" && track.album != "Unknown"))
                     MenuCardGroup {
                         MenuItemRow(
                             drawableRes = R.drawable.person,
@@ -162,20 +163,22 @@ fun PlayerMenuBottomSheet(
                                 onViewArtist(track.artist)
                             }
                         )
-                        HorizontalDivider(
-                            color = Color.White.copy(alpha = 0.05f),
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                        MenuItemRow(
-                            drawableRes = R.drawable.album,
-                            title = "View Album",
-                            subtitle = track.album.ifBlank { "View album details" },
-                            onClick = {
-                                onDismiss()
-                                val target = if (track.album.isNotBlank()) "${track.album}::${track.artist}" else track.artist
-                                onViewAlbum(target)
-                            }
-                        )
+                        if (hasAlbum) {
+                            HorizontalDivider(
+                                color = Color.White.copy(alpha = 0.05f),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                            MenuItemRow(
+                                drawableRes = R.drawable.album,
+                                title = "View Album",
+                                subtitle = track.album.ifBlank { "View album details" },
+                                onClick = {
+                                    onDismiss()
+                                    val target = track.albumId?.takeIf { it.isNotBlank() } ?: track.album
+                                    onViewAlbum(target)
+                                }
+                            )
+                        }
                     }
                 }
 

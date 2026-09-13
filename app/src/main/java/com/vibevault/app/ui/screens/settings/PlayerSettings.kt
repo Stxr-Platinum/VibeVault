@@ -47,10 +47,15 @@ import com.vibevault.app.constants.EnableSaavnStreamingKey
 import com.vibevault.app.constants.SaavnAudioQuality
 import com.vibevault.app.constants.SaavnAudioQualityKey
 import com.vibevault.app.constants.AutoDownloadOnLikeKey
+import com.vibevault.app.constants.CrossfadeCurve
+import com.vibevault.app.constants.CrossfadeCurveKey
 import com.vibevault.app.constants.CrossfadeDurationKey
 import com.vibevault.app.constants.CrossfadeEnabledKey
 import com.vibevault.app.constants.CrossfadeGaplessKey
+import com.vibevault.app.constants.CrossfadeManualSkipKey
+import com.vibevault.app.constants.EnableSponsorBlockKey
 import com.vibevault.app.constants.AutoLoadMoreKey
+import com.vibevault.app.ui.components.CrossfadeCurvePreview
 import com.vibevault.app.constants.AutoSkipNextOnErrorKey
 import com.vibevault.app.constants.DisableLoadMoreWhenRepeatAllKey
 import com.vibevault.app.constants.EnableGoogleCastKey
@@ -94,9 +99,21 @@ fun PlayerSettings(
         CrossfadeDurationKey,
         defaultValue = 5f
     )
+    val (crossfadeCurve, onCrossfadeCurveChange) = rememberEnumPreference(
+        CrossfadeCurveKey,
+        defaultValue = CrossfadeCurve.EASE_OUT_QUAD
+    )
     val (crossfadeGapless, onCrossfadeGaplessChange) = rememberPreference(
         CrossfadeGaplessKey,
         defaultValue = true
+    )
+    val (crossfadeManualSkip, onCrossfadeManualSkipChange) = rememberPreference(
+        CrossfadeManualSkipKey,
+        defaultValue = true
+    )
+    val (sponsorBlockEnabled, _) = rememberPreference(
+        EnableSponsorBlockKey,
+        defaultValue = false
     )
     val (persistentQueue, onPersistentQueueChange) = rememberPreference(
         PersistentQueueKey,
@@ -220,6 +237,28 @@ fun PlayerSettings(
     }
 
     var showCrossfadeBetaDialog by remember { mutableStateOf(false) }
+    var showCrossfadeCurveDialog by remember { mutableStateOf(false) }
+
+    if (showCrossfadeCurveDialog) {
+        EnumDialog(
+            onDismiss = { showCrossfadeCurveDialog = false },
+            onSelect = {
+                onCrossfadeCurveChange(it)
+                showCrossfadeCurveDialog = false
+            },
+            title = stringResource(R.string.crossfade_curve),
+            current = crossfadeCurve,
+            values = CrossfadeCurve.entries,
+            valueText = {
+                when (it) {
+                    CrossfadeCurve.EQUAL_POWER -> stringResource(R.string.crossfade_curve_entry_equal_power)
+                    CrossfadeCurve.EASE_OUT_QUAD -> stringResource(R.string.crossfade_curve_entry_ease_out_quad)
+                    CrossfadeCurve.EASE_OUT_CUBIC -> stringResource(R.string.crossfade_curve_entry_ease_out_cubic)
+                    CrossfadeCurve.SMOOTHSTEP -> stringResource(R.string.crossfade_curve_entry_smoothstep)
+                }
+            }
+        )
+    }
 
     if (showCrossfadeBetaDialog) {
         DefaultDialog(
@@ -298,7 +337,24 @@ fun PlayerSettings(
                         onClick = { navController.navigate("settings/player/jio") },
                         isExpressive = true
                     ))
-                    // JioSaavn settings navigation
+                    // SponsorBlock settings navigation
+                    add(Material3SettingsItem(
+                        icon = painterResource(R.drawable.fast_forward),
+                        title = { Text(stringResource(R.string.sponsorblock)) },
+                        description = { Text(stringResource(R.string.sponsorblock_desc)) },
+                        trailingContent = {
+                            Text(
+                                if (sponsorBlockEnabled) {
+                                    stringResource(R.string.enabled)
+                                } else {
+                                    stringResource(R.string.disabled)
+                                }
+                            )
+                        },
+                        onClick = { navController.navigate("settings/player/sponsorblock") },
+                        isExpressive = true,
+                        descriptionBelow = true
+                    ))
                     add(Material3SettingsItem(
                         icon = painterResource(R.drawable.linear_scale),
                         title = { Text(stringResource(R.string.crossfade)) },
@@ -354,6 +410,30 @@ fun PlayerSettings(
                             descriptionBelow = true
                         ))
                         add(Material3SettingsItem(
+                            icon = painterResource(R.drawable.linear_scale),
+                            title = { Text(stringResource(R.string.crossfade_curve)) },
+                            description = {
+                                Column {
+                                    Text(
+                                        when (crossfadeCurve) {
+                                            CrossfadeCurve.EQUAL_POWER -> stringResource(R.string.crossfade_curve_entry_equal_power)
+                                            CrossfadeCurve.EASE_OUT_QUAD -> stringResource(R.string.crossfade_curve_entry_ease_out_quad)
+                                            CrossfadeCurve.EASE_OUT_CUBIC -> stringResource(R.string.crossfade_curve_entry_ease_out_cubic)
+                                            CrossfadeCurve.SMOOTHSTEP -> stringResource(R.string.crossfade_curve_entry_smoothstep)
+                                        }
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    CrossfadeCurvePreview(
+                                        curve = crossfadeCurve,
+                                        durationSeconds = crossfadeDuration,
+                                    )
+                                }
+                            },
+                            onClick = { showCrossfadeCurveDialog = true },
+                            isExpressive = true,
+                            descriptionBelow = true
+                        ))
+                        add(Material3SettingsItem(
                             icon = painterResource(R.drawable.album),
                             title = { Text(stringResource(R.string.crossfade_gapless)) },
                             description = { Text(stringResource(R.string.crossfade_gapless_desc)) },
@@ -373,6 +453,29 @@ fun PlayerSettings(
                                 )
                             },
                             onClick = { onCrossfadeGaplessChange(!crossfadeGapless) },
+                            isExpressive = true,
+                            descriptionBelow = true
+                        ))
+                        add(Material3SettingsItem(
+                            icon = painterResource(R.drawable.fast_forward),
+                            title = { Text(stringResource(R.string.crossfade_manual_skip)) },
+                            description = { Text(stringResource(R.string.crossfade_manual_skip_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = crossfadeManualSkip,
+                                    onCheckedChange = onCrossfadeManualSkipChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (crossfadeManualSkip) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onCrossfadeManualSkipChange(!crossfadeManualSkip) },
                             isExpressive = true,
                             descriptionBelow = true
                         ))
