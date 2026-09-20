@@ -102,6 +102,7 @@ fun PlayerScreen(
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val position by viewModel.currentPosition.collectAsStateWithLifecycle()
     val duration by viewModel.duration.collectAsStateWithLifecycle()
+    val audioFormatInfo by viewModel.audioFormatInfo.collectAsStateWithLifecycle()
 
     var showPlaylistMenu by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
@@ -961,10 +962,14 @@ fun PlayerScreen(
                         color = Color.White.copy(alpha = 0.55f)
                     )
 
-                    if (!useNewPlayerDesign && !useMinimalisticPlayerDesign) {
+                    if (!useMinimalisticPlayerDesign) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showSongDetailsDialog = true }
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Headphones,
@@ -974,7 +979,7 @@ fun PlayerScreen(
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
-                                text = "Hi-Quality",
+                                text = audioFormatInfo,
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                 color = Color.White.copy(alpha = 0.55f)
                             )
@@ -982,12 +987,7 @@ fun PlayerScreen(
                     }
 
                     Text(
-                        if (!useNewPlayerDesign && !useMinimalisticPlayerDesign) {
-                            val remaining = (safeDuration - displayPosition).toLong().coerceAtLeast(0L)
-                            "-${formatTime(remaining)}"
-                        } else {
-                            formatTime(safeDuration.toLong())
-                        },
+                        formatTime(safeDuration.toLong()),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.55f)
                     )

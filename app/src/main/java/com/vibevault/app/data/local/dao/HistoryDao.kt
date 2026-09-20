@@ -15,6 +15,12 @@ interface HistoryDao {
     @Query("SELECT * FROM listening_history WHERE trackId = :trackId LIMIT 1")
     suspend fun getHistoryForTrack(trackId: String): HistoryEntity?
 
+    @Query("DELETE FROM listening_history WHERE trackId = :trackId AND (title LIKE 'Track %' OR title = '' OR title = 'Unknown' OR title = 'Loading...')")
+    suspend fun deletePlaceholderForTrack(trackId: String)
+
+    @Query("DELETE FROM listening_history WHERE title LIKE 'Track %' OR title = '' OR title = 'Unknown' OR title = 'Loading...'")
+    suspend fun purgePlaceholderHistory()
+
     @Query("DELETE FROM listening_history")
     suspend fun clearHistory()
 }

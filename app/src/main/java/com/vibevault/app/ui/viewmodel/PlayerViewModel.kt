@@ -85,6 +85,9 @@ class PlayerViewModel @Inject constructor(
     private val _isLoadingLyrics = MutableStateFlow(false)
     val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
 
+    private val _audioFormatInfo = MutableStateFlow<String>("160 kbps (OPUS)")
+    val audioFormatInfo: StateFlow<String> = _audioFormatInfo.asStateFlow()
+
     private val _sleepTimerActive = MutableStateFlow(false)
     val sleepTimerActive: StateFlow<Boolean> = _sleepTimerActive.asStateFlow()
 
@@ -106,6 +109,7 @@ class PlayerViewModel @Inject constructor(
     private val _isMuted = MutableStateFlow(false)
     private val _queueTitle = MutableStateFlow<String?>(null)
     private val _queueWindows = MutableStateFlow<List<MediaItem>>(emptyList())
+    private var listenTogetherBridge: PlayerConnection? = null
 
     private var currentlyPlayingTrackId: String? = null
 
@@ -233,7 +237,9 @@ class PlayerViewModel @Inject constructor(
                 
                 if (shouldStartPlayback) {
                     playInternal(track!!)
-                    musicRepository.recordPlay(track)
+                    if (track.title.isNotBlank() && !track.title.startsWith("Track ") && track.title != "Unknown" && track.title != "Loading...") {
+                        musicRepository.recordPlay(track)
+                    }
                 } else if (track == null) {
                     stopAllPlayback()
                 } else if (isRestoringSavedState && track != null) {
@@ -241,6 +247,7 @@ class PlayerViewModel @Inject constructor(
                 }
 
                 if (track != null) {
+                    updateAudioFormat()
                     fetchLyrics(track)
                 } else {
                     lastFetchedLyricsTrackId = null
@@ -352,6 +359,10 @@ class PlayerViewModel @Inject constructor(
 
     private fun setupPlayerListener() {
         player?.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                updateAudioFormat(tracks)
+            }
+
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 _isPlaying.value = playWhenReady
             }
@@ -365,6 +376,7 @@ class PlayerViewModel @Inject constructor(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
+                    updateAudioFormat()
                     val dur = player?.duration?.coerceAtLeast(0) ?: 0L
                     if (dur > 0) {
                         _duration.value = dur
@@ -390,6 +402,7 @@ class PlayerViewModel @Inject constructor(
             
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 super.onMediaItemTransition(mediaItem, reason)
+                updateAudioFormat()
                 
                 val rawNewId = mediaItem?.mediaId
                 val newId = rawNewId?.split("/")?.lastOrNull() ?: rawNewId
@@ -440,7 +453,7 @@ class PlayerViewModel @Inject constructor(
                         queueManager.syncExternalTrack(externalTrack)
                     }
                     
-                    if (isNewTrack) {
+                    if (isNewTrack && externalTrack.title.isNotBlank() && !externalTrack.title.startsWith("Track ") && externalTrack.title != "Unknown" && externalTrack.title != "Loading...") {
                         viewModelScope.launch {
                             musicRepository.recordPlay(externalTrack)
                         }
@@ -541,6 +554,59 @@ class PlayerViewModel @Inject constructor(
             override fun addToQueue(mediaItem: MediaItem) {
                 val track = mediaItemToTrack(mediaItem)
                 viewModelScope.launch { queueManager.appendTracks(listOf(track)) }
+                streamResolver.preResolve(track.id, track.title, track.artist, track.durationMs)
+            }
+            
+            override fun addTrackToQueue(mediaItem: MediaItem, insertNext: Boolean) {
+                val track = mediaItemToTrack(mediaItem)
+                if (insertNext) {
+                    val q = queueManager.queueState.value.toMutableList()
+                    val idx = queueManager.currentIndex.value
+                    if (idx in q.indices) {
+                        q.add(idx + 1, track)
+                    } else {
+                        q.add(track)
+                    }
+                    viewModelScope.launch { queueManager.setQueue(q, queueManager.currentIndex.value) }
+                } else {
+                    viewModelScope.launch { queueManager.appendTracks(listOf(track)) }
+                }
+                streamResolver.preResolve(track.id, track.title, track.artist, track.durationMs)
+            }
+
+            override fun syncQueue(mediaItems: List<MediaItem>, currentIndex: Int) {
+                val tracks = mediaItems.map { mediaItemToTrack(it) }
+                viewModelScope.launch {
+                    queueManager.setQueue(tracks, currentIndex)
+                }
+                if (currentIndex in tracks.indices) {
+                    val curr = tracks[currentIndex]
+                    streamResolver.preResolve(curr.id, curr.title, curr.artist, curr.durationMs)
+                    if (currentIndex + 1 < tracks.size) {
+                        val next = tracks[currentIndex + 1]
+                        streamResolver.preResolve(next.id, next.title, next.artist, next.durationMs)
+                    }
+                }
+            }
+
+            override fun removeTrackFromQueue(mediaId: String) {
+                val q = queueManager.queueState.value
+                val idx = q.indexOfFirst { it.id == mediaId }
+                if (idx >= 0) {
+                    queueManager.removeTrackAt(idx)
+                }
+            }
+
+            override fun clearQueue() {
+                queueManager.clearQueue()
+            }
+
+            override fun setPlaybackSpeed(speed: Float) {
+                player?.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
+            }
+
+            override fun getPlaybackSpeed(): Float {
+                return player?.playbackParameters?.speed ?: 1.0f
             }
             
             override fun setMuted(muted: Boolean) {
@@ -567,6 +633,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
         
+        listenTogetherBridge = bridge
         listenTogetherManager.setPlayerConnection(bridge)
     }
 
@@ -687,6 +754,8 @@ class PlayerViewModel @Inject constructor(
             val needsMetadataFetch = selectedTrack == null || 
                 selectedTrack.title.isBlank() || 
                 selectedTrack.title == "Playing" || 
+                selectedTrack.title == "Loading..." ||
+                selectedTrack.title.startsWith("Track ") ||
                 selectedTrack.artist.isBlank() || 
                 selectedTrack.artist == "Unknown" || 
                 selectedTrack.artist == "Unknown Artist" ||
@@ -694,17 +763,22 @@ class PlayerViewModel @Inject constructor(
 
             if (selectedTrack == null) {
                 val contextFirst = context.firstOrNull()
+                val candidateTitle = contextFirst?.title?.takeIf { it.isNotBlank() && !it.startsWith("Track ") && it != "Unknown" }
+                val candidateArtist = contextFirst?.artist?.takeIf { it.isNotBlank() && it != "Unknown" && it != "Unknown Artist" }
+                val candidateAlbum = contextFirst?.album?.takeIf { it.isNotBlank() && it != "Unknown Album" }
+                val candidateArt = contextFirst?.albumImageUrl?.takeIf { it.isNotBlank() } ?: ""
+
                 selectedTrack = Track(
                     id = trackId,
-                    title = contextFirst?.title?.takeIf { it.isNotBlank() } ?: "Track $trackId",
-                    artist = contextFirst?.artist?.takeIf { it.isNotBlank() } ?: "Unknown Artist",
-                    album = contextFirst?.album?.takeIf { it.isNotBlank() } ?: "Unknown Album",
-                    albumImageUrl = contextFirst?.albumImageUrl ?: "",
+                    title = candidateTitle ?: "Loading...",
+                    artist = candidateArtist ?: "",
+                    album = candidateAlbum ?: "",
+                    albumImageUrl = candidateArt,
                     durationMs = contextFirst?.durationMs ?: 0L
                 )
             }
 
-            if (isAlbumOrPlaylist && context.size > 1) {
+            if ((isAlbumOrPlaylist || context.size > 1) && context.size > 1) {
                 val index = context.indexOfFirst { it.id == trackId }.coerceAtLeast(0)
                 queueManager.setQueue(context, index)
             } else {
@@ -713,7 +787,9 @@ class PlayerViewModel @Inject constructor(
 
             // Always trigger playInternal so explicit user track selection starts playing immediately
             playInternal(selectedTrack)
-            musicRepository.recordPlay(selectedTrack)
+            if (!selectedTrack.title.startsWith("Track ") && selectedTrack.title != "Loading..." && selectedTrack.title.isNotBlank() && selectedTrack.title != "Unknown") {
+                musicRepository.recordPlay(selectedTrack)
+            }
 
             // Asynchronously resolve full metadata if incomplete
             if (needsMetadataFetch) {
@@ -727,9 +803,9 @@ class PlayerViewModel @Inject constructor(
                                 ?: musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
                         }
                         
-                        if (onlineResult != null && onlineResult.title.isNotBlank()) {
+                        if (onlineResult != null && onlineResult.title.isNotBlank() && !onlineResult.title.startsWith("Track ")) {
                             val updatedTrack = selectedTrack.copy(
-                                title = onlineResult.title.takeIf { it.isNotBlank() } ?: selectedTrack.title,
+                                title = onlineResult.title,
                                 artist = onlineResult.artist.takeIf { it.isNotBlank() && it != "Unknown" } ?: selectedTrack.artist,
                                 album = if (onlineResult.isVideo) "" else (onlineResult.album.takeIf { it.isNotBlank() && it != "Unknown" } ?: selectedTrack.album),
                                 albumImageUrl = onlineResult.albumImageUrl.takeIf { it.isNotBlank() } ?: selectedTrack.albumImageUrl,
@@ -741,6 +817,7 @@ class PlayerViewModel @Inject constructor(
                             withContext(Dispatchers.Main) {
                                 queueManager.syncExternalTrack(updatedTrack)
                             }
+                            musicRepository.recordPlay(updatedTrack)
                         }
                     } catch (e: Exception) {
                         Log.e("PlaybackDebug", "Failed async metadata resolution for $trackId", e)
@@ -767,15 +844,27 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun playNext(track: Track) {
+        if (listenTogetherManager.isInRoom) {
+            listenTogetherManager.addTrackToSharedQueue(track, insertNext = true)
+            return
+        }
         queueManager.appendTrack(track)
     }
 
     fun addToQueue(track: Track) {
+        if (listenTogetherManager.isInRoom) {
+            listenTogetherManager.addTrackToSharedQueue(track, insertNext = false)
+            return
+        }
         queueManager.addToQueueEnd(track)
     }
 
     fun togglePlayPause() {
         val p = player ?: return
+        if (listenTogetherManager.isInRoom && !listenTogetherManager.isHost && listenTogetherBridge?.allowInternalSync != true) {
+            listenTogetherManager.requestSync()
+            return
+        }
         if (p.isPlaying || p.playWhenReady) {
             p.pause()
         } else {
@@ -797,12 +886,24 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun seekTo(positionMs: Long) {
+        if (listenTogetherManager.isInRoom && !listenTogetherManager.isHost && listenTogetherBridge?.allowInternalSync != true) {
+            listenTogetherManager.requestSync()
+            return
+        }
         player?.seekTo(positionMs)
         _currentPosition.value = positionMs
     }
 
     fun skipNext() {
         Log.d("PlaybackDebug", "skipNext called")
+        if (listenTogetherManager.isInRoom) {
+            if (listenTogetherManager.isHost) {
+                listenTogetherBridge?.onSkipNext?.invoke()
+            } else if (listenTogetherBridge?.allowInternalSync != true) {
+                listenTogetherManager.requestSync()
+                return
+            }
+        }
         val service = PlaybackService.instance
         if (service != null && service.manualSkipNextWithCrossfade()) {
             return
@@ -812,6 +913,20 @@ class PlayerViewModel @Inject constructor(
 
     fun skipPrevious() {
         Log.d("PlaybackDebug", "skipPrevious called")
+        if (listenTogetherManager.isInRoom) {
+            if (listenTogetherManager.isHost) {
+                if (_currentPosition.value > 5000L) {
+                    listenTogetherBridge?.onRestartSong?.invoke()
+                    seekTo(0L)
+                    return
+                } else {
+                    listenTogetherBridge?.onSkipPrevious?.invoke()
+                }
+            } else if (listenTogetherBridge?.allowInternalSync != true) {
+                listenTogetherManager.requestSync()
+                return
+            }
+        }
         // 5-second rule: If we are past 5 seconds, restart current track
         if (_currentPosition.value > 5000L) {
             seekTo(0L)
@@ -913,6 +1028,84 @@ class PlayerViewModel @Inject constructor(
                     _isLoadingLyrics.value = false
                 }
             }
+        }
+    }
+
+    fun updateAudioFormat(tracks: androidx.media3.common.Tracks? = player?.currentTracks) {
+        val current = currentTrack.value
+        var detectedFormat: androidx.media3.common.Format? = null
+
+        tracks?.groups?.forEach { group ->
+            if (group.isSelected && group.type == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
+                for (i in 0 until group.length) {
+                    if (group.isTrackSelected(i)) {
+                        detectedFormat = group.getTrackFormat(i)
+                        break
+                    }
+                }
+            }
+        }
+
+        if (detectedFormat == null) {
+            detectedFormat = PlaybackService.instance?.player?.audioFormat
+        }
+
+        if (detectedFormat != null) {
+            _audioFormatInfo.value = formatToReadableString(detectedFormat!!, current)
+        } else {
+            _audioFormatInfo.value = getFallbackAudioFormat(current)
+        }
+    }
+
+    private fun formatToReadableString(format: androidx.media3.common.Format, track: Track?): String {
+        val bitrateKbps = when {
+            format.bitrate > 0 -> format.bitrate / 1000
+            format.averageBitrate > 0 -> format.averageBitrate / 1000
+            else -> 0
+        }
+        val mime = (format.sampleMimeType ?: "").lowercase()
+        val codecs = (format.codecs ?: "").lowercase()
+        val formatName = when {
+            mime.contains("opus") || codecs.contains("opus") -> "OPUS"
+            mime.contains("mp4a") || mime.contains("aac") || codecs.contains("mp4a") -> "AAC"
+            mime.contains("mpeg") || mime.contains("mp3") -> "MP3"
+            mime.contains("flac") -> "FLAC"
+            mime.contains("vorbis") || mime.contains("ogg") -> "OGG"
+            mime.contains("webm") -> "OPUS"
+            else -> when (track?.source) {
+                "jiosaavn" -> "AAC"
+                "spotify" -> "OGG"
+                else -> "OPUS"
+            }
+        }
+        val finalBitrate = if (bitrateKbps > 0) {
+            "${bitrateKbps} kbps"
+        } else {
+            when (track?.source) {
+                "jiosaavn" -> "320 kbps"
+                "spotify" -> "320 kbps"
+                else -> if (formatName == "OPUS") "160 kbps" else "256 kbps"
+            }
+        }
+        return "$finalBitrate ($formatName)"
+    }
+
+    private fun getFallbackAudioFormat(track: Track?): String {
+        if (track == null) return "160 kbps (OPUS)"
+        return when (track.source) {
+            "jiosaavn" -> "320 kbps (AAC)"
+            "spotify" -> "320 kbps (OGG)"
+            "local" -> {
+                val path = track.localPath.orEmpty().lowercase()
+                when {
+                    path.endsWith(".flac") -> "FLAC (Lossless)"
+                    path.endsWith(".wav") -> "1411 kbps (WAV)"
+                    path.endsWith(".m4a") || path.endsWith(".aac") -> "256 kbps (AAC)"
+                    path.endsWith(".ogg") || path.endsWith(".opus") -> "160 kbps (OPUS)"
+                    else -> "320 kbps (MP3)"
+                }
+            }
+            else -> "160 kbps (OPUS)"
         }
     }
 

@@ -22,6 +22,16 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.*
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.ui.viewmodel.OnlineSearchViewModel
+import com.vibevault.app.ui.components.songListSkeleton
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import com.vibevault.app.ui.haptics.rememberHaptics
+import com.vibevault.app.ui.haptics.Haptic
+import android.widget.Toast
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +41,7 @@ fun OnlineSearchScreen(
     onTrackClick: (String, List<Track>) -> Unit,
     onPlaylistClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
+    onSwipeToQueue: ((Track) -> Unit)? = null,
     viewModel: OnlineSearchViewModel = hiltViewModel()
 ) {
     val filter by viewModel.filter.collectAsState()
@@ -115,8 +126,10 @@ fun OnlineSearchScreen(
 
             if (filter == null) {
                 if (viewModel.summaryPage == null) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
+                    ) {
+                        songListSkeleton(count = 8)
                     }
                 } else {
                     LazyColumn(
@@ -132,22 +145,24 @@ fun OnlineSearchScreen(
                                 )
                             }
                             items(summary.items) { item ->
-                                ytItemContent(item, onTrackClick, onPlaylistClick, onArtistClick)
+                                ytItemContent(item, onTrackClick, onPlaylistClick, onArtistClick, onSwipeToQueue)
                             }
                         }
                     }
                 }
             } else {
                 if (items.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
+                    ) {
+                        songListSkeleton(count = 8)
                     }
                 } else {
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp)
                     ) {
                         items(items) { item ->
-                            ytItemContent(item, onTrackClick, onPlaylistClick, onArtistClick)
+                            ytItemContent(item, onTrackClick, onPlaylistClick, onArtistClick, onSwipeToQueue)
                         }
 
                         if (currentPage?.continuation != null) {
@@ -177,18 +192,23 @@ fun ytItemContent(
     item: YTItem,
     onTrackClick: (String, List<Track>) -> Unit,
     onPlaylistClick: (String) -> Unit,
-    onArtistClick: (String) -> Unit
+    onArtistClick: (String) -> Unit,
+    onSwipeToQueue: ((Track) -> Unit)? = null
 ) {
     when (item) {
         is SongItem -> {
             val track = item.toTrack()
-            SearchResultRow(
-                title = item.title,
-                subtitle = "Song • ${item.artists.joinToString(", ") { it.name }}",
-                imageUrl = item.thumbnail,
-                onClick = { onTrackClick(track.id, listOf(track)) },
-                onActionClick = null
-            )
+            SwipeToQueueTrackRow(
+                onSwipeToQueue = onSwipeToQueue?.let { queueAction -> { queueAction(track) } }
+            ) {
+                SearchResultRow(
+                    title = item.title,
+                    subtitle = "Song • ${item.artists.joinToString(", ") { it.name }}",
+                    imageUrl = item.thumbnail,
+                    onClick = { onTrackClick(track.id, listOf(track)) },
+                    onActionClick = null
+                )
+            }
         }
         is AlbumItem -> {
             SearchResultRow(
@@ -247,4 +267,112 @@ private fun SongItem.toTrack(): Track {
         artistId = this.artists.firstOrNull()?.id,
         isVideo = isVideoItem
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToQueueTrackRow(
+    onSwipeToQueue: (() -> Unit)?,
+    content: @Composable () -> Unit
+) {
+    if (onSwipeToQueue == null) {
+        content()
+        return
+    }
+
+    val haptics = rememberHaptics()
+    val context = LocalContext.current
+    var boxWidth by remember { mutableFloatStateOf(0f) }
+    val swipeStateHolder = remember { mutableStateOf<SwipeToDismissBoxState?>(null) }
+
+    val swipeState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value != SwipeToDismissBoxValue.Settled) {
+                val offset = try { swipeStateHolder.value?.requireOffset() ?: 0f } catch (e: Exception) { 0f }
+                if (abs(offset) >= boxWidth * 0.45f) {
+                    haptics.play(Haptic.Select)
+                    onSwipeToQueue()
+                    Toast.makeText(context, "Added to queue", Toast.LENGTH_SHORT).show()
+                }
+            }
+            false
+        },
+        positionalThreshold = { distance -> distance * 0.5f },
+    )
+    swipeStateHolder.value = swipeState
+
+    LaunchedEffect(swipeState, boxWidth) {
+        if (boxWidth <= 0f) return@LaunchedEffect
+        val armAt = boxWidth * 0.45f
+        var armed = false
+        snapshotFlow { try { swipeState.requireOffset() } catch (e: Exception) { 0f } }
+            .collect { offset ->
+                val travelled = abs(offset)
+                when {
+                    !armed && travelled >= armAt -> {
+                        armed = true
+                        haptics.play(Haptic.Tick)
+                    }
+                    armed && travelled < armAt * 0.8f -> armed = false
+                }
+            }
+    }
+
+    SwipeToDismissBox(
+        state = swipeState,
+        modifier = Modifier.onSizeChanged { boxWidth = it.width.toFloat() },
+        backgroundContent = {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawWithContent {
+                        val offset = try { swipeState.requireOffset() } catch (e: Exception) { 0f }
+                        if (offset > 0f) {
+                            clipRect(left = 0f, top = 0f, right = offset, bottom = size.height) {
+                                this@drawWithContent.drawContent()
+                            }
+                        } else if (offset < 0f) {
+                            clipRect(left = size.width + offset, top = 0f, right = size.width, bottom = size.height) {
+                                this@drawWithContent.drawContent()
+                            }
+                        }
+                    }
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.PlaylistAdd,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Queue",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.PlaylistAdd,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Queue",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    ) {
+        content()
+    }
 }

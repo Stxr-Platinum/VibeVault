@@ -153,6 +153,9 @@ fun AppNavHost(
                     playerViewModel.playTrack(trackId, context)
                     navController.navigate(Screen.Player.createRoute(trackId))
                 },
+                onSwipeToQueue = { track ->
+                    playerViewModel.addToQueue(track)
+                },
                 onNavigateToOnlineSearch = { query ->
                     navController.navigate(Screen.OnlineSearch.createRoute(query))
                 },
@@ -191,6 +194,9 @@ fun AppNavHost(
                     playerViewModel.playTrack(trackId, tracks)
                     navController.navigate(Screen.Player.createRoute(trackId))
                 },
+                onSwipeToQueue = { track ->
+                    playerViewModel.addToQueue(track)
+                },
                 onPlaylistClick = { id ->
                     if (id.startsWith("album:") || id.startsWith("MPREb_") || id.startsWith("OLAK5uy_")) {
                         val albumId = id.removePrefix("album:")
@@ -201,6 +207,80 @@ fun AppNavHost(
                 },
                 onArtistClick = { artistName ->
                     navController.navigate(Screen.Artist.createRoute(artistName))
+                }
+            )
+        }
+        composable(Screen.Explore.route) {
+            com.vibevault.app.ui.screens.explore.ExploreScreen(
+                onCategoryClick = { title, browseId, params ->
+                    if (title.equals("Chill", ignoreCase = true)) {
+                        navController.navigate(Screen.Chill.route)
+                    } else {
+                        navController.navigate(Screen.ExploreCategory.createRoute(title, browseId, params))
+                    }
+                },
+                onSettingsClick = {
+                    navController.navigate(Screen.Settings.route)
+                },
+                onDownloadsClick = {
+                    navController.navigate(Screen.Library.route)
+                }
+            )
+        }
+        composable(Screen.Chill.route) {
+            com.vibevault.app.ui.screens.explore.ChillScreen(
+                onBack = { navController.popBackStack() },
+                onPlaylistClick = { playlistId ->
+                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onAlbumClick = { albumId ->
+                    navController.navigate(Screen.Album.createRoute(albumId))
+                },
+                onTrackClick = { track, context ->
+                    playerViewModel.playTrack(track.id, context)
+                }
+            )
+        }
+        composable(
+            route = Screen.ExploreCategory.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("title") {
+                    type = androidx.navigation.NavType.StringType
+                    defaultValue = ""
+                },
+                androidx.navigation.navArgument("browseId") {
+                    type = androidx.navigation.NavType.StringType
+                    defaultValue = ""
+                },
+                androidx.navigation.navArgument("params") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val rawTitle = backStackEntry.arguments?.getString("title").orEmpty()
+            val title = try { java.net.URLDecoder.decode(rawTitle, "UTF-8") } catch (e: Exception) { rawTitle }
+            val rawBrowseId = backStackEntry.arguments?.getString("browseId").orEmpty()
+            val browseId = try { java.net.URLDecoder.decode(rawBrowseId, "UTF-8") } catch (e: Exception) { rawBrowseId }
+            val rawParams = backStackEntry.arguments?.getString("params")
+            val params = if (!rawParams.isNullOrBlank()) {
+                try { java.net.URLDecoder.decode(rawParams, "UTF-8") } catch (e: Exception) { rawParams }
+            } else null
+
+            com.vibevault.app.ui.screens.explore.ExploreCategoryScreen(
+                title = title,
+                browseId = browseId,
+                params = params,
+                onBack = { navController.popBackStack() },
+                onPlaylistClick = { playlistId ->
+                    navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onAlbumClick = { albumId ->
+                    navController.navigate(Screen.Album.createRoute(albumId))
+                },
+                onTrackClick = { track, context ->
+                    playerViewModel.playTrack(track.id, context)
                 }
             )
         }

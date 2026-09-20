@@ -37,6 +37,78 @@ object BitChordIcons {
         }.build()
     }
 
+    val Home: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_home",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(3.6f, 10.2f)
+                lineTo(12f, 3.8f)
+                lineTo(20.4f, 10.2f)
+                lineTo(20.4f, 19.4f)
+                arcToRelative(1.6f, 1.6f, 0f, isMoreThanHalf = false, isPositiveArc = true, -1.6f, 1.6f)
+                lineTo(5.2f, 21f)
+                arcToRelative(1.6f, 1.6f, 0f, isMoreThanHalf = false, isPositiveArc = true, -1.6f, -1.6f)
+                close()
+                moveTo(9.5f, 21f)
+                lineTo(9.5f, 13.5f)
+                lineTo(14.5f, 13.5f)
+                lineTo(14.5f, 21f)
+            }
+        }.build()
+    }
+
+    val Explore: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_explore",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(3.4f, 12f)
+                arcToRelative(8.6f, 8.6f, 0f, isMoreThanHalf = true, isPositiveArc = true, 17.2f, 0f)
+                arcToRelative(8.6f, 8.6f, 0f, isMoreThanHalf = true, isPositiveArc = true, -17.2f, 0f)
+                moveTo(15.4f, 8.6f)
+                lineTo(13.6f, 13.6f)
+                lineTo(8.6f, 15.4f)
+                lineTo(10.4f, 10.4f)
+                close()
+            }
+        }.build()
+    }
+
+    val Library: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_library",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(4.6f, 4.8f); lineTo(4.6f, 19.2f)
+                moveTo(9.2f, 4.8f); lineTo(9.2f, 19.2f)
+                moveTo(13.8f, 4.8f); lineTo(13.8f, 19.2f)
+                moveTo(17.2f, 5.6f); lineTo(20.6f, 18.9f)
+            }
+        }.build()
+    }
+
     val Search: ImageVector by lazy {
         ImageVector.Builder(
             name = "bc_search",
@@ -193,6 +265,28 @@ object BitChordIcons {
                 arcToRelative(8.6f, 8.6f, 0f, isMoreThanHalf = true, isPositiveArc = true, 17.2f, 0f)
                 arcToRelative(8.6f, 8.6f, 0f, isMoreThanHalf = true, isPositiveArc = true, -17.2f, 0f)
                 moveTo(12f, 7.4f); lineTo(12f, 12f); lineTo(15.4f, 13.8f)
+            }
+        }.build()
+    }
+
+    val Refresh: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "bc_refresh",
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = stroke,
+                strokeLineWidth = STROKE,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(19.5f, 12f)
+                arcToRelative(7.5f, 7.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, -2.2f, -5.3f)
+                lineTo(21f, 6.7f)
+                moveTo(21f, 2.5f)
+                lineTo(21f, 6.7f)
+                lineTo(16.8f, 6.7f)
             }
         }.build()
     }

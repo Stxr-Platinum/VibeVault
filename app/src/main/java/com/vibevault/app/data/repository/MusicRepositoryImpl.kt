@@ -52,7 +52,12 @@ class MusicRepositoryImpl @Inject constructor(
 
     override fun getRecentlyPlayed(limit: Int): Flow<List<Track>> = 
         historyDao.getRecentHistory().map { entities ->
-            entities.distinctBy { entity ->
+            entities.filter { entity ->
+                entity.title.isNotBlank() &&
+                    !entity.title.startsWith("Track ") &&
+                    entity.title != "Unknown" &&
+                    entity.title != "Loading..."
+            }.distinctBy { entity ->
                 val cleanTitle = entity.title.trim().lowercase()
                 val cleanArtist = entity.artist.trim().lowercase()
                 if (cleanTitle.isNotEmpty() && cleanArtist.isNotEmpty()) {
@@ -394,6 +399,21 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override suspend fun recordPlay(track: Track) {
+        if (track.title.isBlank() ||
+            track.title.startsWith("Track ") ||
+            track.title == "Unknown" ||
+            track.title == "Loading..."
+        ) {
+            Log.d("MusicRepo", "Skipping recordPlay for placeholder track: ${track.id} / ${track.title}")
+            return
+        }
+
+        try {
+            historyDao.deletePlaceholderForTrack(track.id)
+        } catch (e: Exception) {
+            // Ignore
+        }
+
         historyDao.insertHistory(
             HistoryEntity(
                 trackId = track.id,
@@ -424,6 +444,16 @@ class MusicRepositoryImpl @Inject constructor(
             )
         } catch (e: Exception) {
             Log.e("MusicRepo", "Failed to record play on remote", e)
+        }
+    }
+
+    override suspend fun purgePlaceholderHistory() {
+        withContext(Dispatchers.IO) {
+            try {
+                historyDao.purgePlaceholderHistory()
+            } catch (e: Exception) {
+                Log.e("MusicRepo", "Failed to purge placeholder history", e)
+            }
         }
     }
 
@@ -1411,6 +1441,26 @@ class MusicRepositoryImpl @Inject constructor(
                         freshTracks.addAll(spotifyTracks)
                         saveSpotifyPlaylistTracksToCache(playlistId, spotifyTracks)
                         backgroundSyncSpotifyPlaylistTracks(playlistId)
+                    }
+
+                    // Also fetch fresh playlist metadata (name, cover, description) from Spotify
+                    try {
+                        val playlistsResult = spotifyApi.getUserPlaylists()
+                        if (playlistsResult.isSuccess) {
+                            val sp = playlistsResult.getOrNull()?.find { it.id == playlistId }
+                            if (sp != null) {
+                                freshPlaylist = Playlist(
+                                    id = sp.id,
+                                    title = sp.name,
+                                    description = sp.description,
+                                    coverUrl = sp.images.maxByOrNull { (it.width ?: 0) * (it.height ?: 0) }?.url ?: sp.images.firstOrNull()?.url,
+                                    ownerName = sp.owner?.displayName ?: "Spotify",
+                                    trackCount = spotifyTracks.size.takeIf { it > 0 } ?: freshTracks.size
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // ignore metadata refresh failure
                     }
                 }
             } catch (e: Exception) {

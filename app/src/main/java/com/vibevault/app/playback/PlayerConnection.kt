@@ -31,5 +31,11 @@ interface PlayerConnection {
     fun playQueue(queue: YouTubeQueue)
     fun playNext(mediaItem: MediaItem)
     fun addToQueue(mediaItem: MediaItem)
+    fun addTrackToQueue(mediaItem: MediaItem, insertNext: Boolean = false)
+    fun syncQueue(mediaItems: List<MediaItem>, currentIndex: Int)
+    fun removeTrackFromQueue(mediaId: String)
+    fun clearQueue()
     fun setMuted(muted: Boolean)
+    fun setPlaybackSpeed(speed: Float)
+    fun getPlaybackSpeed(): Float
 }

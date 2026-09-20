@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -96,6 +97,7 @@ import com.vibevault.app.constants.ReduceDynamicBlurKey
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.ui.components.ArtworkWash
 import com.vibevault.app.ui.components.FrostedTopBar
+import com.vibevault.app.ui.components.ShimmerBox
 import com.vibevault.app.ui.components.TopFadeBlur
 import com.vibevault.app.ui.components.detailSkeleton
 import com.vibevault.app.ui.components.topBarContentPadding
@@ -251,11 +253,49 @@ fun AlbumScreen(
                                 )
                         )
                     }
+                } else if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(artHeight)
+                            .offset {
+                                IntOffset(0, lazyListState.headerTop(artHeight.toPx()).roundToInt())
+                            }
+                    ) {
+                        ShimmerBox(
+                            modifier = Modifier.matchParentSize(),
+                            shape = RoundedCornerShape(0.dp)
+                        )
+
+                        // Shade under top bar
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.28f)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(palette.background.copy(alpha = 0.55f), Color.Transparent)
+                                    )
+                                )
+                        )
+
+                        // Settles the foot of the picture onto the wash colour
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        0.55f to Color.Transparent,
+                                        1.00f to palette.wash.copy(alpha = 0.88f)
+                                    )
+                                )
+                        )
+                    }
                 }
             }
 
             // ── Layer 2: MergeBand (Glass Blur Across Picture Join) ───────────────
-            if (!reduceDynamicBlur && thumbnail.isNotEmpty()) {
+            if (!reduceDynamicBlur && (thumbnail.isNotEmpty() || isLoading)) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -292,39 +332,43 @@ fun AlbumScreen(
             ) {
                 // Header item
                 item(key = "album_header") {
-                    ReleaseHeader(
-                        title = details?.title ?: "",
-                        artist = details?.artist ?: "",
-                        year = details?.year,
-                        trackCount = details?.tracks?.size ?: 0,
-                        artHeight = artHeight,
-                        palette = palette,
-                        onPlay = { viewModel.playAlbum(0) },
-                        onShuffle = {
-                            val tracks = details?.tracks ?: emptyList()
-                            if (tracks.isNotEmpty()) {
-                                viewModel.playAlbum(tracks.indices.random())
-                            }
-                        },
-                        searching = searching,
-                        onSearchToggle = {
-                            if (searching) {
-                                closeSearch()
-                            } else {
-                                searching = true
-                                focusSearch = true
-                            }
-                        },
-                        onArtistClick = {
-                            val artistName = details?.artist ?: ""
-                            if (onArtistClick != null) {
-                                onArtistClick(artistName)
-                            } else {
-                                onAlbumClick(artistName)
-                            }
-                        },
-                        onMore = { showShareMenu = true }
-                    )
+                    if (details == null && isLoading) {
+                        ReleaseHeaderSkeleton(artHeight = artHeight)
+                    } else {
+                        ReleaseHeader(
+                            title = details?.title ?: "",
+                            artist = details?.artist ?: "",
+                            year = details?.year,
+                            trackCount = details?.tracks?.size ?: 0,
+                            artHeight = artHeight,
+                            palette = palette,
+                            onPlay = { viewModel.playAlbum(0) },
+                            onShuffle = {
+                                val tracks = details?.tracks ?: emptyList()
+                                if (tracks.isNotEmpty()) {
+                                    viewModel.playAlbum(tracks.indices.random())
+                                }
+                            },
+                            searching = searching,
+                            onSearchToggle = {
+                                if (searching) {
+                                    closeSearch()
+                                } else {
+                                    searching = true
+                                    focusSearch = true
+                                }
+                            },
+                            onArtistClick = {
+                                val artistName = details?.artist ?: ""
+                                if (onArtistClick != null) {
+                                    onArtistClick(artistName)
+                                } else {
+                                    onAlbumClick(artistName)
+                                }
+                            },
+                            onMore = { showShareMenu = true }
+                        )
+                    }
                 }
 
                 // In-place Search Field
@@ -341,20 +385,10 @@ fun AlbumScreen(
                     }
                 }
 
-                // Editorial Blurb / Description
-                if (!details?.description.isNullOrBlank()) {
-                    item(key = "album_description") {
-                        AboutAlbumSection(
-                            text = details?.description ?: "",
-                            palette = palette
-                        )
-                    }
-                }
-
                 // Track list or Skeleton
-                if (isLoading && details == null) {
+                if (isLoading || details == null) {
                     detailSkeleton(isArtist = false)
-                } else if (details != null) {
+                } else {
                     val allTracks = details.tracks
                     val filtered = if (searchQuery.isBlank()) {
                         allTracks.mapIndexed { idx, tr -> idx to tr }
@@ -731,35 +765,41 @@ private fun DetailSearchField(
 }
 
 /**
- * Editorial About Section matching BitChord.
+ * Album header skeleton shown while release metadata is loading.
  */
 @Composable
-private fun AboutAlbumSection(
-    text: String,
-    palette: ArtworkPalette,
-) {
-    var expanded by remember { mutableStateOf(false) }
+private fun ReleaseHeaderSkeleton(artHeight: Dp) {
+    Box(Modifier.fillMaxWidth()) {
+        Spacer(Modifier.fillMaxWidth().height(artHeight + HEADER_DROP))
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = HEADER_GUTTER, vertical = 12.dp)
-    ) {
-        Text(
-            text = "About the album",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = palette.onBackground
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = palette.onBackgroundVariant,
-            maxLines = if (expanded) Int.MAX_VALUE else 3,
-            overflow = TextOverflow.Ellipsis,
+        Column(
             modifier = Modifier
-                .clickable { expanded = !expanded }
-        )
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ShimmerBox(
+                modifier = Modifier
+                    .width(220.dp)
+                    .height(26.dp),
+                shape = RoundedCornerShape(6.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            ShimmerBox(
+                modifier = Modifier
+                    .width(140.dp)
+                    .height(18.dp),
+                shape = RoundedCornerShape(5.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            ShimmerBox(
+                modifier = Modifier
+                    .width(100.dp)
+                    .height(12.dp),
+                shape = RoundedCornerShape(4.dp)
+            )
+        }
     }
 }
 

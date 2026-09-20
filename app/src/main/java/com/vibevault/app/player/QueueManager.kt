@@ -170,7 +170,6 @@ class QueueManager @Inject constructor(
         if (index in currentQueue.indices) {
             _currentIndex.value = index
             updateState()
-            refreshDynamicQueue(currentQueue[index], force = true)
             debugLog()
         }
     }
@@ -283,7 +282,6 @@ class QueueManager @Inject constructor(
         if (newIndex < currentQueue.size) {
             _currentIndex.value = newIndex
             updateState()
-            refreshDynamicQueue(currentQueue[newIndex])
             checkAndFetchNextPage()
         } else {
             val queue = activeQueue
@@ -297,7 +295,6 @@ class QueueManager @Inject constructor(
                 Player.REPEAT_MODE_ALL -> {
                     _currentIndex.value = 0
                     updateState()
-                    refreshDynamicQueue(currentQueue[0])
                 }
                 else -> {
                     _queueEnded.tryEmit(Unit)
@@ -348,9 +345,6 @@ class QueueManager @Inject constructor(
             }
         }
         updateState()
-        if (_currentIndex.value in currentQueue.indices) {
-            refreshDynamicQueue(currentQueue[_currentIndex.value])
-        }
         debugLog()
     }
 
@@ -449,7 +443,6 @@ class QueueManager @Inject constructor(
         if (index in currentQueue.indices && index != _currentIndex.value) {
             _currentIndex.value = index
             updateState()
-            refreshDynamicQueue(currentQueue[index], force = false)
             checkAndFetchNextPage()
             debugLog()
         }

@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.innertube.YouTube
 import com.music.innertube.models.YTItem
+import com.vibevault.app.ui.screens.search.SearchCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,8 +44,15 @@ class OnlineSearchViewModel @Inject constructor(
                 val filterKey = currentFilter?.value ?: "all"
                 if (viewStateMap[filterKey] == null) {
                     if (currentFilter == null) {
+                        // Check cache first for instant rendering
+                        SearchCache.getOnlineSummary(query)?.let { cachedSummary ->
+                            if (summaryPage == null) {
+                                summaryPage = cachedSummary
+                            }
+                        }
                         YouTube.searchSummary(query).onSuccess { searchSummaryPage ->
                             summaryPage = searchSummaryPage
+                            SearchCache.saveOnlineSummary(query, searchSummaryPage)
                         }.onFailure {
                             it.printStackTrace()
                         }

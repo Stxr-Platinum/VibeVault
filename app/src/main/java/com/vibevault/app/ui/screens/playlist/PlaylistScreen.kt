@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.EaseInOutSine
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -204,6 +205,7 @@ fun PlaylistScreen(
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
     val userPlaylists by viewModel.userPlaylists.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val context = LocalContext.current
     
     var showMenu by remember { mutableStateOf(false) }
@@ -589,7 +591,8 @@ fun PlaylistScreen(
                                 focusSearch = true
                             }
                         },
-                        onMore = { showMenu = true }
+                        isRefreshing = isRefreshing,
+                        onRefresh = { viewModel.refreshPlaylist() }
                     )
                 }
 
@@ -668,6 +671,7 @@ fun PlaylistScreen(
             title = playlist?.title ?: "Playlist",
             scrolled = scrolled,
             onBack = onBackClick,
+            refreshing = isRefreshing,
             actions = {
                 Box {
                     IconButton(
@@ -763,8 +767,24 @@ private fun PlaylistReleaseHeader(
     onShuffle: () -> Unit,
     searching: Boolean,
     onSearchToggle: () -> Unit,
-    onMore: () -> Unit,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit,
 ) {
+    val refreshTransition = rememberInfiniteTransition(label = "refreshRotation")
+    val refreshAngle by if (isRefreshing) {
+        refreshTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "refreshAngle"
+        )
+    } else {
+        remember { mutableFloatStateOf(0f) }
+    }
+
     Box(Modifier.fillMaxWidth()) {
         Spacer(Modifier.fillMaxWidth().height(artHeight + HEADER_DROP))
 
@@ -838,11 +858,12 @@ private fun PlaylistReleaseHeader(
                 )
 
                 CircleIconButton(
-                    icon = Icons.Default.MoreVert,
-                    contentDescription = "More",
+                    icon = BitChordIcons.Refresh,
+                    contentDescription = "Refresh",
                     palette = palette,
-                    onClick = onMore,
+                    onClick = onRefresh,
                     size = 50.dp,
+                    modifier = Modifier.graphicsLayer { rotationZ = refreshAngle },
                 )
             }
         }

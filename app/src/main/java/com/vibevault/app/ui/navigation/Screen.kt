@@ -46,6 +46,17 @@ sealed class Screen(
     data object ListenTogether : Screen("listen_together", "Listen Together")
     data object Replay : Screen("replay", "Your Replay")
 
+    data object Explore : Screen("explore", "Explore")
+    data object ExploreCategory : Screen("explore/category?title={title}&browseId={browseId}&params={params}", "Category") {
+        fun createRoute(title: String, browseId: String, params: String? = null): String {
+            val encTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            val encBrowse = java.net.URLEncoder.encode(browseId, "UTF-8")
+            val encParams = if (params != null) java.net.URLEncoder.encode(params, "UTF-8") else ""
+            return "explore/category?title=$encTitle&browseId=$encBrowse&params=$encParams"
+        }
+    }
+    data object Chill : Screen("explore/chill", "Chill")
+
     data object Settings : Screen("settings", "Settings")
     data object AppearanceSettings : Screen("settings/appearance", "Appearance")
     data object PlayerSettings : Screen("settings/player", "Player & Audio")
@@ -55,6 +66,6 @@ sealed class Screen(
     data object ListenTogetherSettings : Screen("settings/listen_together", "Listen Together Settings")
 
     companion object {
-        val bottomNavItems get() = listOf(Home, Search, Library)
+        val bottomNavItems get() = listOf(Home, Search, Explore, Library)
     }
 }

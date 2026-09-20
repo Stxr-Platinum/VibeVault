@@ -52,12 +52,21 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.vibevault.app.ui.components.MiniPlayer
+import com.vibevault.app.ui.components.FloatingBottomBar
+import com.vibevault.app.ui.components.BottomTab
+import com.vibevault.app.ui.components.FLOATING_BAR_MAX_WIDTH
+import com.vibevault.app.ui.icons.BitChordIcons
 import com.vibevault.app.ui.navigation.AppNavHost
 import com.vibevault.app.ui.navigation.Screen
 import com.vibevault.app.ui.navigation.VibeBottomBar
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import com.vibevault.app.constants.DynamicBackgroundKey
 import com.vibevault.app.constants.DynamicThemeKey
 import com.vibevault.app.constants.EnableHighRefreshRateKey
@@ -255,35 +264,89 @@ class MainActivity : ComponentActivity() {
                             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
                         }
                         
+                        val mainHazeState = remember { HazeState() }
+                        val tabs = remember {
+                            listOf(
+                                BottomTab("Home", BitChordIcons.Home),
+                                BottomTab("Search", BitChordIcons.Search),
+                                BottomTab("Explore", BitChordIcons.Explore),
+                                BottomTab("Library", BitChordIcons.Library),
+                            )
+                        }
+                        val selectedTab = when {
+                            currentRoute == Screen.Home.route -> 0
+                            currentRoute == Screen.Search.route || currentRoute?.startsWith("search/") == true -> 1
+                            currentRoute == Screen.Explore.route || currentRoute?.startsWith("explore/") == true -> 2
+                            currentRoute == Screen.Library.route -> 3
+                            else -> 0
+                        }
+
                         Scaffold(
                             modifier = Modifier.fillMaxSize(),
                             containerColor = Color.Transparent,
                             contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
                             bottomBar = {
                                 if (currentRoute != Screen.Player.route && currentRoute != Screen.Login.route) {
-                                    Column(modifier = Modifier) {
-                                        // MiniPlayer sits above the bottom nav
-                                        if (currentTrack != null) {
-                                            MiniPlayer(
-                                                playerViewModel = playerViewModel,
-                                                onExpand = { trackId ->
-                                                    navController.navigate(Screen.Player.createRoute(trackId))
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.BottomCenter
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .widthIn(max = FLOATING_BAR_MAX_WIDTH)
+                                                .fillMaxWidth(),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            // MiniPlayer sits directly above the bottom nav
+                                            if (currentTrack != null) {
+                                                MiniPlayer(
+                                                    playerViewModel = playerViewModel,
+                                                    onExpand = { trackId ->
+                                                        navController.navigate(Screen.Player.createRoute(trackId))
+                                                    }
+                                                )
+                                            }
+
+                                            // Floating Bottom Bar with exact BitChord liquid spring physics
+                                            FloatingBottomBar(
+                                                tabs = tabs,
+                                                selectedIndex = selectedTab,
+                                                hazeState = mainHazeState,
+                                                onTabSelected = { index ->
+                                                    val targetRoute = when (index) {
+                                                        0 -> Screen.Home.route
+                                                        1 -> Screen.Search.route
+                                                        2 -> Screen.Explore.route
+                                                        3 -> Screen.Library.route
+                                                        else -> Screen.Home.route
+                                                    }
+                                                    if (currentRoute != targetRoute) {
+                                                        navController.navigate(targetRoute) {
+                                                            popUpTo(Screen.Home.route) { saveState = true }
+                                                            launchSingleTop = true
+                                                            restoreState = true
+                                                        }
+                                                    }
                                                 }
                                             )
                                         }
-
-                                        // Bottom nav always visible below
-                                        VibeBottomBar(navController = navController)
                                     }
                                 }
                             }
                         ) { innerPadding ->
-                            AppNavHost(
-                                navController = navController,
-                                innerPadding = innerPadding,
-                                playerViewModel = playerViewModel,
-                                startDestination = startDestination!!
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .hazeSource(mainHazeState)
+                            ) {
+                                AppNavHost(
+                                    navController = navController,
+                                    innerPadding = innerPadding,
+                                    playerViewModel = playerViewModel,
+                                    startDestination = startDestination!!
+                                )
+                            }
                         }
                     }
                 }

@@ -339,18 +339,7 @@ fun ArtistScreen(
                                     shuffled.firstOrNull()?.let { onTrackClick(it.id, shuffled) }
                                 }
                             },
-                            bottomSpace = if (description.isNullOrBlank()) 22.dp else 11.dp
-                        )
-                    }
-                }
-
-                // ── About Section ───────────────────────────────────────────
-                if (!description.isNullOrBlank()) {
-                    item(key = "about") {
-                        AboutSection(
-                            title = "About the artist",
-                            text = description!!,
-                            palette = palette
+                            bottomSpace = 22.dp
                         )
                     }
                 }
@@ -784,60 +773,6 @@ private fun CircleIconButton(
     }
 }
 
-/** Editorial About section (BitChord design) */
-@Composable
-private fun AboutSection(
-    title: String,
-    text: String,
-    palette: ArtworkPalette,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var clipped by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = PAGE_GUTTER)
-            .padding(top = 16.dp, bottom = 20.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
-            ),
-            color = palette.onBackground,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                lineHeight = 20.sp,
-                fontSize = 14.sp
-            ),
-            color = palette.onBackgroundVariant,
-            maxLines = if (expanded) Int.MAX_VALUE else 3,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { result -> if (!expanded) clipped = result.hasVisualOverflow },
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-                .let { m -> if (clipped || expanded) m.clickable { expanded = !expanded } else m }
-        )
-        if (clipped || expanded) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = if (expanded) "Less" else "More",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = palette.accent,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable { expanded = !expanded }
-                    .padding(vertical = 4.dp, horizontal = 2.dp)
-            )
-        }
-    }
-}
 
 /** Explicit badge square [E] */
 @Composable

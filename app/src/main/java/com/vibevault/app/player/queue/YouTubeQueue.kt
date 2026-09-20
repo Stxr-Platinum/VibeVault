@@ -1,6 +1,7 @@
 package com.vibevault.app.player.queue
 
 import com.music.innertube.YouTube
+import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
 import com.music.innertube.pages.RadioChip
 import com.vibevault.app.domain.model.Track
@@ -100,7 +101,7 @@ class YouTubeQueue(
                     val activeTrack = preloadItem ?: rawTracks.firstOrNull()
                     val currentTrackId = activeTrack?.id ?: resolvedSongId
 
-                    // Incorporate relatedEndpoint songs to expand the recommendation pool
+                    // Expand candidate pool via related songs if available
                     if (nextResult.relatedEndpoint != null) {
                         try {
                             val relatedPage = YouTube.related(nextResult.relatedEndpoint!!).getOrNull()
@@ -117,7 +118,42 @@ class YouTubeQueue(
                         }
                     }
 
-                    // Remove any occurrences of the currently playing song from the upcoming candidate pool
+                    // Further expand pool via continuation if available to ensure large pool for true randomization
+                    if (rawTracks.size < 35 && continuation != null) {
+                        try {
+                            val nextBatch = YouTube.next(endpoint, continuation).getOrNull()
+                            if (nextBatch != null) {
+                                continuation = nextBatch.continuation
+                                endpoint = nextBatch.endpoint
+                                for (batchItem in nextBatch.items) {
+                                    val t = batchItem.toTrack()
+                                    if (rawTracks.none { it.id == t.id }) {
+                                        rawTracks.add(t)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // ignore continuation exception
+                        }
+                    }
+
+                    // If still under-populated, add search recommendations based on artist
+                    if (rawTracks.size < 30 && activeTrack != null && activeTrack.artist.isNotBlank()) {
+                        try {
+                            val artistQuery = "${activeTrack.artist} song"
+                            val searchResults = YouTube.search(artistQuery, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+                            searchResults?.items?.filterIsInstance<SongItem>()?.forEach { item ->
+                                val t = item.toTrack()
+                                if (rawTracks.none { it.id == t.id }) {
+                                    rawTracks.add(t)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // ignore search exception
+                        }
+                    }
+
+                    // Remove occurrences of the currently playing seed song from upcoming candidate pool
                     val upcomingCandidates = rawTracks.filter { cand ->
                         val isSameId = cand.id == currentTrackId || (resolvedSongId != null && cand.id == resolvedSongId)
                         val isSameTitleAndArtist = activeTrack != null &&
@@ -126,14 +162,19 @@ class YouTubeQueue(
                         !isSameId && !isSameTitleAndArtist
                     }
 
-                    // Apply diversity filter (1 per artist max) to candidate pool
+                    // Apply diversity filter (1 per artist max)
                     val diversePool = upcomingCandidates.filterDiverseCharacteristics(
                         maxPerArtist = 1,
                         currentlyPlayingTrackId = currentTrackId
                     )
 
-                    // Shuffle the diverse upcoming pool so that replaying the same song produces a fresh, dynamic queue
-                    val randomizedUpcoming = diversePool.shuffled()
+                    // Partition into fresh (not recently recommended) and seen (recently recommended)
+                    val freshPool = diversePool.filterNot { isRecentlyRecommended(it.id) }.shuffled()
+                    val seenPool = diversePool.filter { isRecentlyRecommended(it.id) }.shuffled()
+
+                    // Prioritize fresh tracks to prevent repeated queues, then fill with seen tracks
+                    val randomizedUpcoming = (freshPool + seenPool).take(25)
+                    recordRecommended(randomizedUpcoming.map { it.id })
 
                     val finalTracks = if (preloadItem != null) {
                         listOf(preloadItem) + randomizedUpcoming
@@ -222,6 +263,26 @@ class YouTubeQueue(
     }
 
     companion object {
+        private val recentlyRecommendedIds = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+        private const val MAX_RECENT_TRACKS = 150
+
+        fun recordRecommended(trackIds: Collection<String>) {
+            synchronized(recentlyRecommendedIds) {
+                recentlyRecommendedIds.addAll(trackIds)
+                while (recentlyRecommendedIds.size > MAX_RECENT_TRACKS) {
+                    val iter = recentlyRecommendedIds.iterator()
+                    if (iter.hasNext()) {
+                        iter.next()
+                        iter.remove()
+                    } else break
+                }
+            }
+        }
+
+        fun isRecentlyRecommended(trackId: String): Boolean {
+            return recentlyRecommendedIds.contains(trackId)
+        }
+
         fun radio(track: Track): YouTubeQueue {
             val isYouTubeId = track.id.length == 11 && !track.id.contains(" ") && !track.id.contains(":") && !track.id.contains("?")
             val videoId = if (isYouTubeId) track.id else null

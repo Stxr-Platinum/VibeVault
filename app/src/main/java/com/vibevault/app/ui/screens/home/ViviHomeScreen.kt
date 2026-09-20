@@ -8,8 +8,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -65,6 +67,8 @@ import com.vibevault.app.ui.components.FrostedTopBar
 import com.vibevault.app.ui.components.TopFadeBlur
 import com.vibevault.app.ui.components.topBarHeight
 import com.vibevault.app.ui.components.topBarContentPadding
+import com.vibevault.app.ui.components.listItemShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -273,22 +277,31 @@ fun ViviHomeScreen(
                         val speedDialItems = remember(speedDialPicks, recentlyPlayed, trendingTracks, refreshSeed) {
                             val familiarFavoritesPool = mutableListOf<QuickPickItem>()
 
+                            fun isValidTrackTitle(t: String?): Boolean {
+                                if (t.isNullOrBlank()) return false
+                                if (t.startsWith("Track ", ignoreCase = true)) return false
+                                if (t == "Unknown" || t == "Loading..." || t == "Playing") return false
+                                return true
+                            }
+
                             // Extract user's favorite artists and albums from history
-                            val favoriteArtists = (recentlyPlayed.map { it.artist } + speedDialPicks.mapNotNull { it.track?.artist })
-                                .filter { it.isNotBlank() }
+                            val favoriteArtists = (recentlyPlayed.filter { isValidTrackTitle(it.title) }.map { it.artist } + 
+                                speedDialPicks.filter { isValidTrackTitle(it.title) }.mapNotNull { it.track?.artist })
+                                .filter { it.isNotBlank() && it != "Unknown" && it != "Unknown Artist" }
                                 .toSet()
 
-                            val favoriteAlbums = (recentlyPlayed.map { it.album } + speedDialPicks.mapNotNull { it.track?.album })
-                                .filter { it.isNotBlank() }
+                            val favoriteAlbums = (recentlyPlayed.filter { isValidTrackTitle(it.title) }.map { it.album } + 
+                                speedDialPicks.filter { isValidTrackTitle(it.title) }.mapNotNull { it.track?.album })
+                                .filter { it.isNotBlank() && it != "Unknown" && it != "Unknown Album" }
                                 .toSet()
 
                             // 1. Add direct familiar favorites (frequently played, history, liked)
-                            speedDialPicks.forEach { item ->
+                            speedDialPicks.filter { isValidTrackTitle(it.title) }.forEach { item ->
                                 if (familiarFavoritesPool.none { it.id == item.id }) {
                                     familiarFavoritesPool.add(item)
                                 }
                             }
-                            recentlyPlayed.forEach { track ->
+                            recentlyPlayed.filter { isValidTrackTitle(it.title) }.forEach { track ->
                                 if (familiarFavoritesPool.none { it.id == track.id }) {
                                     familiarFavoritesPool.add(
                                         QuickPickItem(
@@ -303,7 +316,7 @@ fun ViviHomeScreen(
                             }
 
                             // 1b. Add Similar Songs (tracks by favorite artists or matching albums)
-                            trendingTracks.forEach { track ->
+                            trendingTracks.filter { isValidTrackTitle(it.title) }.forEach { track ->
                                 val isSimilar = favoriteArtists.any { artist -> track.artist.contains(artist, ignoreCase = true) || artist.contains(track.artist, ignoreCase = true) } ||
                                                 favoriteAlbums.any { album -> track.album.equals(album, ignoreCase = true) }
                                 if (isSimilar && familiarFavoritesPool.none { it.id == track.id }) {
@@ -321,7 +334,7 @@ fun ViviHomeScreen(
 
                             // 2. Gather fresh discoveries (unseen tracks not in history or similar pools)
                             val freshDiscoveriesPool = trendingTracks
-                                .filter { track -> familiarFavoritesPool.none { it.id == track.id } }
+                                .filter { track -> isValidTrackTitle(track.title) && familiarFavoritesPool.none { it.id == track.id } }
                                 .map { track ->
                                     QuickPickItem(
                                         id = track.id,
@@ -547,8 +560,12 @@ fun ViviHomeScreen(
                                 items = songs,
                                 key = { _, track -> "qp_${track.id}" }
                             ) { index, track ->
+                                val col = index / rows
+                                val itemsInThisCol = minOf(rows, songs.size - col * rows)
+                                val indexInCol = index % rows
                                 ViviSongListItem(
                                     track = track,
+                                    shape = listItemShape(indexInCol, itemsInThisCol, radius = 16.dp),
                                     onClick = {
                                         onTrackClick(track)
                                     },
@@ -581,14 +598,19 @@ fun ViviHomeScreen(
                                 .asPaddingValues(),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(64.dp * rows)
+                                .height(90.dp * rows)
                         ) {
                             itemsIndexed(
                                 items = keepListening,
                                 key = { _, track -> "kl_${track.id}" }
                             ) { index, track ->
+                                val col = index / rows
+                                val itemsInThisCol = minOf(rows, keepListening.size - col * rows)
+                                val indexInCol = index % rows
                                 ViviSongListItem(
                                     track = track,
+                                    isLarge = true,
+                                    shape = listItemShape(indexInCol, itemsInThisCol, radius = 16.dp),
                                     onClick = {
                                         onTrackClick(track)
                                     },
@@ -676,8 +698,12 @@ fun ViviHomeScreen(
                                 items = trendingSongs,
                                 key = { _, track -> "tr_${track.id}" }
                             ) { index, track ->
+                                val col = index / rows
+                                val itemsInThisCol = minOf(rows, trendingSongs.size - col * rows)
+                                val indexInCol = index % rows
                                 ViviSongListItem(
                                     track = track,
+                                    shape = listItemShape(indexInCol, itemsInThisCol, radius = 16.dp),
                                     onClick = {
                                         onTrackClick(track)
                                     },
@@ -841,50 +867,72 @@ fun SpeedDialCardItem(
     }
 }
 
-// ── Song List Item for Quick Picks ──────────────────────────
+// ── Song List Item for Quick Picks & Keep Listening ──────────────────────────
 @Composable
 fun ViviSongListItem(
     track: Track,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLarge: Boolean = false,
+    shape: Shape = RoundedCornerShape(16.dp)
 ) {
-    Row(
+    val thumbSize = if (isLarge) 72.dp else 52.dp
+    val isDark = isSystemInDarkTheme()
+    val cardFill = if (isDark) Color.Black.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.10f)
+    val cardBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+
+    Box(
         modifier = modifier
+            .padding(horizontal = 6.dp)
+            .clip(shape)
+            .background(cardFill)
+            .border(0.75.dp, cardBorder, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 10.dp, vertical = if (isLarge) 8.dp else 6.dp)
     ) {
-        AsyncImage(
-            model = track.albumImageUrl,
-            contentDescription = null,
+        // Subtle blur backdrop
+        Box(
             modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop
+                .matchParentSize()
+                .blur(8.dp)
+                .background(cardFill.copy(alpha = 0.05f))
         )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            AsyncImage(
+                model = track.albumImageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(thumbSize)
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
             )
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        IconButton(onClick = { /* Menu */ }) {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "Options",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = if (isLarge) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = track.artist,
+                    style = if (isLarge) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = { /* Menu */ }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Options",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -896,36 +944,52 @@ fun ViviTrackGridItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    val isDark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(14.dp)
+    val cardFill = if (isDark) Color.Black.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.10f)
+    val cardBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+
+    Box(
         modifier = modifier
             .width(160.dp)
+            .clip(shape)
+            .background(cardFill)
+            .border(0.75.dp, cardBorder, shape)
             .clickable(onClick = onClick)
-            .padding(4.dp)
+            .padding(6.dp)
     ) {
-        AsyncImage(
-            model = track.albumImageUrl,
-            contentDescription = track.title,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(160.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .matchParentSize()
+                .blur(8.dp)
+                .background(cardFill.copy(alpha = 0.05f))
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = track.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = track.artist,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column {
+            AsyncImage(
+                model = track.albumImageUrl,
+                contentDescription = track.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(148.dp)
+                    .clip(RoundedCornerShape(10.dp))
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = track.artist,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

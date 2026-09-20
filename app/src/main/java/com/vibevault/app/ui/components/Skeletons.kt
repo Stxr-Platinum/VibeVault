@@ -7,6 +7,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -140,6 +141,37 @@ fun ShelfSkeleton(index: Int = 0, cardWidth: Dp = SHELF_CARD_WIDTH, cardCorner: 
                 }
             }
         }
+    }
+}
+
+/** The lead shelf on Home and Explore: near-page-width cards that page sideways. */
+@Composable
+fun HeroShelfSkeleton() {
+    Column(Modifier.padding(bottom = 26.dp)) {
+        SectionHeaderSkeleton()
+        BoxWithConstraints {
+            val cardWidth = heroCardWidth(maxWidth)
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                userScrollEnabled = false,
+            ) {
+                items(2) {
+                    ShimmerBox(
+                        modifier = Modifier.width(cardWidth).aspectRatio(HERO_CARD_RATIO),
+                        shape = RoundedCornerShape(18.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Home and Explore while the first page of shelves is still loading. */
+fun LazyListScope.feedSkeleton(shelves: Int = 3) {
+    item(key = "skeleton:hero") { HeroShelfSkeleton() }
+    items(shelves - 1, key = { "skeleton:shelf:$it" }) { index ->
+        ShelfSkeleton(index = index + 1)
     }
 }
 

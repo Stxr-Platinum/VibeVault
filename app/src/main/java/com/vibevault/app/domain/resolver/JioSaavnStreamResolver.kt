@@ -31,7 +31,7 @@ class JioSaavnStreamResolver @Inject constructor(
 
     override val isEnabled: Boolean
         get() = runBlocking {
-            context.dataStore.get(EnableSaavnStreamingKey, false)
+            context.dataStore.get(EnableSaavnStreamingKey, true)
         }
 
     override suspend fun resolve(spec: TrackResolutionSpec): YTPlayerUtils.PlaybackData? {

@@ -142,9 +142,14 @@ class HomeViewModel @Inject constructor(
         // Unblock UI immediately
         _isLoading.value = false
         
+        // Purge any placeholder history tracks from database on start
+        viewModelScope.launch {
+            musicRepository.purgePlaceholderHistory()
+        }
+
         // Keep flows updated in background
         viewModelScope.launch {
-            musicRepository.getRecentlyPlayed(20).collect { tracks ->
+            musicRepository.getRecentlyPlayed(28).collect { tracks ->
                 if (tracks.isNotEmpty()) {
                     val distinct = tracks.distinctBy { it.id }
                     _keepListening.value = distinct
@@ -164,7 +169,9 @@ class HomeViewModel @Inject constructor(
                 val allItems = mutableListOf<QuickPickItem>()
                 
                 recentContexts.forEach { ctx ->
-                    allItems.add(QuickPickItem(ctx.id, ctx.title, ctx.coverUrl, ctx.type, null, ctx.timestamp))
+                    if (ctx.title.isNotBlank() && !ctx.title.startsWith("Track ") && ctx.title != "Unknown" && ctx.title != "Loading...") {
+                        allItems.add(QuickPickItem(ctx.id, ctx.title, ctx.coverUrl, ctx.type, null, ctx.timestamp))
+                    }
                 }
                 
                 // Collect playlist context timestamps to detect songs played from playlists
@@ -174,7 +181,7 @@ class HomeViewModel @Inject constructor(
                 
                 recent.forEach { track ->
                     val albumId = "album:${track.album}::${track.artist}"
-                    if (track.album.isNotEmpty()) {
+                    if (track.album.isNotEmpty() && track.title.isNotBlank() && !track.title.startsWith("Track ") && track.title != "Unknown" && track.title != "Loading...") {
                         // Skip album entry if a playlist was opened within 10s of this track being played
                         // (means the song was played from that playlist, not standalone)
                         val playedFromPlaylist = playlistContextTimestamps.any { pTs ->

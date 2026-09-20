@@ -46,6 +46,9 @@ interface MusicRepository {
     /** Record that a track was played. */
     suspend fun recordPlay(track: Track)
 
+    /** Purge corrupted placeholder tracks from history. */
+    suspend fun purgePlaceholderHistory()
+
     /** Get system logs. */
     fun getLogs(): Flow<List<com.vibevault.app.data.local.entity.LogEntity>>
 

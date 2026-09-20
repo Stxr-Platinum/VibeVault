@@ -1,19 +1,28 @@
 package com.vibevault.app
 
 import android.app.Application
-import kotlin.OptIn
-import dagger.hilt.android.HiltAndroidApp
-
 import androidx.work.Configuration
-import kotlinx.coroutines.GlobalScope
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import dagger.Lazy
+import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
+import kotlin.OptIn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
 /**
  * Application entry point — Hilt component root.
  */
 @HiltAndroidApp
-class VibeVaultApp : Application(), Configuration.Provider {
+class VibeVaultApp : Application(), Configuration.Provider, ImageLoaderFactory {
+
+    @Inject
+    lateinit var imageLoader: Lazy<ImageLoader>
+
+    override fun newImageLoader(): ImageLoader = imageLoader.get()
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setMinimumLoggingLevel(android.util.Log.INFO)

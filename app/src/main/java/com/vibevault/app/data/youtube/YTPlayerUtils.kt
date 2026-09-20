@@ -132,7 +132,7 @@ object YTPlayerUtils {
         contentHints: ContentHints = ContentHints(),
     ): Result<PlaybackData> {
         if (context != null) {
-            val saavnEnabled = context.dataStore.getAsync(EnableSaavnStreamingKey, false)
+            val saavnEnabled = context.dataStore.getAsync(EnableSaavnStreamingKey, true)
             if (saavnEnabled) {
                 Timber.tag(logTag).d("JioSaavn streaming enabled — trying Saavn for videoId=$videoId")
                 val saavnResult = runCatching {

@@ -17,19 +17,24 @@ import com.music.innertube.utils.YouTubeUrlParser
 import com.vibevault.app.constants.HideExplicitKey
 import com.vibevault.app.constants.HideVideoSongsKey
 
+import com.vibevault.app.ui.screens.search.SearchCache
 import com.vibevault.app.utils.dataStore
 import com.vibevault.app.utils.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class OnlineSearchSuggestionViewModel
 @Inject
@@ -43,29 +48,47 @@ constructor(
     init {
         viewModelScope.launch {
             query
+                .debounce(200)
                 .flatMapLatest { query ->
                     if (query.isEmpty()) {
-                        kotlinx.coroutines.flow.flowOf(SearchSuggestionViewState())
+                        flowOf(SearchSuggestionViewState())
                     } else {
-                        val parsedUrl = YouTubeUrlParser.parse(query)
-                        val parsedItem = if (parsedUrl != null) fetchParsedUrlItem(parsedUrl) else null
-                        
-                        val result = if (parsedUrl != null) null else YouTube.searchSuggestions(query).getOrNull()
-                        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+                        flow {
+                            val cachedSuggestions = SearchCache.getCachedAutocompleteSuggestions(context, query)
+                            val cachedState = SearchCache.getSuggestionState(query)
+                            if (cachedState != null) {
+                                emit(cachedState)
+                            } else if (!cachedSuggestions.isNullOrEmpty()) {
+                                emit(SearchSuggestionViewState(suggestions = cachedSuggestions))
+                            }
 
-                        kotlinx.coroutines.flow.flowOf(SearchSuggestionViewState(
-                            suggestions = result?.queries.orEmpty(),
-                            items = listOfNotNull(parsedItem) +
-                                    result
-                                        ?.recommendedItems
-                                        ?.distinctBy { it.id }
-                                        ?.filter { it.id != parsedItem?.id }
-                                        ?.filterExplicit(hideExplicit)
-                                        ?.filterVideoSongs(hideVideoSongs)
-                                        .orEmpty(),
-                            isFromLink = parsedUrl != null
-                        ))
+                            val parsedUrl = YouTubeUrlParser.parse(query)
+                            val parsedItem = if (parsedUrl != null) fetchParsedUrlItem(parsedUrl) else null
+                            
+                            val result = if (parsedUrl != null) null else YouTube.searchSuggestions(query).getOrNull()
+                            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+
+                            val suggestions = result?.queries.orEmpty()
+                            if (suggestions.isNotEmpty()) {
+                                SearchCache.saveAutocompleteSuggestions(context, query, suggestions)
+                            }
+
+                            val newState = SearchSuggestionViewState(
+                                suggestions = suggestions,
+                                items = listOfNotNull(parsedItem) +
+                                        result
+                                            ?.recommendedItems
+                                            ?.distinctBy { it.id }
+                                            ?.filter { it.id != parsedItem?.id }
+                                            ?.filterExplicit(hideExplicit)
+                                            ?.filterVideoSongs(hideVideoSongs)
+                                            .orEmpty(),
+                                isFromLink = parsedUrl != null
+                            )
+                            SearchCache.saveSuggestionState(query, newState)
+                            emit(newState)
+                        }
                     }
                 }.collect {
                     _viewState.value = it

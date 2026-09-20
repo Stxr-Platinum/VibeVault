@@ -962,7 +962,8 @@ class ListenTogetherClient @Inject constructor(
                             _roomState.value = _roomState.value?.copy(
                                 currentTrack = payload.trackInfo,
                                 isPlaying = true,
-                                position = 0
+                                position = 0,
+                                queue = payload.queue ?: _roomState.value?.queue ?: emptyList()
                             )
                         }
                         PlaybackActions.QUEUE_ADD -> {
@@ -985,6 +986,14 @@ class ListenTogetherClient @Inject constructor(
                         }
                         PlaybackActions.QUEUE_CLEAR -> {
                             _roomState.value = _roomState.value?.copy(queue = emptyList())
+                        }
+                        PlaybackActions.SYNC_QUEUE -> {
+                            val newQueue = payload.queue
+                            if (newQueue != null) {
+                                _roomState.value = _roomState.value?.copy(
+                                    queue = newQueue
+                                )
+                            }
                         }
                         PlaybackActions.SET_VOLUME -> {
                             val vol = payload.volume
@@ -1027,19 +1036,25 @@ class ListenTogetherClient @Inject constructor(
                             return
                         }
 
-                        _pendingSuggestions.value += payload
-                        log(LogLevel.INFO, "Suggestion received", "${payload.fromUsername}: ${payload.trackInfo.title}")
-                        // Show immediate in-app Toast so the host always sees it
-                        scope.launch(Dispatchers.Main) {
-                            Toast.makeText(
-                                context,
-                                "${payload.fromUsername} suggested: ${payload.trackInfo.title}",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        // Also try the actionable system notification if permission granted
-                        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                            showSuggestionNotification(payload)
+                        val autoApprovalEnabled = context.dataStore.get(ListenTogetherAutoApprovalKey, true)
+                        if (autoApprovalEnabled) {
+                            log(LogLevel.INFO, "Auto-approving track suggestion from ${payload.fromUsername}", payload.trackInfo.title)
+                            approveSuggestion(payload.suggestionId)
+                        } else {
+                            _pendingSuggestions.value += payload
+                            log(LogLevel.INFO, "Suggestion received", "${payload.fromUsername}: ${payload.trackInfo.title}")
+                            // Show immediate in-app Toast so the host always sees it
+                            scope.launch(Dispatchers.Main) {
+                                Toast.makeText(
+                                    context,
+                                    "${payload.fromUsername} suggested: ${payload.trackInfo.title}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            // Also try the actionable system notification if permission granted
+                            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                showSuggestionNotification(payload)
+                            }
                         }
                     }
                 }
@@ -1346,15 +1361,30 @@ class ListenTogetherClient @Inject constructor(
         insertNext: Boolean? = null, 
         queue: List<TrackInfo>? = null,
         queueTitle: String? = null,
-        volume: Float? = null
+        volume: Float? = null,
+        serverTime: Long? = null
     ) {
-        if (_role.value != RoomRole.HOST) {
+        val isQueueOp = action == PlaybackActions.QUEUE_ADD ||
+                action == PlaybackActions.QUEUE_REMOVE ||
+                action == PlaybackActions.QUEUE_CLEAR
+        if (_role.value != RoomRole.HOST && !isQueueOp) {
             log(LogLevel.ERROR, "Cannot control playback", "Not host")
             return
         }
+        val currentServerTime = serverTime ?: System.currentTimeMillis()
         sendMessage(
             MessageTypes.PLAYBACK_ACTION,
-            PlaybackActionPayload(action, trackId, position, trackInfo, insertNext, queue, queueTitle, volume)
+            PlaybackActionPayload(
+                action = action,
+                trackId = trackId,
+                position = position,
+                trackInfo = trackInfo,
+                insertNext = insertNext,
+                queue = queue,
+                queueTitle = queueTitle,
+                volume = volume,
+                serverTime = currentServerTime
+            )
         )
     }
 
