@@ -103,6 +103,9 @@ fun PlayerScreen(
     val position by viewModel.currentPosition.collectAsStateWithLifecycle()
     val duration by viewModel.duration.collectAsStateWithLifecycle()
     val audioFormatInfo by viewModel.audioFormatInfo.collectAsStateWithLifecycle()
+    val listenTogetherRole by viewModel.listenTogetherRole.collectAsStateWithLifecycle()
+    val isListenTogetherGuest = listenTogetherRole == com.vibevault.app.data.listentogether.RoomRole.GUEST
+    val isMuted by viewModel.isMuted.collectAsStateWithLifecycle()
 
     var showPlaylistMenu by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
@@ -839,7 +842,9 @@ fun PlayerScreen(
                         },
                         onValueChangeFinished = {
                             isDragging = false
-                            viewModel.seekTo(dragPosition.toLong())
+                            if (!isListenTogetherGuest) {
+                                viewModel.seekTo(dragPosition.toLong())
+                            }
                         },
                         idleHeight = 6.dp,
                         activeHeight = 10.dp,
@@ -857,7 +862,9 @@ fun PlayerScreen(
                                 },
                                 onValueChangeFinished = {
                                     isDragging = false
-                                    viewModel.seekTo(dragPosition.toLong())
+                                    if (!isListenTogetherGuest) {
+                                        viewModel.seekTo(dragPosition.toLong())
+                                    }
                                 },
                                 valueRange = 0f..safeDuration,
                                 colors = SliderDefaults.colors(
@@ -890,7 +897,9 @@ fun PlayerScreen(
                                 },
                                 onValueChangeFinished = {
                                     isDragging = false
-                                    viewModel.seekTo(dragPosition.toLong())
+                                    if (!isListenTogetherGuest) {
+                                        viewModel.seekTo(dragPosition.toLong())
+                                    }
                                 },
                                 valueRange = 0f..safeDuration,
                                 interactionSource = trackInteractionSource,
@@ -918,7 +927,9 @@ fun PlayerScreen(
                                     },
                                     onValueChangeFinished = {
                                         isDragging = false
-                                        viewModel.seekTo(dragPosition.toLong())
+                                        if (!isListenTogetherGuest) {
+                                            viewModel.seekTo(dragPosition.toLong())
+                                        }
                                     },
                                     valueRange = 0f..safeDuration,
                                     isPlaying = isPlaying,
@@ -937,7 +948,9 @@ fun PlayerScreen(
                                     },
                                     onValueChangeFinished = {
                                         isDragging = false
-                                        viewModel.seekTo(dragPosition.toLong())
+                                        if (!isListenTogetherGuest) {
+                                            viewModel.seekTo(dragPosition.toLong())
+                                        }
                                     },
                                     valueRange = 0f..safeDuration,
                                     isPlaying = isPlaying,
@@ -1049,16 +1062,16 @@ fun PlayerScreen(
                                 Spacer(modifier = Modifier.width(gap))
 
                                 Surface(
-                                    onClick = { viewModel.skipPrevious() },
+                                    onClick = { if (!isListenTogetherGuest) viewModel.skipPrevious() },
                                     shape = RoundedCornerShape(largeRadius),
-                                    color = Color.White.copy(alpha = 0.15f),
+                                    color = Color.White.copy(alpha = if (isListenTogetherGuest) 0.05f else 0.15f),
                                     modifier = Modifier.size(large)
                                 ) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                         Icon(
                                             painter = androidx.compose.ui.res.painterResource(com.vibevault.app.R.drawable.skip_previous),
                                             contentDescription = "Previous",
-                                            tint = Color.White,
+                                            tint = if (isListenTogetherGuest) Color.White.copy(alpha = 0.38f) else Color.White,
                                             modifier = Modifier.size(largeIcon)
                                         )
                                     }
@@ -1066,7 +1079,13 @@ fun PlayerScreen(
                             }
 
                             Surface(
-                                onClick = { viewModel.togglePlayPause() },
+                                onClick = {
+                                    if (isListenTogetherGuest) {
+                                        viewModel.toggleMute()
+                                    } else {
+                                        viewModel.togglePlayPause()
+                                    }
+                                },
                                 shape = RoundedCornerShape(28.dp),
                                 color = dynamicActiveLyricColor,
                                 modifier = Modifier
@@ -1076,9 +1095,17 @@ fun PlayerScreen(
                                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                     Icon(
                                         painter = androidx.compose.ui.res.painterResource(
-                                            if (isPlaying) com.vibevault.app.R.drawable.pause else com.vibevault.app.R.drawable.play
+                                            if (isListenTogetherGuest) {
+                                                if (isMuted) com.vibevault.app.R.drawable.volume_off else com.vibevault.app.R.drawable.volume_up
+                                            } else {
+                                                if (isPlaying) com.vibevault.app.R.drawable.pause else com.vibevault.app.R.drawable.play
+                                            }
                                         ),
-                                        contentDescription = if (isPlaying) "Pause" else "Play",
+                                        contentDescription = if (isListenTogetherGuest) {
+                                            if (isMuted) "Unmute" else "Mute"
+                                        } else {
+                                            if (isPlaying) "Pause" else "Play"
+                                        },
                                         tint = Color.Black,
                                         modifier = Modifier.size(44.dp)
                                     )
@@ -1091,16 +1118,16 @@ fun PlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Surface(
-                                    onClick = { viewModel.skipNext() },
+                                    onClick = { if (!isListenTogetherGuest) viewModel.skipNext() },
                                     shape = RoundedCornerShape(largeRadius),
-                                    color = Color.White.copy(alpha = 0.15f),
+                                    color = Color.White.copy(alpha = if (isListenTogetherGuest) 0.05f else 0.15f),
                                     modifier = Modifier.size(large)
                                 ) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                         Icon(
                                             painter = androidx.compose.ui.res.painterResource(com.vibevault.app.R.drawable.skip_next),
                                             contentDescription = "Next",
-                                            tint = Color.White,
+                                            tint = if (isListenTogetherGuest) Color.White.copy(alpha = 0.38f) else Color.White,
                                             modifier = Modifier.size(largeIcon)
                                         )
                                     }
@@ -1230,10 +1257,13 @@ fun PlayerScreen(
                     ) {
                         FilledIconButton(
                             onClick = { viewModel.skipPrevious() },
+                            enabled = !isListenTogetherGuest,
                             shape = sideShape,
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = sideButtonColor,
                                 contentColor = sideIconColor,
+                                disabledContainerColor = sideButtonColor.copy(alpha = 0.4f),
+                                disabledContentColor = sideIconColor.copy(alpha = 0.38f)
                             ),
                             modifier = Modifier
                                 .height(68.dp)
@@ -1245,7 +1275,13 @@ fun PlayerScreen(
                         Spacer(modifier = Modifier.width(16.dp))
 
                         FilledIconButton(
-                            onClick = { viewModel.togglePlayPause() },
+                            onClick = {
+                                if (isListenTogetherGuest) {
+                                    viewModel.toggleMute()
+                                } else {
+                                    viewModel.togglePlayPause()
+                                }
+                            },
                             shape = playPauseShape,
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = playPauseColor,
@@ -1259,17 +1295,33 @@ fun PlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                Icon(
-                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = "Play/Pause",
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = if (isPlaying) "Pause" else "Play",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = playPauseIconColor
-                                )
+                                if (isListenTogetherGuest) {
+                                    Icon(
+                                        painter = androidx.compose.ui.res.painterResource(
+                                            if (isMuted) com.vibevault.app.R.drawable.volume_off else com.vibevault.app.R.drawable.volume_up
+                                        ),
+                                        contentDescription = if (isMuted) "Unmute" else "Mute",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isMuted) "Unmute" else "Mute",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = playPauseIconColor
+                                    )
+                                } else {
+                                    Icon(
+                                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = "Play/Pause",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isPlaying) "Pause" else "Play",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = playPauseIconColor
+                                    )
+                                }
                             }
                         }
 
@@ -1277,10 +1329,13 @@ fun PlayerScreen(
 
                         FilledIconButton(
                             onClick = { viewModel.skipNext() },
+                            enabled = !isListenTogetherGuest,
                             shape = sideShape,
                             colors = IconButtonDefaults.filledIconButtonColors(
                                 containerColor = sideButtonColor,
                                 contentColor = sideIconColor,
+                                disabledContainerColor = sideButtonColor.copy(alpha = 0.4f),
+                                disabledContentColor = sideIconColor.copy(alpha = 0.38f)
                             ),
                             modifier = Modifier
                                 .height(68.dp)
@@ -1428,31 +1483,48 @@ fun PlayerScreen(
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(CircleShape)
-                                .clickable { viewModel.skipPrevious() },
+                                .clickable(enabled = !isListenTogetherGuest) { viewModel.skipPrevious() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.FastRewind,
                                 contentDescription = "Previous",
-                                tint = Color.White,
+                                tint = if (isListenTogetherGuest) Color.White.copy(alpha = 0.38f) else Color.White,
                                 modifier = Modifier.size(44.dp)
                             )
                         }
 
-                        // Play/Pause (Large borderless glyph)
+                        // Play/Pause (or Sound/Mute toggle for guest)
                         Box(
                             modifier = Modifier
                                 .size(74.dp)
                                 .clip(CircleShape)
-                                .clickable { viewModel.togglePlayPause() },
+                                .clickable {
+                                    if (isListenTogetherGuest) {
+                                        viewModel.toggleMute()
+                                    } else {
+                                        viewModel.togglePlayPause()
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (isPlaying) "Pause" else "Play",
-                                tint = Color.White,
-                                modifier = Modifier.size(62.dp)
-                            )
+                            if (isListenTogetherGuest) {
+                                Icon(
+                                    painter = androidx.compose.ui.res.painterResource(
+                                        if (isMuted) com.vibevault.app.R.drawable.volume_off else com.vibevault.app.R.drawable.volume_up
+                                    ),
+                                    contentDescription = if (isMuted) "Unmute" else "Mute",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(54.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(62.dp)
+                                )
+                            }
                         }
 
                         // Next (>>)
@@ -1460,13 +1532,13 @@ fun PlayerScreen(
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(CircleShape)
-                                .clickable { viewModel.skipNext() },
+                                .clickable(enabled = !isListenTogetherGuest) { viewModel.skipNext() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.FastForward,
                                 contentDescription = "Next",
-                                tint = Color.White,
+                                tint = if (isListenTogetherGuest) Color.White.copy(alpha = 0.38f) else Color.White,
                                 modifier = Modifier.size(44.dp)
                             )
                         }

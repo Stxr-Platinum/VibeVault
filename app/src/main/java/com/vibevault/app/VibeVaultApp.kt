@@ -50,6 +50,13 @@ class VibeVaultApp : Application(), Configuration.Provider, ImageLoaderFactory {
             } catch (e: Exception) {
                 android.util.Log.e("VibeVaultApp", "Failed to generate fresh session: ${e.message}")
             }
+
+            // Preload and cache search screen suggestions so navigation to search is instantaneous
+            try {
+                com.vibevault.app.ui.screens.search.suggestions.SuggestionsPreloader.preload(this@VibeVaultApp)
+            } catch (e: Exception) {
+                android.util.Log.e("VibeVaultApp", "Failed to preload suggestions: ${e.message}")
+            }
         }
     }
 }

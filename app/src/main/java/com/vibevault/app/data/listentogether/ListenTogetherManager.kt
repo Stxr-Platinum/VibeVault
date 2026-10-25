@@ -130,6 +130,13 @@ class ListenTogetherManager @Inject constructor(
     // Chat state
     private val _chatMessages = MutableStateFlow<List<ChatMessagePayload>>(emptyList())
     val chatMessages = _chatMessages
+
+    private val _unreadMessageCount = MutableStateFlow(0)
+    val unreadMessageCount: StateFlow<Int> = _unreadMessageCount.asStateFlow()
+
+    fun markChatAsRead() {
+        _unreadMessageCount.value = 0
+    }
     
     // Emits track ID when a guest receives a track change — UI observes this to auto-open player
     private val _guestTrackChanged = MutableStateFlow<String?>(null)
@@ -204,27 +211,49 @@ class ListenTogetherManager @Inject constructor(
                 val connection = playerConnection ?: return
                 val player = connection.player
                 
-                val trackId = mediaItem.mediaId
-                if (trackId == lastSyncedTrackId) return
+                val trackId = mediaItem.mediaId.split("/").lastOrNull() ?: mediaItem.mediaId
+                if (trackId.isBlank() || trackId == lastSyncedTrackId) return
                 
                 lastSyncedTrackId = trackId
                 // Reset play state tracking since server resets IsPlaying on track change
                 lastSyncedIsPlaying = false
                 
                 // Get metadata and send track change
-                player.currentMetadata?.let { metadata ->
-                    Timber.tag(TAG).d("Host sending track change: ${metadata.title}")
-                    sendTrackChange(metadata)
-                    
-                    // ALWAYS send PLAY after track change if host is currently playing
-                    // Server sets IsPlaying=false on track change, so we must re-send it
-                    val isPlaying = player.playWhenReady
-                    if (isPlaying) {
-                        Timber.tag(TAG).d("Host is playing during track change, sending PLAY")
-                        lastSyncedIsPlaying = true
-                        val position = player.currentPosition
-                        client.sendPlaybackAction(PlaybackActions.PLAY, position = position)
-                    }
+                val metadata = player.currentMetadata
+                    ?: mediaItem.metadata
+                    ?: connection.queueWindows.value.find { (it.mediaId.split("/").lastOrNull() ?: it.mediaId) == trackId }?.metadata
+
+                val safeDuration = if ((metadata?.duration ?: 0) > 0) {
+                    metadata!!.duration
+                } else if (player.duration > 0) {
+                    (player.duration / 1000).toInt()
+                } else {
+                    180
+                }
+
+                val finalMetadata = if (metadata != null) {
+                    if (metadata.duration <= 0) metadata.copy(duration = safeDuration) else metadata
+                } else {
+                    MediaMetadata(
+                        id = trackId,
+                        title = mediaItem.mediaMetadata.title?.toString()?.takeIf { it.isNotBlank() } ?: "Track $trackId",
+                        artists = listOf(MediaMetadata.Artist(id = "", name = mediaItem.mediaMetadata.artist?.toString() ?: "Unknown Artist")),
+                        duration = safeDuration,
+                        thumbnailUrl = mediaItem.mediaMetadata.artworkUri?.toString() ?: mediaItem.mediaMetadata.extras?.getString("artwork_uri")
+                    )
+                }
+
+                Timber.tag(TAG).d("Host sending track change: ${finalMetadata.title} (id=$trackId)")
+                sendTrackChange(finalMetadata)
+                
+                // ALWAYS send PLAY after track change if host is currently playing
+                // Server sets IsPlaying=false on track change, so we must re-send it
+                val isPlaying = player.playWhenReady
+                if (isPlaying) {
+                    Timber.tag(TAG).d("Host is playing during track change, sending PLAY")
+                    lastSyncedIsPlaying = true
+                    val position = player.currentPosition
+                    client.sendPlaybackAction(PlaybackActions.PLAY, position = position)
                 }
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "Error in onMediaItemTransition")
@@ -713,7 +742,15 @@ class ListenTogetherManager @Inject constructor(
 
             is ListenTogetherEvent.ChatMessageReceived -> {
                 Timber.tag(TAG).d("Chat message received from ${event.payload.username}")
-                _chatMessages.value = _chatMessages.value + event.payload
+                val exists = _chatMessages.value.any { it.timestamp == event.payload.timestamp && it.userId == event.payload.userId }
+                if (!exists) {
+                    _chatMessages.value = _chatMessages.value + event.payload
+                    if (event.payload.userId != userId.value) {
+                        _unreadMessageCount.value++
+                    }
+                } else {
+                    Timber.tag(TAG).w("Ignoring duplicate chat message from ${event.payload.username}")
+                }
             }
 
             else -> { /* Other events handled by UI */ }
@@ -741,6 +778,7 @@ class ListenTogetherManager @Inject constructor(
         lastSyncActionTime = 0L  // Reset sync debouncing
         ++currentTrackGeneration  // Increment to invalidate any pending track-change coroutines
         _chatMessages.value = emptyList() // Clear chat on room leave
+        _unreadMessageCount.value = 0
     }
 
     private fun updateGuestMuteState() {
@@ -1225,13 +1263,18 @@ class ListenTogetherManager @Inject constructor(
                 if (queue != null && queue.isNotEmpty()) {
                     val mediaItems = queue.map { it.toMediaMetadata().toMediaItem() }
                     
-                    // Find index of current track
-                    var startIndex = mediaItems.indexOfFirst { it.mediaId == currentTrack.id }
+                    // Find index of current track (match full id or clean id)
+                    val currentCleanId = currentTrack.id.split("/").lastOrNull() ?: currentTrack.id
+                    var startIndex = mediaItems.indexOfFirst {
+                        val itemCleanId = it.mediaId.split("/").lastOrNull() ?: it.mediaId
+                        itemCleanId == currentCleanId || it.mediaId == currentTrack.id
+                    }
                     if (startIndex == -1) {
-                        Timber.tag(TAG).w("Current track ${currentTrack.id} not found in queue, defaulting to 0")
+                        Timber.tag(TAG).w("Current track ${currentTrack.id} not found in queue, prepending")
                         val singleItem = currentTrack.toMediaMetadata().toMediaItem()
-                        connection.syncQueue(listOf(singleItem), 0)
-                        player.setMediaItems(listOf(singleItem), 0, position)
+                        val combinedItems = listOf(singleItem) + mediaItems
+                        connection.syncQueue(combinedItems, 0)
+                        player.setMediaItems(combinedItems, 0, position)
                     } else {
                         connection.syncQueue(mediaItems, startIndex)
                         player.setMediaItems(mediaItems, startIndex, position)
@@ -1577,16 +1620,33 @@ class ListenTogetherManager @Inject constructor(
     }
 
     private fun MediaItem.toTrackInfo(): TrackInfo {
-        val metadata = this.metadata ?: return TrackInfo("unknown", "Unknown", "Unknown", "", 0, "")
-        val durationMs = if (metadata.duration > 0) metadata.duration.toLong() * 1000 else 180000L
+        val cleanId = mediaId.split("/").lastOrNull() ?: mediaId
+        val md = this.metadata
+        val durationMs = if ((md?.duration ?: 0) > 0) {
+            md!!.duration.toLong() * 1000
+        } else {
+            val dur = mediaMetadata.extras?.getLong("durationMs", 0L) ?: 0L
+            if (dur > 0) dur else 180000L
+        }
+        val titleStr = md?.title?.takeIf { it.isNotBlank() }
+            ?: mediaMetadata.title?.toString()?.takeIf { it.isNotBlank() }
+            ?: mediaMetadata.displayTitle?.toString()?.takeIf { it.isNotBlank() }
+            ?: "Track $cleanId"
+        val artistStr = md?.artists?.joinToString(", ") { it.name }?.takeIf { it.isNotBlank() }
+            ?: mediaMetadata.artist?.toString()?.takeIf { it.isNotBlank() }
+            ?: mediaMetadata.subtitle?.toString()?.takeIf { it.isNotBlank() }
+            ?: "Unknown Artist"
+        val albumStr = md?.album?.title ?: mediaMetadata.albumTitle?.toString()
+        val thumbStr = md?.thumbnailUrl ?: mediaMetadata.artworkUri?.toString() ?: mediaMetadata.extras?.getString("artwork_uri")
+
         return TrackInfo(
-            id = metadata.id,
-            title = metadata.title,
-            artist = metadata.artists.joinToString(", ") { it.name },
-            album = metadata.album?.title,
+            id = cleanId,
+            title = titleStr,
+            artist = artistStr,
+            album = albumStr,
             duration = durationMs,
-            thumbnail = metadata.thumbnailUrl,
-            suggestedBy = metadata.suggestedBy
+            thumbnail = thumbStr,
+            suggestedBy = md?.suggestedBy
         )
     }
 

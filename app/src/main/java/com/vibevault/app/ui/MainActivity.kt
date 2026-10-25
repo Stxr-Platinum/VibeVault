@@ -99,6 +99,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var realtimeSyncManager: RealtimeSyncManager
 
+    @Inject
+    lateinit var listenTogetherManager: com.vibevault.app.data.listentogether.ListenTogetherManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d("VibeVault", "MainActivity: onCreate started")
         val splashScreen = installSplashScreen()
@@ -194,7 +197,10 @@ class MainActivity : ComponentActivity() {
             }
 
             VibeVaultTheme(themeColor = themeColor) {
-                val navController = rememberNavController()
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalListenTogetherManager provides listenTogetherManager
+                ) {
+                    val navController = rememberNavController()
                 val startDestination by mainViewModel.startDestination.collectAsStateWithLifecycle()
 
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -353,6 +359,7 @@ class MainActivity : ComponentActivity() {
 
             }
         }
+        }
     }
     @Inject
     lateinit var supabaseClient: SupabaseClient
@@ -406,3 +413,5 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+val LocalListenTogetherManager = androidx.compose.runtime.staticCompositionLocalOf<com.vibevault.app.data.listentogether.ListenTogetherManager?> { null }

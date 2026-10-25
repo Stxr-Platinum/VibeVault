@@ -72,6 +72,7 @@ import com.vibevault.app.constants.ReduceDynamicBlurKey
 import com.vibevault.app.core.session.SessionManager
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.ui.components.ArtworkWash
+import com.vibevault.app.ui.components.FastScrollbar
 import com.vibevault.app.ui.components.FrostedTopBar
 import com.vibevault.app.ui.components.TopFadeBlur
 import com.vibevault.app.ui.components.topBarContentPadding
@@ -656,6 +657,19 @@ fun PlaylistScreen(
                     }
                 }
             }
+
+            // Interactive FastScrollbar for Playlist
+            FastScrollbar(
+                listState = listState,
+                itemCount = filteredTracks.size,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = topBarContentPadding(), bottom = 120.dp),
+                headerCount = if (searching) 2 else 1,
+                getSectionText = { index ->
+                    filteredTracks.getOrNull(index)?.second?.title?.firstOrNull()?.uppercase() ?: "#${index + 1}"
+                }
+            )
         }
 
         // ── Layer 4: TopFadeBlur ─────────────────────────────────────────────

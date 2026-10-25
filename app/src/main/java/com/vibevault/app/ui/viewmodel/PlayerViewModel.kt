@@ -107,6 +107,16 @@ class PlayerViewModel @Inject constructor(
 
     // ── ListenTogether Bridge State ───────────────────────
     private val _isMuted = MutableStateFlow(false)
+    val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
+    val listenTogetherRole: StateFlow<com.vibevault.app.data.listentogether.RoomRole> = listenTogetherManager.role
+    val isInListenTogetherRoom: Boolean get() = listenTogetherManager.isInRoom
+
+    fun toggleMute() {
+        val newMuted = !_isMuted.value
+        _isMuted.value = newMuted
+        player?.volume = if (newMuted) 0f else _volume.value
+    }
+
     private val _queueTitle = MutableStateFlow<String?>(null)
     private val _queueWindows = MutableStateFlow<List<MediaItem>>(emptyList())
     private var listenTogetherBridge: PlayerConnection? = null
@@ -230,7 +240,9 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             queueManager.currentTrack.collect { track ->
                 val currentExoMediaId = player?.currentMediaItem?.mediaId?.split("/")?.lastOrNull() ?: player?.currentMediaItem?.mediaId
+                val isGuestInRoom = listenTogetherManager.isInRoom && !listenTogetherManager.isHost
                 val shouldStartPlayback = !isRestoringSavedState && 
+                    !isGuestInRoom &&
                     track != null && 
                     track.id != currentlyPlayingTrackId && 
                     track.id != currentExoMediaId
@@ -495,18 +507,24 @@ class PlayerViewModel @Inject constructor(
             override fun pause() { player?.pause() }
             override fun seekTo(position: Long) { player?.seekTo(position) }
             override fun seekToNext() {
-                val service = PlaybackService.instance
-                if (service != null && service.manualSkipNextWithCrossfade()) {
-                    return
+                if (player?.hasNextMediaItem() == true) {
+                    player?.seekToNextMediaItem()
+                } else {
+                    val service = PlaybackService.instance
+                    if (service == null || !service.manualSkipNextWithCrossfade()) {
+                        queueManager.next()
+                    }
                 }
-                queueManager.next()
             }
             override fun seekToPrevious() {
-                val service = PlaybackService.instance
-                if (service != null && service.manualSkipToPreviousWithCrossfade()) {
-                    return
+                if (player?.hasPreviousMediaItem() == true) {
+                    player?.seekToPreviousMediaItem()
+                } else {
+                    val service = PlaybackService.instance
+                    if (service == null || !service.manualSkipToPreviousWithCrossfade()) {
+                        queueManager.previous()
+                    }
                 }
-                queueManager.previous()
             }
             
             override fun playQueue(queue: com.vibevault.app.playback.queues.YouTubeQueue) {
@@ -581,6 +599,7 @@ class PlayerViewModel @Inject constructor(
                 }
                 if (currentIndex in tracks.indices) {
                     val curr = tracks[currentIndex]
+                    currentlyPlayingTrackId = curr.id
                     streamResolver.preResolve(curr.id, curr.title, curr.artist, curr.durationMs)
                     if (currentIndex + 1 < tracks.size) {
                         val next = tracks[currentIndex + 1]

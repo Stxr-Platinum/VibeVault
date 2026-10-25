@@ -453,6 +453,11 @@ fun AppNavHost(
                 showTopBar = true
             )
         }
+        composable("listen_together/chat") {
+            com.vibevault.app.ui.screens.listentogether.CommentTogetherScreen(
+                navController = navController
+            )
+        }
         
         composable(Screen.Settings.route) {
             com.vibevault.app.ui.screens.settings.SettingsScreen(navController = navController)

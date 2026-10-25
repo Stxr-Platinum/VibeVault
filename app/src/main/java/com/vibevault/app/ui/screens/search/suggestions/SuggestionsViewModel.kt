@@ -61,38 +61,53 @@ class SuggestionsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        // Load cache initially so there's zero-delay display while fresh fetch begins
-        SearchCache.getCachedSuggestions(context)?.let { cached ->
-            if (cached.tracks.isNotEmpty()) {
-                _suggestionTracks.value = cached.tracks
-                _suggestionArtists.value = cached.artists.ifEmpty { AppleMusicScraper.getTrendingArtists(cached.tracks) }
-            }
-            if (cached.albums.isNotEmpty()) {
-                _suggestionAlbums.value = cached.albums
-            }
-            if (cached.videos.isNotEmpty()) {
-                _suggestionVideos.value = cached.videos
-            }
-            if (cached.newReleases.isNotEmpty()) {
-                _youtubeNewReleases.value = cached.newReleases.map { it.toAlbumItem() }
-            }
-            if (cached.region.isNotBlank()) {
-                currentLoadedRegion = cached.region
+        // Observe SearchCache flow so any background preloading or updates reflect immediately
+        viewModelScope.launch {
+            SearchCache.cachedSuggestionsFlow.collect { cached ->
+                cached?.let { applyCachedPayload(it) }
             }
         }
-        // Immediately trigger refresh logic upon opening: clears cache and fetches fresh data
-        clearAndRefresh(force = true)
+
+        // Load cache initially so there's zero-delay display
+        SearchCache.getCachedSuggestions(context)?.let { cached ->
+            applyCachedPayload(cached)
+        }
+
+        // Silently update in background without wiping UI
+        refresh(force = false)
+    }
+
+    private fun applyCachedPayload(cached: com.vibevault.app.ui.screens.search.CachedSuggestionsPayload) {
+        if (cached.tracks.isNotEmpty()) {
+            _suggestionTracks.value = cached.tracks
+            _suggestionArtists.value = cached.artists.ifEmpty { AppleMusicScraper.getTrendingArtists(cached.tracks) }
+        }
+        if (cached.albums.isNotEmpty()) {
+            _suggestionAlbums.value = cached.albums
+        }
+        if (cached.videos.isNotEmpty()) {
+            _suggestionVideos.value = cached.videos
+        }
+        if (cached.newReleases.isNotEmpty()) {
+            _youtubeNewReleases.value = cached.newReleases.map { it.toAlbumItem() }
+        }
+        if (cached.region.isNotBlank()) {
+            currentLoadedRegion = cached.region
+        }
     }
 
     /**
-     * Called whenever the search screen is opened: clears cache and fetches new data.
+     * Called whenever the search screen is opened: shows cached data immediately
+     * and performs a seamless background refresh if needed.
      */
     fun onScreenOpened() {
-        clearAndRefresh(force = true, isManual = false)
+        if (_suggestionTracks.value.isNullOrEmpty()) {
+            SearchCache.getCachedSuggestions(context)?.let { applyCachedPayload(it) }
+        }
+        refresh(force = false, isManual = false)
     }
 
-    fun clearAndRefresh(countryCode: String = "system", force: Boolean = true, isManual: Boolean = false) {
-        SearchCache.clearSuggestionsCache(context)
+    fun clearAndRefresh(countryCode: String = "system", force: Boolean = false, isManual: Boolean = true) {
         refresh(countryCode = countryCode, force = force, isManual = isManual)
     }
 
@@ -103,19 +118,11 @@ class SuggestionsViewModel @Inject constructor(
             countryCode.lowercase()
         }
 
-        if (!force && currentLoadedRegion == resolvedCode && _suggestionTracks.value != null) return
+        if (!force && currentLoadedRegion == resolvedCode && _suggestionTracks.value != null && !isManual) return
         if (!_isLoading.compareAndSet(false, true)) return
 
         viewModelScope.launch(Dispatchers.IO) {
             _isManualLoading.value = isManual
-
-            if (force) {
-                _suggestionTracks.value = null
-                _suggestionArtists.value = null
-                _suggestionAlbums.value = null
-                _suggestionVideos.value = null
-                _youtubeNewReleases.value = null
-            }
 
             try {
                 // STEP 1: Fetch suggestions FIRST and display immediately

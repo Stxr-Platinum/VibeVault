@@ -315,6 +315,9 @@ class SessionManager @Inject constructor(
         _isLoggedInFlow.value = false
         _spotifyAccessTokenFlow.value = null
         _isSpotifyConnected.value = false
+
+        // Also clear WebView cookies for Spotify domains
+        clearSpotifyWebViewCookies()
     }
 
     /** Clears only Spotify session while keeping the main user logged in. */
@@ -329,5 +332,66 @@ class SessionManager @Inject constructor(
         com.music.spotify.Spotify.accessToken = null
         _spotifyAccessTokenFlow.value = null
         _isSpotifyConnected.value = false
+
+        // Clear WebView cookies for Spotify domains so reconnecting
+        // always requires entering credentials again.
+        clearSpotifyWebViewCookies()
+    }
+
+    /**
+     * Clears all WebView cookies, web storage, and form data for Spotify domains.
+     * This ensures the login WebView does not auto-capture stale sp_dc cookies
+     * and forces the user to re-enter credentials on reconnect.
+     */
+    private fun clearSpotifyWebViewCookies() {
+        try {
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            // 1. Remove all cookies and session cookies completely
+            cookieManager.removeAllCookies(null)
+            cookieManager.removeSessionCookies(null)
+
+            // 2. Also explicitly clear across all Spotify domain variations
+            val spotifyDomains = listOf(
+                "https://open.spotify.com",
+                "https://accounts.spotify.com",
+                "https://spotify.com",
+                "https://www.spotify.com",
+                "https://api-partner.spotify.com",
+                ".spotify.com",
+                ".accounts.spotify.com",
+                ".open.spotify.com"
+            )
+            for (domain in spotifyDomains) {
+                val cookies = cookieManager.getCookie(domain)
+                if (cookies != null) {
+                    for (cookie in cookies.split(";")) {
+                        val name = cookie.split("=").firstOrNull()?.trim() ?: continue
+                        cookieManager.setCookie(domain, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Domain=.spotify.com")
+                        cookieManager.setCookie(domain, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/")
+                    }
+                }
+            }
+            cookieManager.flush()
+
+            // 3. Clear WebStorage (localStorage, IndexedDB, etc.)
+            try {
+                android.webkit.WebStorage.getInstance().deleteAllData()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to clear WebStorage", e)
+            }
+
+            // 4. Clear WebView form database and cached credentials
+            try {
+                val db = android.webkit.WebViewDatabase.getInstance(context)
+                db.clearFormData()
+                db.clearHttpAuthUsernamePassword()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to clear WebViewDatabase", e)
+            }
+
+            Log.d(TAG, "Cleared all WebView cookies, storage, and form data for Spotify")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear WebView cookies for Spotify domains", e)
+        }
     }
 }

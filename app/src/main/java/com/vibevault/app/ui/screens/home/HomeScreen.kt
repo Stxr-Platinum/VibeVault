@@ -1039,6 +1039,24 @@ fun SpotifyConnectDialog(
     onConnect: (spDc: String, spKey: String) -> Unit
 ) {
     var captured by remember { mutableStateOf(false) }
+    val handler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            handler.removeCallbacksAndMessages(null)
+            try {
+                webViewRef?.apply {
+                    stopLoading()
+                    clearCache(true)
+                    clearFormData()
+                    clearHistory()
+                    destroy()
+                }
+            } catch (_: Exception) {}
+            webViewRef = null
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1088,23 +1106,43 @@ fun SpotifyConnectDialog(
                         .clip(RoundedCornerShape(12.dp)),
                     factory = { context ->
                         WebView(context).apply {
+                            webViewRef = this
                             layoutParams = android.view.ViewGroup.LayoutParams(
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
                             )
+
+                            // Wipe any previous cookies and storage before showing login
                             val cookieManager = CookieManager.getInstance()
+                            cookieManager.removeAllCookies(null)
+                            cookieManager.removeSessionCookies(null)
+                            cookieManager.flush()
+                            try {
+                                android.webkit.WebStorage.getInstance().deleteAllData()
+                            } catch (_: Exception) {}
+
+                            // Disable all caching to ensure fresh authentication every time
+                            clearCache(true)
+                            clearFormData()
+                            clearHistory()
+
                             cookieManager.setAcceptCookie(true)
                             cookieManager.setAcceptThirdPartyCookies(this, true)
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.databaseEnabled = true
-                            settings.setSupportZoom(true)
-                            settings.builtInZoomControls = true
-                            settings.displayZoomControls = false
-                            settings.useWideViewPort = true
-                            settings.loadWithOverviewMode = true
-                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; SM-S921U; Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36"
+
+                            settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                databaseEnabled = true
+                                cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                                saveFormData = false
+                                setSupportZoom(true)
+                                builtInZoomControls = true
+                                displayZoomControls = false
+                                useWideViewPort = true
+                                loadWithOverviewMode = true
+                                mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                userAgentString = "Mozilla/5.0 (Linux; Android 14; SM-S921U; Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36"
+                            }
 
                             setOnTouchListener { v, event ->
                                 when (event.action) {
@@ -1136,6 +1174,7 @@ fun SpotifyConnectDialog(
                                 val spDc = cookies["sp_dc"].orEmpty()
                                 if (spDc.isNotBlank()) {
                                     captured = true
+                                    handler.removeCallbacksAndMessages(null)
                                     onConnect(spDc, cookies["sp_key"].orEmpty())
                                     onDismiss()
                                     return true
@@ -1143,7 +1182,6 @@ fun SpotifyConnectDialog(
                                 return false
                             }
 
-                            val handler = android.os.Handler(android.os.Looper.getMainLooper())
                             val checkRunnable = object : Runnable {
                                 override fun run() {
                                     if (!captured && checkCookies()) {

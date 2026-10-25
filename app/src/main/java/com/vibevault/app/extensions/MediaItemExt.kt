@@ -16,7 +16,31 @@ import com.vibevault.app.models.toMediaMetadata
 
 
 val MediaItem.metadata: MediaMetadata?
-    get() = localConfiguration?.tag as? MediaMetadata
+    get() {
+        val fromTag = localConfiguration?.tag as? MediaMetadata
+        if (fromTag != null) return fromTag
+        val rawId = mediaId
+        val cleanId = rawId.split("/").lastOrNull() ?: rawId
+        if (cleanId.isBlank()) return null
+        val md = mediaMetadata
+        val durMs = md.extras?.getLong("durationMs", 0L) ?: 0L
+        val titleStr = md.title?.toString()?.takeIf { it.isNotBlank() }
+            ?: md.displayTitle?.toString()?.takeIf { it.isNotBlank() }
+            ?: "Track $cleanId"
+        val artistStr = md.artist?.toString()?.takeIf { it.isNotBlank() }
+            ?: md.subtitle?.toString()?.takeIf { it.isNotBlank() }
+            ?: "Unknown Artist"
+        val albumStr = md.albumTitle?.toString()?.takeIf { it.isNotBlank() }
+        val thumbStr = md.artworkUri?.toString() ?: md.extras?.getString("artwork_uri")
+        return MediaMetadata(
+            id = cleanId,
+            title = titleStr,
+            artists = listOf(MediaMetadata.Artist(id = "", name = artistStr)),
+            album = albumStr?.let { MediaMetadata.Album(id = "", title = it) },
+            duration = if (durMs > 0) (durMs / 1000).toInt() else 0,
+            thumbnailUrl = thumbStr
+        )
+    }
 
 
 fun SongItem.toMediaItem(): MediaItem {
@@ -56,6 +80,7 @@ fun SongItem.toMediaItem(): MediaItem {
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
                 .setExtras(Bundle().apply {
+                    putLong("durationMs", (duration ?: 0) * 1000L)
                     thumbnail.takeIf { it.isNotBlank() }?.let { putString("artwork_uri", it) }
                 })
                 .build()
@@ -100,6 +125,7 @@ fun MediaMetadata.toMediaItem(): MediaItem {
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
                 .setExtras(Bundle().apply {
+                    putLong("durationMs", (duration ?: 0) * 1000L)
                     thumbnailUrl?.takeIf { it.isNotBlank() }?.let { putString("artwork_uri", it) }
                 })
                 .build()
@@ -160,6 +186,7 @@ fun com.vibevault.app.domain.model.Track.toMediaItem(): MediaItem {
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
                 .setExtras(Bundle().apply {
+                    putLong("durationMs", durationMs)
                     albumImageUrl.takeIf { it.isNotBlank() }?.let { putString("artwork_uri", it) }
                 })
                 .build()

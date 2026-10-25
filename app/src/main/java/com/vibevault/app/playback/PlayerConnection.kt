@@ -36,6 +36,7 @@ interface PlayerConnection {
     fun removeTrackFromQueue(mediaId: String)
     fun clearQueue()
     fun setMuted(muted: Boolean)
+    fun toggleMute() { setMuted(!isMuted.value) }
     fun setPlaybackSpeed(speed: Float)
     fun getPlaybackSpeed(): Float
 }

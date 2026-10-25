@@ -118,8 +118,31 @@ class HomeViewModel @Inject constructor(
     // 3. Methods
 
     fun disconnectSpotify() {
-        sessionManager.clearSpotifySession()
-        musicRepository.clearSpotifyCache()
+        viewModelScope.launch {
+            // Revoke access token and invalidate session server-side before clearing local state
+            val currentToken = sessionManager.spotifyAccessToken
+            val spDc = sessionManager.spotifySpDc
+
+            if (!currentToken.isNullOrBlank()) {
+                try {
+                    com.music.spotify.SpotifyAuth.revokeAccessToken(currentToken)
+                    Log.d("SpotifyDebug", "HomeVM: Spotify access token revoked")
+                } catch (e: Exception) {
+                    Log.e("SpotifyDebug", "HomeVM: Failed to revoke Spotify token", e)
+                }
+            }
+            if (!spDc.isNullOrBlank()) {
+                try {
+                    com.music.spotify.SpotifyAuth.logoutSession(spDc)
+                    Log.d("SpotifyDebug", "HomeVM: Spotify session logged out")
+                } catch (e: Exception) {
+                    Log.e("SpotifyDebug", "HomeVM: Failed to logout Spotify session", e)
+                }
+            }
+            sessionManager.clearSpotifySession()
+            musicRepository.clearSpotifyCache()
+            _searchResults.value = null
+        }
     }
 
     fun refresh() {

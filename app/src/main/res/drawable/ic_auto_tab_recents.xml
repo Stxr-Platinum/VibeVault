@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Main Arc and Clock Hands -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 12,6.8 V 12 H 16.2 M 3.5,12 A 8.5,8.5 0 1,1 12,3.5" />
+    <!-- History / Pace Dots -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 3.8,7.8 A 1,1 0 1,0 5.8,7.8 A 1,1 0 1,0 3.8,7.8 Z M 6.8,4.8 A 1,1 0 1,0 8.8,4.8 A 1,1 0 1,0 6.8,4.8 Z" />
+</vector>

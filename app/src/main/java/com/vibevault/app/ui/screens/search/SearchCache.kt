@@ -15,6 +15,9 @@ import com.vibevault.app.ui.screens.search.suggestions.SearchSuggestionViewState
 import com.vibevault.app.ui.screens.search.suggestions.SuggestionAlbum
 import com.vibevault.app.ui.screens.search.suggestions.SuggestionArtist
 import com.vibevault.app.ui.screens.search.suggestions.SuggestionTrack
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -74,6 +77,10 @@ object SearchCache {
 
     private val gson by lazy { Gson() }
 
+    // Reactive StateFlow for instant UI observation
+    private val _cachedSuggestionsFlow = MutableStateFlow<CachedSuggestionsPayload?>(null)
+    val cachedSuggestionsFlow: StateFlow<CachedSuggestionsPayload?> = _cachedSuggestionsFlow.asStateFlow()
+
     // Memory caches for immediate zero-latency UI display
     private var memorySuggestions: CachedSuggestionsPayload? = null
     private val memoryQueryResults = ConcurrentHashMap<String, SpotifySearchResult>()
@@ -91,6 +98,7 @@ object SearchCache {
 
     fun clearSuggestionsCache(context: Context) {
         memorySuggestions = null
+        _cachedSuggestionsFlow.value = null
         try {
             val file = File(getCacheDir(context), SUGGESTIONS_FILE)
             if (file.exists()) {
@@ -102,14 +110,17 @@ object SearchCache {
     }
 
     fun getCachedSuggestions(context: Context): CachedSuggestionsPayload? {
-        memorySuggestions?.let { return it }
+        memorySuggestions?.let { 
+            _cachedSuggestionsFlow.value = it
+            return it 
+        }
         return try {
             val file = File(getCacheDir(context), SUGGESTIONS_FILE)
             if (!file.exists()) return null
             val json = file.readText()
             val type = object : TypeToken<CachedSuggestionsPayload>() {}.type
             val payload: CachedSuggestionsPayload? = gson.fromJson(json, type)
-            if (payload != null && (System.currentTimeMillis() - payload.timestamp < TTL_SUGGESTIONS_MS)) {
+            if (payload != null) {
                 // Safely filter any item that failed clean deserialization
                 val safeReleases = payload.newReleases.mapNotNull { item ->
                     try {
@@ -120,6 +131,7 @@ object SearchCache {
                 }
                 val safePayload = payload.copy(newReleases = safeReleases)
                 memorySuggestions = safePayload
+                _cachedSuggestionsFlow.value = safePayload
                 safePayload
             } else null
         } catch (t: Throwable) {
@@ -157,6 +169,7 @@ object SearchCache {
                 timestamp = System.currentTimeMillis()
             )
             memorySuggestions = updated
+            _cachedSuggestionsFlow.value = updated
 
             val file = File(getCacheDir(context), SUGGESTIONS_FILE)
             file.writeText(gson.toJson(updated))

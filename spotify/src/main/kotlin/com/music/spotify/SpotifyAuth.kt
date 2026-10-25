@@ -158,6 +158,63 @@ object SpotifyAuth {
         return output.toByteArray()
     }
 
+    /**
+     * Revokes the given Spotify access token server-side so it cannot be reused.
+     * Best-effort — failures are logged but do not throw.
+     */
+    suspend fun revokeAccessToken(accessToken: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val connection = URL("https://accounts.spotify.com/api/token/revoke").openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 10_000
+                connection.setRequestProperty("User-Agent", USER_AGENT)
+                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                connection.outputStream.bufferedWriter().use {
+                    it.write("token=$accessToken")
+                }
+                val code = connection.responseCode
+                code in 200..299
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Calls Spotify logout endpoints server-side with the sp_dc cookie to invalidate the session.
+     * Best-effort — failures are ignored.
+     */
+    suspend fun logoutSession(spDc: String): Boolean = withContext(Dispatchers.IO) {
+        if (spDc.isBlank()) return@withContext false
+        try {
+            val logoutUrls = listOf(
+                "https://accounts.spotify.com/logout",
+                "https://open.spotify.com/logout"
+            )
+            for (url in logoutUrls) {
+                try {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.instanceFollowRedirects = true
+                    conn.connectTimeout = 10_000
+                    conn.readTimeout = 10_000
+                    conn.setRequestProperty("User-Agent", USER_AGENT)
+                    conn.setRequestProperty("Cookie", "sp_dc=$spDc")
+                    conn.responseCode
+                    conn.disconnect()
+                } catch (_: Exception) {}
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun httpGet(urlString: String, extraHeaders: Map<String, String>): String {
         val connection = URL(urlString).openConnection() as HttpURLConnection
         try {

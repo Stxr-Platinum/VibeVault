@@ -69,6 +69,9 @@ fun MiniPlayer(
     val isPlaying by playerViewModel.isPlaying.collectAsStateWithLifecycle()
     val position by playerViewModel.currentPosition.collectAsStateWithLifecycle()
     val duration by playerViewModel.duration.collectAsStateWithLifecycle()
+    val listenTogetherRole by playerViewModel.listenTogetherRole.collectAsStateWithLifecycle()
+    val isListenTogetherGuest = listenTogetherRole == com.vibevault.app.data.listentogether.RoomRole.GUEST
+    val isMuted by playerViewModel.isMuted.collectAsStateWithLifecycle()
     val (dynamicBackground) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
     val (swipeSensitivity) = rememberPreference(SwipeSensitivityKey, 0.73f)
     
@@ -315,21 +318,38 @@ fun MiniPlayer(
 
                     Spacer(Modifier.width(8.dp))
 
-                    // Play/Pause button
+                    // Play/Pause button (or Sound/Mute toggle for guest)
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
-                            .clickable { playerViewModel.togglePlayPause() }
+                            .clickable {
+                                if (isListenTogetherGuest) {
+                                    playerViewModel.toggleMute()
+                                } else {
+                                    playerViewModel.togglePlayPause()
+                                }
+                            }
                     ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        if (isListenTogetherGuest) {
+                            Icon(
+                                painter = androidx.compose.ui.res.painterResource(
+                                    if (isMuted) com.vibevault.app.R.drawable.volume_off else com.vibevault.app.R.drawable.volume_up
+                                ),
+                                contentDescription = if (isMuted) "Unmute" else "Mute",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
 
                     Spacer(Modifier.width(8.dp))
