@@ -78,21 +78,21 @@ fun HomeScreen(
     val userDisplayName by viewModel.userDisplayName.collectAsStateWithLifecycle()
 
     val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
-    val authState by authViewModel.authState.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var showSpotifyCookieDialog by remember { mutableStateOf(false) }
     var showSpotifyDisconnectConfirm by remember { mutableStateOf(false) }
 
-    LaunchedEffect(authState) {
-        when (val state = authState) {
-            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.SpotifySuccess -> {
-                android.widget.Toast.makeText(context, "Spotify Connected Successfully!", android.widget.Toast.LENGTH_SHORT).show()
-                viewModel.refresh()
+    LaunchedEffect(Unit) {
+        authViewModel.authEvents.collect { event ->
+            when (event) {
+                is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthEvent.SpotifyConnected -> {
+                    android.widget.Toast.makeText(context, "Spotify Connected Successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                    viewModel.refresh()
+                }
+                is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthEvent.Error -> {
+                    android.widget.Toast.makeText(context, event.message, android.widget.Toast.LENGTH_LONG).show()
+                }
             }
-            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.Error -> {
-                android.widget.Toast.makeText(context, state.message, android.widget.Toast.LENGTH_LONG).show()
-            }
-            else -> {}
         }
     }
 
@@ -1112,11 +1112,8 @@ fun SpotifyConnectDialog(
                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
                             )
 
-                            // Wipe any previous cookies and storage before showing login
+                            // Wipe any previous cookies and storage synchronously before loading login URL
                             val cookieManager = CookieManager.getInstance()
-                            cookieManager.removeAllCookies(null)
-                            cookieManager.removeSessionCookies(null)
-                            cookieManager.flush()
                             try {
                                 android.webkit.WebStorage.getInstance().deleteAllData()
                             } catch (_: Exception) {}
@@ -1211,8 +1208,15 @@ fun SpotifyConnectDialog(
                                 }
                             }
                             webChromeClient = android.webkit.WebChromeClient()
-                            handler.post(checkRunnable)
-                            loadUrl(com.music.spotify.SpotifyAuth.LOGIN_URL)
+                            cookieManager.removeAllCookies {
+                                cookieManager.removeSessionCookies {
+                                    cookieManager.flush()
+                                    if (!captured) {
+                                        handler.post(checkRunnable)
+                                        loadUrl(com.music.spotify.SpotifyAuth.LOGIN_URL)
+                                    }
+                                }
+                            }
                         }
                     }
                 )

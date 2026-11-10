@@ -14,6 +14,7 @@ data class SupabaseSpotifyPlaylistDto(
     @SerialName("cover_image") val coverImage: String? = null,
     @SerialName("owner_name") val ownerName: String? = null,
     @SerialName("track_count") val trackCount: Int = 0,
+    @SerialName("spotify_account_id") val spotifyAccountId: String? = null,
     @SerialName("synced_at") val syncedAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 ) {

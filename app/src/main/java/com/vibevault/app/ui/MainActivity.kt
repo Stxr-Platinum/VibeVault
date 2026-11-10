@@ -271,6 +271,7 @@ class MainActivity : ComponentActivity() {
                         }
                         
                         val mainHazeState = remember { HazeState() }
+                        var isReplayStoryOpen by remember { mutableStateOf(false) }
                         val tabs = remember {
                             listOf(
                                 BottomTab("Home", BitChordIcons.Home),
@@ -292,7 +293,10 @@ class MainActivity : ComponentActivity() {
                             containerColor = Color.Transparent,
                             contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
                             bottomBar = {
-                                if (currentRoute != Screen.Player.route && currentRoute != Screen.Login.route) {
+                                if (currentRoute != Screen.Player.route &&
+                                    currentRoute != Screen.Login.route &&
+                                    !isReplayStoryOpen
+                                ) {
                                     Box(
                                         modifier = Modifier.fillMaxWidth(),
                                         contentAlignment = Alignment.BottomCenter
@@ -350,7 +354,8 @@ class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     innerPadding = innerPadding,
                                     playerViewModel = playerViewModel,
-                                    startDestination = startDestination!!
+                                    startDestination = startDestination!!,
+                                    onReplayStoryOpenChange = { isReplayStoryOpen = it }
                                 )
                             }
                         }

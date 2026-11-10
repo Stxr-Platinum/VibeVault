@@ -523,7 +523,18 @@ class PlaybackService : MediaLibraryService() {
                 com.vibevault.app.data.stats.ListeningRecorder.onStopped()
             }
             if (playbackState == Player.STATE_ENDED) {
+                val previousIndex = queueManager.currentIndex.value
                 queueManager.next()
+                val nextIndex = queueManager.currentIndex.value
+                val queue = queueManager.queueState.value
+                if (nextIndex in queue.indices && nextIndex != previousIndex) {
+                    if (nextIndex in 0 until player.mediaItemCount) {
+                        player.seekTo(nextIndex, 0L)
+                        player.prepare()
+                        player.playWhenReady = true
+                        player.play()
+                    }
+                }
             }
 
             if (playbackState == Player.STATE_READY) {
@@ -556,7 +567,11 @@ class PlaybackService : MediaLibraryService() {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             Log.d("PlaybackService", "[IsPlaying] isPlaying=$isPlaying")
             if (!isPlaying) {
-                com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                } else {
+                    com.vibevault.app.data.stats.ListeningRecorder.onPaused()
+                }
             } else {
                 scheduleCrossfade()
             }
@@ -595,27 +610,32 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             scheduleCrossfade()
-            val newIndex = player.currentMediaItemIndex
-            if (newIndex >= 0) {
-                queueManager.onMediaItemTransition(newIndex)
+            val playerIndex = player.currentMediaItemIndex
+            val queue = queueManager.queueState.value
+            val cleanTransitionId = mediaItem?.mediaId?.split("/")?.lastOrNull() ?: mediaItem?.mediaId
+            val resolvedIndex = when {
+                player.mediaItemCount == queue.size && playerIndex in queue.indices -> playerIndex
+                !cleanTransitionId.isNullOrBlank() -> queue.indexOfFirst { it.id == cleanTransitionId }
+                else -> -1
+            }
+            if (resolvedIndex >= 0) {
+                queueManager.onMediaItemTransition(resolvedIndex)
             }
             if (mediaItem != null) {
-                val cleanId = mediaItem.mediaId.split("/").lastOrNull() ?: mediaItem.mediaId
-                val track = queueManager.queueState.value.find { it.id == cleanId } ?: mediaItem.toDomainTrack()
+                val cleanId = cleanTransitionId ?: mediaItem.mediaId
+                val track = queue.getOrNull(resolvedIndex)
+                    ?: queue.find { it.id == cleanId }
+                    ?: mediaItem.toDomainTrack()
                 sessionManager.lastPlayedTrack = track
                 val pos = player.currentPosition.coerceAtLeast(0L)
                 sessionManager.lastPlayedPositionMs = pos
             }
-            // Pre-resolve next track if available for zero-latency transition
-            val nextIndex = player.nextMediaItemIndex
-            if (nextIndex != androidx.media3.common.C.INDEX_UNSET && nextIndex in 0 until player.mediaItemCount) {
-                val nextItem = player.getMediaItemAt(nextIndex)
-                val cleanId = nextItem.mediaId.split("/").lastOrNull() ?: nextItem.mediaId
-                val title = nextItem.mediaMetadata.title?.toString() ?: ""
-                val artist = nextItem.mediaMetadata.artist?.toString() ?: ""
-                val dur = nextItem.mediaMetadata.durationMs ?: (nextItem.mediaMetadata.extras?.getLong("durationMs") ?: 0L)
-                if (title.isNotBlank() && artist.isNotBlank()) {
-                    streamResolver.preResolve(cleanId, title, artist, dur)
+            // Pre-resolve next 2 upcoming tracks for zero-latency sequential transitions
+            val baseIdx = if (resolvedIndex >= 0) resolvedIndex else player.currentMediaItemIndex
+            for (offset in 1..2) {
+                val upcomingTrack = queue.getOrNull(baseIdx + offset)
+                if (upcomingTrack != null && upcomingTrack.title.isNotBlank() && upcomingTrack.artist.isNotBlank()) {
+                    streamResolver.preResolve(upcomingTrack.id, upcomingTrack.title, upcomingTrack.artist, upcomingTrack.durationMs)
                 }
             }
             if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
@@ -732,24 +752,7 @@ class PlaybackService : MediaLibraryService() {
             return listOf(lastTrack)
         }
 
-        val recents = musicRepository.getRecentlyPlayed(20).firstOrNull() ?: emptyList()
-        val validRecents = recents.filter { it.id.isNotBlank() && it.title.isNotBlank() }
-        if (validRecents.isNotEmpty()) {
-            withContext(Dispatchers.Main) {
-                queueManager.setQueue(validRecents, 0)
-            }
-            return validRecents
-        }
-
-        val discovery = musicRepository.getDiscoveryTracks().firstOrNull() ?: emptyList()
-        val validDiscovery = discovery.filter { it.id.isNotBlank() && it.title.isNotBlank() }
-        if (validDiscovery.isNotEmpty()) {
-            withContext(Dispatchers.Main) {
-                queueManager.setQueue(validDiscovery, 0)
-            }
-            return validDiscovery
-        }
-
+        // First launch / no prior session: keep queue completely empty and MiniPlayer hidden
         return emptyList()
     }
 
@@ -787,6 +790,9 @@ class PlaybackService : MediaLibraryService() {
                         streamResolver.preResolve(next.id, next.title, next.artist, next.durationMs)
                     }
 
+                    if (!autoPlay) {
+                        player.playWhenReady = false
+                    }
                     player.setMediaItems(mediaItems, targetIndex, safePos)
                     player.playlistMetadata = MediaMetadata.Builder().setTitle("Playback Queue").build()
                     player.prepare()
@@ -795,6 +801,8 @@ class PlaybackService : MediaLibraryService() {
                         requestAudioFocus()
                         player.playWhenReady = true
                         player.play()
+                    } else {
+                        player.playWhenReady = false
                     }
                     Log.d("PlaybackService", "ensureQueueRestored: Loaded ${tracks.size} tracks into ExoPlayer, index=$targetIndex, autoPlay=$autoPlay, pos=$safePos")
                     mediaLibrarySession?.let { refreshAndroidAutoBrowseTree(it) }
@@ -1005,22 +1013,31 @@ class PlaybackService : MediaLibraryService() {
                     val mediaItems = queue.map { it.toMediaItem(path = "track", isGrid = false) }
 
                     if (player.mediaItemCount == 0) {
+                        player.playWhenReady = false
                         player.setMediaItems(mediaItems, targetIndex, currentPos)
                         player.playlistMetadata = MediaMetadata.Builder().setTitle("Playback Queue").build()
                         player.prepare()
-                        Log.d("PlaybackService", "Synchronized initial queue of ${mediaItems.size} items to ExoPlayer")
+                        Log.d("PlaybackService", "Synchronized initial queue of ${mediaItems.size} items to ExoPlayer (paused)")
                     } else if (currentIds.size < queueIds.size && currentIds == queueIds.take(currentIds.size)) {
                         val itemsToAdd = queue.drop(currentIds.size).map { it.toMediaItem(path = "track", isGrid = false) }
                         player.addMediaItems(itemsToAdd)
                         Log.d("PlaybackService", "Appended ${itemsToAdd.size} new tracks from QueueManager to ExoPlayer")
                     } else {
-                        val wasPlaying = player.isPlaying
+                        val shouldPlay = player.playWhenReady || player.isPlaying
                         player.setMediaItems(mediaItems, targetIndex, currentPos)
                         player.playlistMetadata = MediaMetadata.Builder().setTitle("Playback Queue").build()
-                        if (wasPlaying) {
+                        player.prepare()
+                        if (shouldPlay) {
                             player.play()
+                        } else {
+                            player.playWhenReady = false
                         }
-                        Log.d("PlaybackService", "Replaced ExoPlayer queue with ${mediaItems.size} items from QueueManager")
+                        Log.d("PlaybackService", "Replaced ExoPlayer queue with ${mediaItems.size} items from QueueManager (index=$targetIndex, shouldPlay=$shouldPlay)")
+                    }
+                    queue.drop(targetIndex).take(3).forEach { t ->
+                        if (t.title.isNotBlank() && t.artist.isNotBlank()) {
+                            streamResolver.preResolve(t.id, t.title, t.artist, t.durationMs)
+                        }
                     }
                     mediaLibrarySession?.let { refreshAndroidAutoBrowseTree(it) }
                 }

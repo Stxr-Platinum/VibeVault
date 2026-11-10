@@ -145,17 +145,21 @@ class PlayerViewModel @Inject constructor(
                         pendingTrack = null
                     }
                 } else {
-                    // Ensure player is strictly paused when initializing state on app launch
+                    // Ensure player is strictly paused when initializing state on app launch or post-login
                     player?.playWhenReady = false
+                    val restoredQueue = queueManager.queueState.value
                     val restoredTrack = queueManager.currentTrack.value ?: sessionManager.lastPlayedTrack
-                    if (restoredTrack != null && restoredTrack.id.isNotBlank() && player?.currentMediaItem == null) {
+                    if (player?.mediaItemCount == 0 && (restoredQueue.isNotEmpty() || (restoredTrack != null && restoredTrack.id.isNotBlank()))) {
                         try {
-                            val mediaItem = buildMediaItem(restoredTrack)
-                            player?.setMediaItem(mediaItem)
-                            val pos = sessionManager.lastPlayedPositionMs
-                            if (pos > 0) {
-                                player?.seekTo(pos)
+                            val items = if (restoredQueue.isNotEmpty()) {
+                                restoredQueue.map { buildMediaItem(it) }
+                            } else {
+                                listOf(buildMediaItem(restoredTrack!!))
                             }
+                            val startIdx = queueManager.currentIndex.value.coerceIn(0, items.lastIndex)
+                            val pos = sessionManager.lastPlayedPositionMs.coerceAtLeast(0L)
+                            player?.setMediaItems(items, startIdx, pos)
+                            player?.playWhenReady = false
                             player?.prepare()
                         } catch (e: Exception) {
                             Log.e("PlayerViewModel", "Failed to pre-set mediaItem on launch restoration", e)
@@ -197,23 +201,23 @@ class PlayerViewModel @Inject constructor(
                             val pos = sessionManager.lastPlayedPositionMs
                             if (pos > 0) _currentPosition.value = pos
                             if (savedTrack.durationMs > 0) _duration.value = savedTrack.durationMs
-                        } else {
-                            sessionManager.lastPlayedTrackId?.let { trackId ->
-                                try {
-                                    val localTrackResult = musicRepository.searchTracks(trackId).firstOrNull()?.firstOrNull()
-                                    if (localTrackResult != null) {
-                                        queueManager.syncExternalTrack(localTrackResult)
-                                    }
-                                } catch (e: Exception) {
-                                    // Ignore
-                                }
-                            }
                         }
                     }
                 }
             } finally {
                 kotlinx.coroutines.yield()
                 isRestoringSavedState = false
+            }
+        }
+
+        // 0a. Clear playback & pause strictly on logout so subsequent logins (e.g. Google login) stay idle
+        viewModelScope.launch {
+            var wasLoggedIn = sessionManager.isLoggedIn
+            sessionManager.isLoggedInFlow.collect { loggedIn ->
+                if (wasLoggedIn && !loggedIn) {
+                    stopAllPlayback(clearPersisted = true)
+                }
+                wasLoggedIn = loggedIn
             }
         }
 
@@ -241,12 +245,14 @@ class PlayerViewModel @Inject constructor(
             queueManager.currentTrack.collect { track ->
                 val currentExoMediaId = player?.currentMediaItem?.mediaId?.split("/")?.lastOrNull() ?: player?.currentMediaItem?.mediaId
                 val isGuestInRoom = listenTogetherManager.isInRoom && !listenTogetherManager.isHost
-                val shouldStartPlayback = !isRestoringSavedState && 
+                val isActivelyPlaying = player?.playWhenReady == true || player?.isPlaying == true
+                val shouldStartPlayback = !isRestoringSavedState &&
                     !isGuestInRoom &&
-                    track != null && 
-                    track.id != currentlyPlayingTrackId && 
+                    isActivelyPlaying &&
+                    track != null &&
+                    track.id != currentlyPlayingTrackId &&
                     track.id != currentExoMediaId
-                
+
                 if (shouldStartPlayback) {
                     playInternal(track!!)
                     if (track.title.isNotBlank() && !track.title.startsWith("Track ") && track.title != "Unknown" && track.title != "Loading...") {
@@ -254,7 +260,7 @@ class PlayerViewModel @Inject constructor(
                     }
                 } else if (track == null) {
                     stopAllPlayback()
-                } else if (isRestoringSavedState && track != null) {
+                } else if (isRestoringSavedState) {
                     currentlyPlayingTrackId = track.id
                 }
 
@@ -356,11 +362,17 @@ class PlayerViewModel @Inject constructor(
                         if (dur > 0) {
                             _duration.value = dur
                         }
+                    }
+                    // Strictly sample active audio playback (never count buffering/loading while playWhenReady is true)
+                    if (p.isPlaying) {
+                        val dur = p.duration.coerceAtLeast(0)
                         currentTrack.value?.let { track ->
                             if (track.id.isNotBlank() && track.title != "Playing" && track.title != "Unknown") {
                                 com.vibevault.app.data.stats.ListeningRecorder.onSample(track, dur)
                             }
                         }
+                    } else if (p.playbackState != Player.STATE_IDLE && p.playbackState != Player.STATE_ENDED) {
+                        com.vibevault.app.data.stats.ListeningRecorder.onPaused()
                     }
                 }
                 _sleepTimerActive.value = PlaybackService.instance?.sleepTimer?.isActive == true
@@ -382,7 +394,12 @@ class PlayerViewModel @Inject constructor(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
                 if (!isPlaying) {
-                    com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                    val state = player?.playbackState
+                    if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
+                        com.vibevault.app.data.stats.ListeningRecorder.onStopped()
+                    } else {
+                        com.vibevault.app.data.stats.ListeningRecorder.onPaused()
+                    }
                 }
             }
 
@@ -394,9 +411,8 @@ class PlayerViewModel @Inject constructor(
                         _duration.value = dur
                     }
                 } else if (playbackState == Player.STATE_ENDED) {
-                    // Entire ExoPlayer playlist finished. 
+                    // PlaybackService handles STATE_ENDED -> queueManager.next() & playback transition
                     com.vibevault.app.data.stats.ListeningRecorder.onStopped()
-                    queueManager.next()
                 } else if (playbackState == Player.STATE_IDLE) {
                     _isPlaying.value = false
                     com.vibevault.app.data.stats.ListeningRecorder.onStopped()
@@ -432,7 +448,12 @@ class PlayerViewModel @Inject constructor(
                         _duration.value = durationMs
                     }
                     
-                    val existingTrack = queueManager.queueState.value.find { it.id == newId || (rawNewId != null && it.id == rawNewId) }
+                    val queue = queueManager.queueState.value
+                    val controllerIndex = player?.currentMediaItemIndex ?: -1
+                    val existingTrack = when {
+                        player?.mediaItemCount == queue.size && controllerIndex in queue.indices -> queue[controllerIndex]
+                        else -> queue.find { it.id == newId || (rawNewId != null && it.id == rawNewId) }
+                    }
                     val current = currentTrack.value
                     val externalTrack = existingTrack ?: if (current != null && (current.id == newId || (rawNewId != null && current.id == rawNewId)) && current.title != "Unknown" && current.title.isNotBlank()) {
                         current
@@ -458,7 +479,10 @@ class PlayerViewModel @Inject constructor(
                     
                     sessionManager.lastPlayedTrack = externalTrack
                     
-                    val idxInQueue = queueManager.queueState.value.indexOfFirst { it.id == newId || (rawNewId != null && it.id == rawNewId) }
+                    val idxInQueue = when {
+                        player?.mediaItemCount == queue.size && controllerIndex in queue.indices -> controllerIndex
+                        else -> queue.indexOfFirst { it.id == newId || (rawNewId != null && it.id == rawNewId) }
+                    }
                     if (idxInQueue >= 0) {
                         queueManager.onMediaItemTransition(idxInQueue)
                     } else {
@@ -658,9 +682,10 @@ class PlayerViewModel @Inject constructor(
 
     // ── Internal Playback Execution ────────────────────────
 
-    private fun stopAllPlayback() {
+    private fun stopAllPlayback(clearPersisted: Boolean = false) {
         player?.stop()
-        queueManager.clearQueue()
+        player?.playWhenReady = false
+        queueManager.clearQueue(clearPersisted = clearPersisted)
         player?.clearMediaItems()
         _isPlaying.value = false
         currentlyPlayingTrackId = null
@@ -678,25 +703,35 @@ class PlayerViewModel @Inject constructor(
         Log.d("ImageSourceDebug", "[PlayerViewModel] Playing Track: '${track.title}' | Source: '${track.source}' | ImageUrl: '${track.albumImageUrl}'")
         Log.d("PlaybackDebug", "playInternal: ${track.title} (${track.id}) via MediaController")
 
-        // Immediately trigger background stream pre-resolution for instant playback start
-        streamResolver.preResolve(track.id, track.title, track.artist, track.durationMs)
+        // Pre-resolve active track + next 2 sequential tracks for gapless transitions
+        val q = queueManager.queueState.value
+        val activeIdx = queueManager.currentIndex.value
+        if (q.isNotEmpty() && activeIdx in q.indices) {
+            q.drop(activeIdx).take(3).forEach { upcoming ->
+                streamResolver.preResolve(upcoming.id, upcoming.title, upcoming.artist, upcoming.durationMs)
+            }
+        } else {
+            streamResolver.preResolve(track.id, track.title, track.artist, track.durationMs)
+        }
         
         // Stop currently playing audio immediately to prevent overlap while resolving new stream
         player?.pause()
-        
-        val mediaItem = buildMediaItem(track)
 
         player?.let { controller ->
             if (controller.playbackState == Player.STATE_IDLE || controller.playerError != null) {
                 controller.stop()
                 controller.clearMediaItems()
             }
-            controller.setMediaItem(mediaItem)
+            if (q.isNotEmpty() && activeIdx in q.indices) {
+                val mediaItems = q.map { buildMediaItem(it) }
+                controller.setMediaItems(mediaItems, activeIdx, 0L)
+            } else {
+                controller.setMediaItem(buildMediaItem(track))
+            }
             controller.prepare()
+            controller.playWhenReady = true
             controller.play()
         }
-        
-        ensureUpcomingTracks()
     }
 
     private fun buildMediaItem(track: Track): MediaItem {
@@ -799,7 +834,7 @@ class PlayerViewModel @Inject constructor(
 
             if ((isAlbumOrPlaylist || context.size > 1) && context.size > 1) {
                 val index = context.indexOfFirst { it.id == trackId }.coerceAtLeast(0)
-                queueManager.setQueue(context, index)
+                queueManager.setQueue(context, index, shuffle = false)
             } else {
                 queueManager.playRadio(selectedTrack)
             }
@@ -853,8 +888,31 @@ class PlayerViewModel @Inject constructor(
     fun playTrackFromQueue(track: Track) {
         val index = queueManager.queueState.value.indexOfFirst { it.id == track.id }
         if (index >= 0) {
-            queueManager.playTrackAtIndex(index)
-            playInternal(track)
+            playTrackAtIndex(index)
+        }
+    }
+
+    fun playTrackAtIndex(index: Int) {
+        val q = queueManager.queueState.value
+        val target = q.getOrNull(index) ?: return
+        queueManager.playTrackAtIndex(index)
+        currentlyPlayingTrackId = target.id
+        sessionManager.lastPlayedTrack = target
+        q.drop(index).take(3).forEach { upcoming ->
+            streamResolver.preResolve(upcoming.id, upcoming.title, upcoming.artist, upcoming.durationMs)
+        }
+        val controller = player
+        if (controller == null) {
+            pendingTrack = target
+            return
+        }
+        if (controller.mediaItemCount == q.size) {
+            controller.seekTo(index, 0L)
+            controller.prepare()
+            controller.playWhenReady = true
+            controller.play()
+        } else {
+            playInternal(target)
         }
     }
 

@@ -133,21 +133,21 @@ fun ViviHomeScreen(
     val categories = listOf("Podcasts", "Workout", "Commute", "Feel good", "Romance", "Focus", "Party")
 
     val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
-    val authState by authViewModel.authState.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var showSpotifyConnectDialog by remember { mutableStateOf(false) }
     var showSpotifyDisconnectConfirm by remember { mutableStateOf(false) }
 
-    androidx.compose.runtime.LaunchedEffect(authState) {
-        when (val state = authState) {
-            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.SpotifySuccess -> {
-                android.widget.Toast.makeText(context, "Spotify Connected Successfully!", android.widget.Toast.LENGTH_SHORT).show()
-                viewModel.refresh()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        authViewModel.authEvents.collect { event ->
+            when (event) {
+                is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthEvent.SpotifyConnected -> {
+                    android.widget.Toast.makeText(context, "Spotify Connected Successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                    viewModel.refresh()
+                }
+                is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthEvent.Error -> {
+                    android.widget.Toast.makeText(context, event.message, android.widget.Toast.LENGTH_LONG).show()
+                }
             }
-            is com.vibevault.app.ui.viewmodel.AuthViewModel.AuthState.Error -> {
-                android.widget.Toast.makeText(context, state.message, android.widget.Toast.LENGTH_LONG).show()
-            }
-            else -> {}
         }
     }
 

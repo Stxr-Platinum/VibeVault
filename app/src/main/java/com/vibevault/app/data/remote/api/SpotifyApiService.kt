@@ -24,7 +24,18 @@ class SpotifyApiService @Inject constructor(
         }
     }
 
-    suspend fun getUserProfile(): Result<Any> = Result.failure(Exception("Stub"))
+    suspend fun getUserProfile(): Result<SpotifyUserDto> = withContext(Dispatchers.IO) {
+        runCatching {
+            val user = spotifyCallWithTokenRetry {
+                Spotify.me().getOrThrow()
+            }
+            SpotifyUserDto(
+                id = user.id,
+                displayName = user.displayName,
+                images = user.images.map { SpotifyImageDto(url = it.url, height = it.height, width = it.width) }
+            )
+        }
+    }
 
     suspend fun searchTracks(query: String): Result<SpotifySearchResponse> = Result.failure(Exception("Stub"))
     suspend fun getRecommendations(seedId: String?): Result<List<SpotifyTrackDto>> = Result.success(emptyList())

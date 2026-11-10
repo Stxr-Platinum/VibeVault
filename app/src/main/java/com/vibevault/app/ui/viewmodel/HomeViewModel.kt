@@ -110,19 +110,23 @@ class HomeViewModel @Inject constructor(
     init {
         Log.d("SpotifyDebug", "HomeVM: Initialized")
         viewModelScope.launch {
-            Log.d("SpotifyDebug", "HomeVM: Triggering auto-refresh.")
-            refresh()
+            Log.d("SpotifyDebug", "HomeVM: Triggering cache-first load.")
+            refresh(force = false)
         }
     }
 
     // 3. Methods
 
     fun disconnectSpotify() {
-        viewModelScope.launch {
-            // Revoke access token and invalidate session server-side before clearing local state
-            val currentToken = sessionManager.spotifyAccessToken
-            val spDc = sessionManager.spotifySpDc
+        val currentToken = sessionManager.spotifyAccessToken
+        val spDc = sessionManager.spotifySpDc
 
+        // Clear local credentials & WebView cookies immediately while keeping Supabase multi-account playlists intact
+        sessionManager.clearSpotifySession()
+        _searchResults.value = null
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+            runCatching { musicRepository.onSpotifyDisconnected() }
             if (!currentToken.isNullOrBlank()) {
                 try {
                     com.music.spotify.SpotifyAuth.revokeAccessToken(currentToken)
@@ -139,13 +143,10 @@ class HomeViewModel @Inject constructor(
                     Log.e("SpotifyDebug", "HomeVM: Failed to logout Spotify session", e)
                 }
             }
-            sessionManager.clearSpotifySession()
-            musicRepository.clearSpotifyCache()
-            _searchResults.value = null
         }
     }
 
-    fun refresh() {
+    fun refresh(force: Boolean = true) {
         Log.d("SpotifyDebug", "HomeVM: refresh() triggered")
         
         // 1. Load cached tracks to show UI immediately
@@ -236,23 +237,11 @@ class HomeViewModel @Inject constructor(
         }
         
         viewModelScope.launch {
-            Log.d("SpotifyDebug", "HomeVM: Starting sync sequence...")
-            if (sessionManager.isSpotifyConnected.value) {
-                try {
-                    musicRepository.backgroundSyncSpotifyPlaylists()
-                } catch (e: Exception) {
-                    Log.e("SpotifyDebug", "HomeVM: Spotify playlist sync failed", e)
-                }
-            }
-            
-            // 1. Sync recent history so personalized trending has data
-            musicRepository.syncRecentlyPlayed()
-            
-            // 2. Fetch Trending
+            Log.d("SpotifyDebug", "HomeVM: Starting stale-while-revalidate sync (force=$force)...")
+            // 1. Single-flight cold-boot / manual sync from Supabase & active Spotify account
+            musicRepository.performColdBootSync(force = force)
+            // 2. Refresh personalized trending from updated history
             fetchTrending()
-            
-            // 3. Sync from Supabase (cloud backup)
-            musicRepository.syncFromRemote()
         }
     }
 

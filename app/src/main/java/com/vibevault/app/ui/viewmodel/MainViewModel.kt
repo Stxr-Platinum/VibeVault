@@ -19,7 +19,8 @@ class MainViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val realtimeListener: RealtimeListener,
     private val syncScheduler: SyncScheduler,
-    private val sessionManager: com.vibevault.app.core.session.SessionManager
+    private val sessionManager: com.vibevault.app.core.session.SessionManager,
+    private val musicRepository: com.vibevault.app.domain.repository.MusicRepository
 ) : ViewModel() {
 
     private val _startDestination = MutableStateFlow<String?>(null)
@@ -27,6 +28,7 @@ class MainViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            var wasLoggedIn = sessionManager.isLoggedIn
             combine(
                 sessionManager.isLoggedInFlow,
                 sessionManager.isSpotifyConnected
@@ -39,12 +41,24 @@ class MainViewModel @Inject constructor(
             }.collect { route ->
                 Log.d("VibeVault", "Setting startDestination to $route")
                 _startDestination.value = route
-                
+
                 if (route == Screen.Home.route) {
+                    wasLoggedIn = true
                     realtimeListener.startListening()
-                    syncScheduler.schedulePeriodicSync()
+                    // Single cold-boot stale-while-revalidate sync (no recurring WorkManager polling)
+                    syncScheduler.cancelAll()
+                    launch {
+                        musicRepository.performColdBootSync(force = false)
+                    }
                     launch {
                         authRepository.refreshProfile()
+                    }
+                } else if (route == Screen.Login.route && wasLoggedIn) {
+                    wasLoggedIn = false
+                    realtimeListener.stopListening()
+                    syncScheduler.cancelAll()
+                    launch {
+                        musicRepository.clearLocalData()
                     }
                 }
             }

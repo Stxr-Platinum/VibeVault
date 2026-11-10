@@ -45,7 +45,8 @@ fun AppNavHost(
     navController: NavHostController,
     innerPadding: PaddingValues,
     playerViewModel: PlayerViewModel,
-    startDestination: String
+    startDestination: String,
+    onReplayStoryOpenChange: (Boolean) -> Unit = {}
 ) {
     NavHost(
         navController = navController,
@@ -306,6 +307,13 @@ fun AppNavHost(
             var sharePage by remember { mutableStateOf<ReplayStoryPage?>(null) }
             var showShareSheet by remember { mutableStateOf(false) }
 
+            androidx.compose.runtime.LaunchedEffect(storyPage) {
+                onReplayStoryOpenChange(storyPage != null)
+            }
+            androidx.compose.runtime.DisposableEffect(Unit) {
+                onDispose { onReplayStoryOpenChange(false) }
+            }
+
             ReplayScreen(
                 state = state,
                 holder = "VIBEVAULT LISTENER",
@@ -327,7 +335,9 @@ fun AppNavHost(
                     sharePage = null
                     showShareSheet = true
                 },
-                contentPadding = PaddingValues(bottom = 90.dp),
+                contentPadding = PaddingValues(
+                    bottom = innerPadding.calculateBottomPadding().coerceAtLeast(90.dp)
+                ),
                 onBack = { navController.popBackStack() },
             )
 
@@ -366,7 +376,7 @@ fun AppNavHost(
             LikedSongsScreen(
                 onBack = { navController.popBackStack() },
                 onTrackClick = { trackId, context ->
-                    playerViewModel.playTrack(trackId, context)
+                    playerViewModel.playTrack(trackId, context, isAlbumOrPlaylist = true)
                     navController.navigate(Screen.Player.createRoute(trackId))
                 }
             )

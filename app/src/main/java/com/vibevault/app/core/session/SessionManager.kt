@@ -10,6 +10,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.github.jan.supabase.functions.Functions
 import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.vibevault.app.data.remote.dto.SpotifyTokenResponse
@@ -56,6 +60,7 @@ class SessionManager @Inject constructor(
         private const val KEY_SPOTIFY_SP_KEY = "spotify_sp_key"
         private const val KEY_SPOTIFY_ACCESS_TOKEN = "spotify_access_token"
         private const val KEY_SPOTIFY_EXPIRY = "spotify_expiry"
+        private const val KEY_SPOTIFY_ACCOUNT_ID = "spotify_account_id"
 
         // Playback Keys
         private const val KEY_LAST_PLAYED_TRACK_ID = "last_played_track_id"
@@ -75,6 +80,9 @@ class SessionManager @Inject constructor(
     private val _isSpotifyConnected = MutableStateFlow(false)
     val isSpotifyConnected = _isSpotifyConnected.asStateFlow()
 
+    private val _activeSpotifyAccountIdFlow = MutableStateFlow<String?>(null)
+    val activeSpotifyAccountIdFlow = _activeSpotifyAccountIdFlow.asStateFlow()
+
     private val _spotifyAccessTokenFlow = MutableStateFlow<String?>(null)
     val spotifyAccessTokenFlow = _spotifyAccessTokenFlow.asStateFlow()
 
@@ -90,6 +98,7 @@ class SessionManager @Inject constructor(
         val spDc = prefs.getString(KEY_SPOTIFY_SP_DC, null)
         _spotifyAccessTokenFlow.value = token
         _isSpotifyConnected.value = !spDc.isNullOrBlank()
+        _activeSpotifyAccountIdFlow.value = prefs.getString(KEY_SPOTIFY_ACCOUNT_ID, null)
         if (!token.isNullOrBlank()) {
             com.music.spotify.Spotify.accessToken = token
         }
@@ -155,19 +164,43 @@ class SessionManager @Inject constructor(
 
     // ── Spotify Session ────────────────────────────────────────
 
-    fun saveSpotifyCookieSession(spDc: String, spKey: String = "", accessToken: String, expiresAtMs: Long) {
+    fun saveSpotifyCookieSession(
+        spDc: String,
+        spKey: String = "",
+        accessToken: String,
+        expiresAtMs: Long,
+        accountId: String? = null
+    ) {
         Log.d("SpotifyDebug", "SessionManager: Saving Spotify Cookie Session. AccessToken prefix: ${accessToken.take(10)}...")
         prefs.edit().apply {
             putString(KEY_SPOTIFY_SP_DC, spDc)
             putString(KEY_SPOTIFY_SP_KEY, spKey)
             putString(KEY_SPOTIFY_ACCESS_TOKEN, accessToken)
             putLong(KEY_SPOTIFY_EXPIRY, expiresAtMs)
+            if (!accountId.isNullOrBlank()) {
+                putString(KEY_SPOTIFY_ACCOUNT_ID, accountId)
+            }
             apply()
         }
         com.music.spotify.Spotify.accessToken = accessToken
         _spotifyAccessTokenFlow.value = accessToken
+        if (!accountId.isNullOrBlank()) {
+            _activeSpotifyAccountIdFlow.value = accountId
+        }
         _isSpotifyConnected.value = true
     }
+
+    fun setActiveSpotifyAccountId(accountId: String?) {
+        val normalized = accountId?.takeIf { it.isNotBlank() }
+        prefs.edit().apply {
+            if (normalized == null) remove(KEY_SPOTIFY_ACCOUNT_ID)
+            else putString(KEY_SPOTIFY_ACCOUNT_ID, normalized)
+            apply()
+        }
+        _activeSpotifyAccountIdFlow.value = normalized
+    }
+
+    val activeSpotifyAccountId: String? get() = prefs.getString(KEY_SPOTIFY_ACCOUNT_ID, null)
 
     val spotifySpDc: String? get() = prefs.getString(KEY_SPOTIFY_SP_DC, null)
     val spotifySpKey: String? get() = prefs.getString(KEY_SPOTIFY_SP_KEY, null)
@@ -307,17 +340,34 @@ class SessionManager @Inject constructor(
         }
     }
 
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     fun clearSession() {
+        val spToken = spotifyAccessToken
+        val spDc = spotifySpDc
+
         prefs.edit().clear().apply()
         com.music.spotify.Spotify.accessToken = null
         _userDisplayName.value = null
         _userAvatarUrl.value = null
         _isLoggedInFlow.value = false
         _spotifyAccessTokenFlow.value = null
+        _activeSpotifyAccountIdFlow.value = null
         _isSpotifyConnected.value = false
+        _recentContextsFlow.value = emptyList()
 
-        // Also clear WebView cookies for Spotify domains
+        // Also clear WebView cookies for Spotify domains and revoke tokens server-side
         clearSpotifyWebViewCookies()
+        if (!spToken.isNullOrBlank() || !spDc.isNullOrBlank()) {
+            ioScope.launch {
+                if (!spToken.isNullOrBlank()) {
+                    runCatching { com.music.spotify.SpotifyAuth.revokeAccessToken(spToken) }
+                }
+                if (!spDc.isNullOrBlank()) {
+                    runCatching { com.music.spotify.SpotifyAuth.logoutSession(spDc) }
+                }
+            }
+        }
     }
 
     /** Clears only Spotify session while keeping the main user logged in. */
@@ -327,10 +377,12 @@ class SessionManager @Inject constructor(
             remove(KEY_SPOTIFY_SP_KEY)
             remove(KEY_SPOTIFY_ACCESS_TOKEN)
             remove(KEY_SPOTIFY_EXPIRY)
+            remove(KEY_SPOTIFY_ACCOUNT_ID)
             apply()
         }
         com.music.spotify.Spotify.accessToken = null
         _spotifyAccessTokenFlow.value = null
+        _activeSpotifyAccountIdFlow.value = null
         _isSpotifyConnected.value = false
 
         // Clear WebView cookies for Spotify domains so reconnecting
@@ -346,11 +398,7 @@ class SessionManager @Inject constructor(
     private fun clearSpotifyWebViewCookies() {
         try {
             val cookieManager = android.webkit.CookieManager.getInstance()
-            // 1. Remove all cookies and session cookies completely
-            cookieManager.removeAllCookies(null)
-            cookieManager.removeSessionCookies(null)
-
-            // 2. Also explicitly clear across all Spotify domain variations
+            // 1. Explicitly expire cookies across all Spotify domain variations
             val spotifyDomains = listOf(
                 "https://open.spotify.com",
                 "https://accounts.spotify.com",
@@ -369,6 +417,12 @@ class SessionManager @Inject constructor(
                         cookieManager.setCookie(domain, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Domain=.spotify.com")
                         cookieManager.setCookie(domain, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/")
                     }
+                }
+            }
+            // 2. Remove all cookies and session cookies in sequence and flush
+            cookieManager.removeAllCookies {
+                cookieManager.removeSessionCookies {
+                    cookieManager.flush()
                 }
             }
             cookieManager.flush()

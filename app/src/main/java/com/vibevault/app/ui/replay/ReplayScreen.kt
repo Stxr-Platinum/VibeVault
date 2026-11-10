@@ -4,6 +4,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,6 +65,7 @@ import com.vibevault.app.data.stats.ReplayPeriod
 import com.vibevault.app.data.stats.ReplaySummary
 import com.vibevault.app.domain.model.Track
 import com.vibevault.app.ui.icons.BitChordIcons
+import kotlin.math.abs
 
 private val PAGE_GUTTER = 10.dp
 
@@ -119,8 +124,13 @@ fun ReplayScreen(
                     ),
             )
 
+            val verticalSnapFling = rememberResistantSnapFlingBehavior(
+                lazyListState = listState,
+                snapPosition = SnapPosition.Start,
+            )
             LazyColumn(
                 state = listState,
+                flingBehavior = verticalSnapFling,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     top = topBarHeight() + 4.dp,
@@ -294,7 +304,14 @@ fun ReplayCardRow(
     onOpenStory: (ReplayStoryPage) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val rowState = rememberLazyListState()
+    val snapFling = rememberResistantSnapFlingBehavior(
+        lazyListState = rowState,
+        snapPosition = SnapPosition.Start,
+    )
     LazyRow(
+        state = rowState,
+        flingBehavior = snapFling,
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = PAGE_GUTTER + 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -571,3 +588,26 @@ private fun EmptyReplay(period: ReplayPeriod) {
 }
 
 private const val CHART_LENGTH = 5
+
+@Composable
+private fun rememberResistantSnapFlingBehavior(
+    lazyListState: LazyListState,
+    snapPosition: SnapPosition = SnapPosition.Start,
+    flingVelocityThresholdPx: Float = 1_800f,
+): FlingBehavior {
+    val provider = remember(lazyListState, snapPosition, flingVelocityThresholdPx) {
+        val base = SnapLayoutInfoProvider(lazyListState, snapPosition)
+        object : SnapLayoutInfoProvider {
+            override fun calculateSnapOffset(velocity: Float): Float =
+                base.calculateSnapOffset(velocity)
+
+            override fun calculateApproachOffset(velocity: Float, decayOffset: Float): Float =
+                if (abs(velocity) < flingVelocityThresholdPx) {
+                    0f
+                } else {
+                    base.calculateApproachOffset(velocity, decayOffset)
+                }
+        }
+    }
+    return rememberSnapFlingBehavior(snapLayoutInfoProvider = provider)
+}

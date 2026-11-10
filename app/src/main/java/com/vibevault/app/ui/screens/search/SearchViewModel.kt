@@ -3,21 +3,28 @@ package com.vibevault.app.ui.screens.search
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.vibevault.app.data.local.dao.SearchCacheDao
+import com.vibevault.app.data.local.entity.SearchCacheEntity
 import com.vibevault.app.domain.model.SpotifySearchResult
 import com.vibevault.app.domain.repository.MusicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    private val searchCacheDao: SearchCacheDao
 ) : ViewModel() {
 
+    private val gson = Gson()
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
@@ -33,8 +40,20 @@ class SearchViewModel @Inject constructor(
                 flowOf<SpotifySearchResult?>(null)
             } else {
                 flow {
-                    // Check cache first for instant display
-                    val cached = SearchCache.getCachedSearchResult(context, q)
+                    val cacheKey = "query:${q.trim().lowercase()}"
+                    // 1. Check L1/file cache, then Room cache for instant zero-latency display
+                    var cached = SearchCache.getCachedSearchResult(context, q)
+                    if (cached == null) {
+                        cached = withContext(Dispatchers.IO) {
+                            searchCacheDao.getEntry(cacheKey)?.let { entity ->
+                                runCatching { gson.fromJson(entity.payloadJson, SpotifySearchResult::class.java) }.getOrNull()
+                            }
+                        }
+                        if (cached != null) {
+                            SearchCache.saveSearchResult(context, q, cached)
+                        }
+                    }
+
                     if (cached != null) {
                         emit(cached)
                         _isSearching.value = false
@@ -42,18 +61,19 @@ class SearchViewModel @Inject constructor(
                         _isSearching.value = true
                     }
 
+                    // 2. Background fetch & diff-update without flickering
                     val result = musicRepository.searchOnline(q)
-                    val searchResult = result.getOrNull()?.let { tracks ->
+                    val freshResult = result.getOrNull()?.let { tracks ->
                         val artists = tracks.filter { it.artist.isNotBlank() }
                             .distinctBy { it.artist }
-                            .map { 
+                            .map {
                                 com.vibevault.app.domain.model.Artist(
-                                    id = it.artist, 
-                                    name = it.artist, 
+                                    id = it.artist,
+                                    name = it.artist,
                                     imageUrl = it.albumImageUrl
                                 )
                             }
-                        
+
                         SpotifySearchResult(
                             tracks = tracks,
                             albums = tracks.filter { it.album.isNotBlank() }.distinctBy { it.album },
@@ -62,13 +82,20 @@ class SearchViewModel @Inject constructor(
                         )
                     }
                     _isSearching.value = false
-                    if (searchResult != null) {
-                        SearchCache.saveSearchResult(context, q, searchResult)
-                        emit(searchResult)
+                    if (freshResult != null) {
+                        if (freshResult != cached) {
+                            SearchCache.saveSearchResult(context, q, freshResult)
+                            withContext(Dispatchers.IO) {
+                                searchCacheDao.upsertEntry(
+                                    SearchCacheEntity(cacheKey, gson.toJson(freshResult))
+                                )
+                            }
+                            emit(freshResult)
+                        }
                     } else if (cached == null) {
                         emit(null)
                     }
-                }
+                }.distinctUntilChanged()
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

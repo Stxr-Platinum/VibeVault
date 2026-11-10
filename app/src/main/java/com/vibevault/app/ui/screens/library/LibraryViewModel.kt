@@ -42,10 +42,4 @@ class LibraryViewModel @Inject constructor(
             musicRepository.deletePlaylist(playlistId)
         }
     }
-    
-    init {
-        viewModelScope.launch {
-            musicRepository.backgroundSyncSpotifyPlaylists()
-        }
-    }
 }

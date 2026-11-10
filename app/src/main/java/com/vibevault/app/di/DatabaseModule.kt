@@ -33,6 +33,7 @@ object DatabaseModule {
         AppDatabase::class.java,
         "vibevault_db"
     )
+        .addMigrations(AppDatabase.MIGRATION_10_11)
         .fallbackToDestructiveMigration()
         .build()
 
@@ -56,4 +57,10 @@ object DatabaseModule {
 
     @Provides
     fun provideLogDao(db: AppDatabase): com.vibevault.app.data.local.dao.LogDao = db.logDao()
+
+    @Provides
+    fun provideCachedPlaylistDao(db: AppDatabase): com.vibevault.app.data.local.dao.CachedPlaylistDao = db.cachedPlaylistDao()
+
+    @Provides
+    fun provideSearchCacheDao(db: AppDatabase): com.vibevault.app.data.local.dao.SearchCacheDao = db.searchCacheDao()
 }

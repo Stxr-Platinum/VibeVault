@@ -56,7 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import com.vibevault.app.constants.PlayerBackgroundStyle
 
 /**
- * MiniPlayer â€” Persistent playback bar docked above the bottom nav.
+ * MiniPlayer — Persistent playback bar docked above the bottom nav.
  * Redesigned to be a floating "pill" with swipe-to-skip gestures.
  */
 @Composable

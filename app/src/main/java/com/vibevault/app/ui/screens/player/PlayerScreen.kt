@@ -1685,6 +1685,9 @@ fun PlayerScreen(
             },
             onRemoveTrack = { index ->
                 viewModel.removeTrackAt(index)
+            },
+            onTrackIndexClick = { index ->
+                viewModel.playTrackAtIndex(index)
             }
         )
     }

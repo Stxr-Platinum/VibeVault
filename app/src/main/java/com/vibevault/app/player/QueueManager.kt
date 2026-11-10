@@ -97,7 +97,10 @@ class QueueManager @Inject constructor(
         }
     }
 
-    fun setQueue(queue: Queue) {
+    fun setQueue(queue: Queue, forceDisableShuffle: Boolean = false) {
+        if (forceDisableShuffle) {
+            _shuffleModeEnabled.value = false
+        }
         activeQueue = queue
         observeRadioChips(queue)
         queue.preloadItem?.let { item ->
@@ -128,8 +131,14 @@ class QueueManager @Inject constructor(
         }
     }
 
-    fun setQueue(tracks: List<Track>, startIndex: Int) {
-        setQueue(ListQueue(items = tracks, startIndex = startIndex))
+    fun setQueue(tracks: List<Track>, startIndex: Int, shuffle: Boolean? = null) {
+        if (shuffle != null) {
+            _shuffleModeEnabled.value = shuffle
+        }
+        val listQueue = ListQueue(items = tracks, startIndex = startIndex)
+        activeQueue = listQueue
+        observeRadioChips(listQueue)
+        setQueueInternal(tracks, startIndex)
     }
 
     private fun setQueueInternal(tracks: List<Track>, startIndex: Int) {
@@ -531,12 +540,20 @@ class QueueManager @Inject constructor(
         }
     }
 
-    fun clearQueue() {
+    fun clearQueue(clearPersisted: Boolean = false) {
         originalQueue.clear()
         currentQueue.clear()
         _currentIndex.value = -1
         _currentTrack.value = null
         _queueState.value = emptyList()
         activeQueue = null
+        lastRefreshedTrackId = null
+        if (clearPersisted) {
+            sessionManager.lastPlayedQueue = emptyList()
+            sessionManager.lastPlayedQueueIndex = 0
+            sessionManager.lastPlayedTrack = null
+            sessionManager.lastPlayedTrackId = null
+            sessionManager.lastPlayedPositionMs = 0L
+        }
     }
 }

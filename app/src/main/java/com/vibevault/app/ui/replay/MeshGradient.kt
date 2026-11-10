@@ -149,14 +149,7 @@ fun rememberArtworkColors(imageUrl: String?, canvasFrame: Bitmap? = null): MeshP
 
     LaunchedEffect(imageUrl) {
         if (imageUrl == null) return@LaunchedEffect
-        val request = ImageRequest.Builder(context)
-            .data(imageUrl)
-            .size(128)
-            .allowHardware(false)
-            .build()
-        val result = context.imageLoader.execute(request)
-        val bitmap = (result as? SuccessResult)?.drawable?.toBitmap() ?: return@LaunchedEffect
-        palette = MeshPalette(paletteOf(bitmap))
+        extractPaletteFromUrl(context, imageUrl)?.let { palette = it }
     }
 
     LaunchedEffect(canvasFrame) {
@@ -165,6 +158,42 @@ fun rememberArtworkColors(imageUrl: String?, canvasFrame: Bitmap? = null): MeshP
         palette = MeshPalette(colors)
     }
     return palette
+}
+
+@Composable
+fun rememberMultiArtworkPalettes(imageUrls: List<String>): List<MeshPalette> {
+    val context = LocalContext.current
+    var palettes by remember(imageUrls) { mutableStateOf<List<MeshPalette>>(emptyList()) }
+
+    LaunchedEffect(imageUrls) {
+        if (imageUrls.isEmpty()) {
+            palettes = emptyList()
+            return@LaunchedEffect
+        }
+        val resolved = mutableListOf<MeshPalette>()
+        for (url in imageUrls) {
+            extractPaletteFromUrl(context, url)?.let {
+                resolved += it
+                palettes = resolved.toList()
+            }
+        }
+    }
+    return palettes
+}
+
+private suspend fun extractPaletteFromUrl(
+    context: android.content.Context,
+    imageUrl: String,
+): MeshPalette? {
+    val request = ImageRequest.Builder(context)
+        .data(imageUrl)
+        .size(128)
+        .allowHardware(false)
+        .build()
+    val result = context.imageLoader.execute(request)
+    val bitmap = (result as? SuccessResult)?.drawable?.toBitmap() ?: return null
+    val colors = withContext(Dispatchers.Default) { paletteOf(bitmap) }
+    return MeshPalette(colors)
 }
 
 private const val DRIFT_RADIANS = (PI * 0.45f).toFloat()

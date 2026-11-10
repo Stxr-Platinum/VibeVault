@@ -50,38 +50,26 @@ class PlaylistViewModel @Inject constructor(
                     trackCount = 0,
                     coverUrl = null
                 )
-                
-                val query = if (artistName.isNotEmpty()) "$albumName $artistName" else albumName
-                
-                musicRepository.searchOnline(query).onSuccess { results ->
-                    var filtered = results.filter { 
-                        (it.album.contains(albumName, ignoreCase = true) || albumName.contains(it.album, ignoreCase = true)) && 
-                        (artistName.isEmpty() || it.artist.contains(artistName, ignoreCase = true) || artistName.contains(it.artist, ignoreCase = true))
-                    }.distinctBy { it.title.trim().lowercase() }
-                    
-                    if (filtered.isEmpty() && artistName.isNotEmpty()) {
-                        // Fallback: search just album name if the combined query returns nothing
-                        musicRepository.searchOnline(albumName).onSuccess { fallbackResults ->
-                            filtered = fallbackResults.filter { 
-                                it.album.contains(albumName, ignoreCase = true) || albumName.contains(it.album, ignoreCase = true) 
-                            }.distinctBy { it.title.trim().lowercase() }
-                            _tracks.value = filtered
-                            if (filtered.isNotEmpty()) {
-                                _playlist.value = _playlist.value?.copy(
-                                    coverUrl = filtered.first().albumImageUrl,
-                                    trackCount = filtered.size
-                                )
-                            }
-                        }
-                    } else {
-                        _tracks.value = filtered
-                        if (filtered.isNotEmpty()) {
-                            _playlist.value = _playlist.value?.copy(
-                                coverUrl = filtered.first().albumImageUrl,
-                                trackCount = filtered.size
-                            )
+
+                // 1. Observe Room-cached album metadata & tracks immediately (zero latency)
+                launch {
+                    musicRepository.observeCachedPlaylistMeta(playlistId).collect { cachedMeta ->
+                        if (cachedMeta != null && _playlist.value != cachedMeta) {
+                            _playlist.value = cachedMeta
                         }
                     }
+                }
+                launch {
+                    musicRepository.observeCachedPlaylistTracks(playlistId).collect { cachedTracks ->
+                        if (cachedTracks.isNotEmpty() && _tracks.value != cachedTracks) {
+                            _tracks.value = cachedTracks
+                        }
+                    }
+                }
+
+                // 2. Fetch fresh remote updates asynchronously without flickering
+                launch {
+                    musicRepository.syncRemotePlaylistInBackground(playlistId)
                 }
                 return@launch
             }
@@ -89,11 +77,19 @@ class PlaylistViewModel @Inject constructor(
             val localPlaylist = musicRepository.getPlaylist(playlistId)
             if (localPlaylist != null) {
                 _playlist.value = localPlaylist
-                musicRepository.getPlaylistTracks(playlistId).collect {
-                    _tracks.value = it
+                // Trigger background remote delta check without blocking cached Room stream
+                launch {
+                    musicRepository.syncRemotePlaylistInBackground(playlistId)
                 }
+                musicRepository.getPlaylistTracks(playlistId)
+                    .distinctUntilChanged()
+                    .collect { localTracks ->
+                        if (_tracks.value != localTracks) {
+                            _tracks.value = localTracks
+                        }
+                    }
             } else {
-                // Try to find it in Spotify Playlists
+                // Seed header immediately from cached Spotify playlist list if available
                 val spotifyPlaylists = musicRepository.getUserSpotifyPlaylists().first()
                 val sp = spotifyPlaylists.find { it.id == playlistId }
                 if (sp != null) {
@@ -106,59 +102,30 @@ class PlaylistViewModel @Inject constructor(
                         coverUrl = sp.coverUrl?.takeIf { it.isNotBlank() }
                     )
                 }
-                
-                // 1. Immediately display cached tracks for fast UI loading
-                val cachedTracks = musicRepository.getSpotifyPlaylistTracks(playlistId)
-                if (cachedTracks.isNotEmpty()) {
-                    _tracks.value = cachedTracks
-                    cachedTracks.firstOrNull()?.let {
-                        Log.d("ImageSourceDebug", "[PlaylistViewModel] Cached Track '${it.title}' | Cover: '${it.albumImageUrl}'")
+
+                // 1. Observe Room cache continuously so cached items render at 0ms and updates diff cleanly
+                launch {
+                    musicRepository.observeCachedPlaylistMeta(playlistId).collect { cachedMeta ->
+                        if (cachedMeta != null && _playlist.value != cachedMeta) {
+                            _playlist.value = cachedMeta
+                        }
                     }
                 }
-                
-                // 2. Fetch directly from YouTube Music if playlist ID is a YouTube playlist or if Spotify sync fails
-                viewModelScope.launch {
-                    com.music.innertube.YouTube.playlist(playlistId).onSuccess { page ->
-                        _playlist.value = PlaylistEntity(
-                            id = playlistId,
-                            title = page.playlist.title,
-                            ownerName = page.playlist.author?.name ?: "YouTube Music",
-                            createdAt = 0L,
-                            trackCount = page.songs.size,
-                            coverUrl = page.playlist.thumbnail
-                        )
-                        val convertedTracks = page.songs.map { song ->
-                            Track(
-                                id = song.id,
-                                title = song.title,
-                                artist = song.artists.joinToString(", ") { it.name }.ifBlank { page.playlist.author?.name ?: "Unknown" },
-                                album = song.album?.name ?: "",
-                                albumImageUrl = song.thumbnail.ifBlank { page.playlist.thumbnail ?: "" },
-                                durationMs = (song.duration ?: 0) * 1000L
-                            )
-                        }
-                        if (convertedTracks.isNotEmpty()) {
-                            _tracks.value = convertedTracks
-                        }
-                    }.onFailure {
-                        // Fallback to Spotify sync if YouTube playlist fetch failed
-                        val syncResult = musicRepository.forceRefreshSpotifyPlaylist(playlistId)
-                        syncResult.onSuccess { (freshPlaylist, freshTracks) ->
-                            if (freshTracks.isNotEmpty()) {
-                                _tracks.value = freshTracks
-                            }
-                            if (freshPlaylist != null) {
-                                _playlist.value = PlaylistEntity(
-                                    id = freshPlaylist.id,
-                                    title = freshPlaylist.title,
-                                    ownerName = freshPlaylist.ownerName ?: "Spotify",
-                                    createdAt = 0L,
-                                    trackCount = freshPlaylist.trackCount.takeIf { it > 0 } ?: freshTracks.size,
-                                    coverUrl = freshPlaylist.coverUrl?.takeIf { it.isNotBlank() } ?: sp?.coverUrl
-                                )
-                            }
+                launch {
+                    musicRepository.observeCachedPlaylistTracks(playlistId).collect { cachedTracks ->
+                        if (cachedTracks.isNotEmpty() && _tracks.value != cachedTracks) {
+                            _tracks.value = cachedTracks
                         }
                     }
+                }
+
+                // Warm Room from legacy/Spotify cache if needed, then sync real-time updates in background
+                launch {
+                    val cachedTracks = musicRepository.getSpotifyPlaylistTracks(playlistId)
+                    if (cachedTracks.isNotEmpty() && _tracks.value != cachedTracks) {
+                        _tracks.value = cachedTracks
+                    }
+                    musicRepository.syncRemotePlaylistInBackground(playlistId)
                 }
             }
         }

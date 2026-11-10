@@ -204,19 +204,43 @@ private fun drawCollage(
     covers: Map<String, Bitmap?>,
     top: Float,
 ) {
-    val squares = summary.songs.mapNotNull { it.song.albumImageUrl.takeIf { url -> url.isNotBlank() } }.distinct().take(3)
-    val faces = summary.artists.mapNotNull { it.artworkUrl }.distinct()
-        .filterNot { it in squares }.take(3)
-    val squareAt = listOf(Triple(0.22f, 0.30f, 500f), Triple(0.02f, 0.06f, 260f), Triple(0.66f, 0.00f, 215f))
-    val faceAt = listOf(Triple(0.00f, 0.62f, 185f), Triple(0.72f, 0.32f, 225f), Triple(0.46f, 0.76f, 200f))
-    val height = 900f
-    squares.forEachIndexed { index, url ->
-        val (fx, fy, size) = squareAt[index]
-        drawArtwork(canvas, covers[url], "", MARGIN + CONTENT_W * fx, top + height * fy, size, false)
+    val squares = (summary.albums.mapNotNull { it.artworkUrl?.takeIf { url -> url.isNotBlank() } } +
+        summary.songs.mapNotNull { it.song.albumImageUrl.takeIf { url -> url.isNotBlank() } })
+        .distinct()
+        .take(7)
+    val allArtists = summary.artists.mapNotNull { it.artworkUrl?.takeIf { url -> url.isNotBlank() } }.distinct()
+    val faces = allArtists.filterNot { it in squares }.ifEmpty { allArtists }.take(6)
+
+    // Centered coordinates (cx, cy, sizePx) across the poster canvas width & 980px height
+    val squareAt = listOf(
+        Triple(0.49f, 0.48f, 360f),
+        Triple(0.18f, 0.17f, 230f),
+        Triple(0.52f, 0.14f, 185f),
+        Triple(0.83f, 0.18f, 235f),
+        Triple(0.13f, 0.52f, 190f),
+        Triple(0.21f, 0.84f, 235f),
+        Triple(0.81f, 0.81f, 245f),
+    )
+    val faceAt = listOf(
+        Triple(0.33f, 0.31f, 160f),
+        Triple(0.69f, 0.31f, 165f),
+        Triple(0.87f, 0.52f, 185f),
+        Triple(0.35f, 0.70f, 155f),
+        Triple(0.54f, 0.86f, 180f),
+        Triple(0.68f, 0.65f, 160f),
+    )
+    val height = 980f
+    for (index in 1 until squares.size.coerceAtMost(squareAt.size)) {
+        val (cx, cy, size) = squareAt[index]
+        drawArtwork(canvas, covers[squares[index]], "", MARGIN + CONTENT_W * cx - size / 2f, top + height * cy - size / 2f, size, false)
     }
     faces.forEachIndexed { index, url ->
-        val (fx, fy, size) = faceAt[index]
-        drawArtwork(canvas, covers[url], "", MARGIN + CONTENT_W * fx, top + height * fy, size, true)
+        val (cx, cy, size) = faceAt[index]
+        drawArtwork(canvas, covers[url], "", MARGIN + CONTENT_W * cx - size / 2f, top + height * cy - size / 2f, size, true)
+    }
+    squares.firstOrNull()?.let { heroUrl ->
+        val (cx, cy, size) = squareAt[0]
+        drawArtwork(canvas, covers[heroUrl], "", MARGIN + CONTENT_W * cx - size / 2f, top + height * cy - size / 2f, size, false)
     }
 }
 

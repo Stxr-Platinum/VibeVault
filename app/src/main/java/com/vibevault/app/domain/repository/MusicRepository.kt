@@ -111,4 +111,25 @@ interface MusicRepository {
 
     /** Resolve exact track links (albumId, albumName, artistId, isVideo) from YouTube watch queue. */
     suspend fun resolveTrackLinks(trackId: String): Result<Track>
+
+    /** Observe Room-cached tracks for a non-local playlist or album with zero-latency updates. */
+    fun observeCachedPlaylistTracks(playlistId: String): Flow<List<Track>> = kotlinx.coroutines.flow.flowOf(emptyList())
+
+    /** Observe Room-cached metadata for a non-local playlist or album. */
+    fun observeCachedPlaylistMeta(playlistId: String): Flow<com.vibevault.app.data.local.entity.PlaylistEntity?> = kotlinx.coroutines.flow.flowOf(null)
+
+    /** Asynchronously sync playlist or album tracks from remote sources into Room without flickering. */
+    suspend fun syncRemotePlaylistInBackground(playlistId: String) {}
+
+    /** Sync Replay listening stats with Supabase (`user_replay_stats`). */
+    suspend fun syncReplayStats() {}
+
+    /** Single-flight cold-boot stale-while-revalidate synchronization across app data. */
+    suspend fun performColdBootSync(force: Boolean = false) {}
+
+    /** Keep most recently linked Spotify account's playlists stored & visible after disconnect. */
+    suspend fun onSpotifyDisconnected() {}
+
+    /** Overwrite stale Spotify cache when linking a new Spotify account and sync its playlists. */
+    suspend fun onSpotifyAccountLinked(accountId: String?) {}
 }

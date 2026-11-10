@@ -1,4 +1,4 @@
-﻿package com.vibevault.app.ui.components
+package com.vibevault.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,7 +20,7 @@ import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 
 /**
- * UserAvatar â€” Premium circular avatar with fallback to initial.
+ * UserAvatar — Premium circular avatar with fallback to initial.
  * Matches the design seen in the Library header.
  */
 @Composable

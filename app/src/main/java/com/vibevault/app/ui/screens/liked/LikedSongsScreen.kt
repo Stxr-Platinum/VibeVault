@@ -62,7 +62,16 @@ fun LikedSongsScreen(
                 Button(onClick = { liked.firstOrNull()?.let { onTrackClick(it.id, liked) } }, Modifier.weight(1f), shape = RoundedCornerShape(24.dp), colors = ButtonDefaults.buttonColors(androidx.compose.material3.MaterialTheme.colorScheme.primary)) {
                     Icon(Icons.Default.PlayArrow, "Play", Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("Play All")
                 }
-                OutlinedButton(onClick = { }, Modifier.weight(1f), shape = RoundedCornerShape(24.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        if (liked.isNotEmpty()) {
+                            val shuffled = liked.shuffled()
+                            onTrackClick(shuffled.first().id, shuffled)
+                        }
+                    },
+                    Modifier.weight(1f),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
                     Icon(Icons.Default.Shuffle, "Shuffle", Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("Shuffle")
                 }
             }

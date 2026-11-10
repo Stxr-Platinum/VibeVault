@@ -85,13 +85,21 @@ object SearchCache {
     private var memorySuggestions: CachedSuggestionsPayload? = null
     private val memoryQueryResults = ConcurrentHashMap<String, SpotifySearchResult>()
     private val memoryOnlineSummaries = ConcurrentHashMap<String, SearchSummaryPage>()
+    private val memoryOnlineTabs = ConcurrentHashMap<String, com.vibevault.app.ui.viewmodel.ItemsPage>()
     private val memorySuggestionStates = ConcurrentHashMap<String, SearchSuggestionViewState>()
     private val memoryQuerySuggestions = ConcurrentHashMap<String, List<String>>()
 
     private fun getCacheDir(context: Context): File {
-        val dir = File(context.cacheDir, CACHE_DIR_NAME)
+        val dir = File(context.filesDir, CACHE_DIR_NAME)
         if (!dir.exists()) dir.mkdirs()
         return dir
+    }
+
+    private fun resolveReadableFile(context: Context, name: String): File {
+        val durable = File(getCacheDir(context), name)
+        if (durable.exists()) return durable
+        val legacy = File(File(context.cacheDir, CACHE_DIR_NAME), name)
+        return if (legacy.exists()) legacy else durable
     }
 
     // ── Suggestions Cache ─────────────────────────────────────────────
@@ -115,7 +123,7 @@ object SearchCache {
             return it 
         }
         return try {
-            val file = File(getCacheDir(context), SUGGESTIONS_FILE)
+            val file = resolveReadableFile(context, SUGGESTIONS_FILE)
             if (!file.exists()) return null
             val json = file.readText()
             val type = object : TypeToken<CachedSuggestionsPayload>() {}.type
@@ -199,7 +207,7 @@ object SearchCache {
         memoryQuerySuggestions[key]?.let { return it }
 
         return try {
-            val file = File(getCacheDir(context), "sug_${key.hashCode()}.json")
+            val file = resolveReadableFile(context, "sug_${key.hashCode()}.json")
             if (!file.exists()) return null
             val json = file.readText()
             val type = object : TypeToken<List<String>>() {}.type
@@ -231,7 +239,7 @@ object SearchCache {
         memoryQueryResults[key]?.let { return it }
 
         return try {
-            val file = File(getCacheDir(context), "query_${key.hashCode()}.json")
+            val file = resolveReadableFile(context, "query_${key.hashCode()}.json")
             if (!file.exists()) return null
             val json = file.readText()
             val type = object : TypeToken<SpotifySearchResult>() {}.type
@@ -269,6 +277,14 @@ object SearchCache {
 
     fun saveOnlineSummary(query: String, page: SearchSummaryPage) {
         memoryOnlineSummaries[query.trim().lowercase()] = page
+    }
+
+    fun getOnlineTab(query: String, filterKey: String): com.vibevault.app.ui.viewmodel.ItemsPage? {
+        return memoryOnlineTabs["${query.trim().lowercase()}::$filterKey"]
+    }
+
+    fun saveOnlineTab(query: String, filterKey: String, page: com.vibevault.app.ui.viewmodel.ItemsPage) {
+        memoryOnlineTabs["${query.trim().lowercase()}::$filterKey"] = page
     }
 
     // ── Suggestion ViewState Cache ───────────────────────────────────

@@ -79,17 +79,25 @@ class SuggestionsViewModel @Inject constructor(
 
     private fun applyCachedPayload(cached: com.vibevault.app.ui.screens.search.CachedSuggestionsPayload) {
         if (cached.tracks.isNotEmpty()) {
-            _suggestionTracks.value = cached.tracks
-            _suggestionArtists.value = cached.artists.ifEmpty { AppleMusicScraper.getTrendingArtists(cached.tracks) }
+            if (_suggestionTracks.value != cached.tracks) {
+                _suggestionTracks.value = cached.tracks
+            }
+            val artists = cached.artists.ifEmpty { AppleMusicScraper.getTrendingArtists(cached.tracks) }
+            if (_suggestionArtists.value != artists) {
+                _suggestionArtists.value = artists
+            }
         }
-        if (cached.albums.isNotEmpty()) {
+        if (cached.albums.isNotEmpty() && _suggestionAlbums.value != cached.albums) {
             _suggestionAlbums.value = cached.albums
         }
-        if (cached.videos.isNotEmpty()) {
+        if (cached.videos.isNotEmpty() && _suggestionVideos.value != cached.videos) {
             _suggestionVideos.value = cached.videos
         }
         if (cached.newReleases.isNotEmpty()) {
-            _youtubeNewReleases.value = cached.newReleases.map { it.toAlbumItem() }
+            val mapped = cached.newReleases.map { it.toAlbumItem() }
+            if (_youtubeNewReleases.value != mapped) {
+                _youtubeNewReleases.value = mapped
+            }
         }
         if (cached.region.isNotBlank()) {
             currentLoadedRegion = cached.region

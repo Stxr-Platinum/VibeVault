@@ -156,6 +156,15 @@ class RealtimeListener @Inject constructor(
                      .retryWhen { cause, _ -> if (cause is CancellationException) throw cause; delay(5000); true }
                      .launchIn(this)
 
+                    // 5. Listen to User Replay Stats (cross-device real-time sync)
+                    channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                        table = "user_replay_stats"
+                        filter("user_id", FilterOperator.EQ, userId)
+                    }.onEach { handleReplayStatChange(it) }
+                     .catch { Log.e(TAG, "Replay stats sync error", it) }
+                     .retryWhen { cause, _ -> if (cause is CancellationException) throw cause; delay(5000); true }
+                     .launchIn(this)
+
                     // Check cancellation before initiating network connection
                     ensureActive()
 
@@ -351,6 +360,20 @@ class RealtimeListener @Inject constructor(
             is PostgresAction.Delete -> {
                 val tId = action.oldRecord["track_id"]?.toString()?.trim('"')
                 if (tId != null) likedSongDao.deleteLikedSong(tId)
+            }
+            else -> {}
+        }
+    }
+
+    private suspend fun handleReplayStatChange(action: PostgresAction) {
+        when (action) {
+            is PostgresAction.Insert -> {
+                val dto = json.decodeFromJsonElement<UserReplayStatDto>(action.record)
+                com.vibevault.app.data.stats.ListeningStats.mergeRemoteRows(listOf(dto))
+            }
+            is PostgresAction.Update -> {
+                val dto = json.decodeFromJsonElement<UserReplayStatDto>(action.record)
+                com.vibevault.app.data.stats.ListeningStats.mergeRemoteRows(listOf(dto))
             }
             else -> {}
         }

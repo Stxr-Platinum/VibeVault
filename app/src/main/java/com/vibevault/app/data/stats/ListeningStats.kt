@@ -2,10 +2,15 @@ package com.vibevault.app.data.stats
 
 import android.content.Context
 import android.util.Log
+import com.vibevault.app.data.remote.dto.UserReplayStatDto
 import com.vibevault.app.domain.model.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,6 +20,7 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
@@ -34,12 +40,22 @@ object ListeningStats {
     private var open: OpenBucket? = null
     private val lock = Any()
     private var dirty = false
+    private val dirtyTrackKeys = LinkedHashSet<String>()
 
     private val writer = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val writeLock = Mutex()
 
     @Volatile
+    private var lastWriteJob: Job? = null
+
+    @Volatile
     private var version = 0L
+
+    private val _revision = MutableStateFlow(0L)
+    val revision: StateFlow<Long> = _revision.asStateFlow()
+
+    @Volatile
+    private var syncListener: ((month: String, entry: TrackEntry) -> Unit)? = null
 
     private var cached: Cached? = null
 
@@ -52,16 +68,32 @@ object ListeningStats {
     )
 
     fun init(context: Context) {
-        directory = File(context.filesDir, DIRECTORY)
+        val targetDir = File(context.filesDir, DIRECTORY)
+        if (ready && directory.absolutePath == targetDir.absolutePath) return
         ArtistFacts.init(context)
+        initForDirectory(targetDir)
+    }
+
+    internal fun initForDirectory(targetDir: File) {
+        synchronized(lock) {
+            directory = targetDir
+            open = null
+            cached = null
+            dirty = false
+            dirtyTrackKeys.clear()
+        }
         writer.launch { synchronized(lock) { bucketFor(YearMonth.now()) } }
+    }
+
+    fun setSyncListener(listener: ((month: String, entry: TrackEntry) -> Unit)?) {
+        syncListener = listener
     }
 
     private val ready: Boolean get() = this::directory.isInitialized
 
     fun record(track: Track, playedMs: Long, countsAsPlay: Boolean) {
         if (!ready) return
-        if (playedMs <= 0 && !countsAsPlay) return
+        if (playedMs < MIN_QUALIFIED_MS) return
         if (track.title.isBlank() && track.id.isBlank()) return
         val now = System.currentTimeMillis()
         val at = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
@@ -75,13 +107,15 @@ object ListeningStats {
                     artist = track.artist,
                     album = track.album,
                     art = track.albumImageUrl,
+                    durationMs = track.durationMs,
                 )
             }
             entry.ms += playedMs
             entry.last = now
             if (entry.id.isBlank() && track.id.isNotBlank()) entry.id = track.id
-            if (entry.album == null && track.album.isNotBlank()) entry.album = track.album
-            if (entry.art == null && track.albumImageUrl.isNotBlank()) entry.art = track.albumImageUrl
+            if (entry.album.isNullOrBlank() && track.album.isNotBlank()) entry.album = track.album
+            if (entry.art.isNullOrBlank() && track.albumImageUrl.isNotBlank()) entry.art = track.albumImageUrl
+            if (entry.durationMs <= 0L && track.durationMs > 0L) entry.durationMs = track.durationMs
             if (countsAsPlay) entry.plays++
 
             primaryArtist(track.artist)?.let { name ->
@@ -105,24 +139,40 @@ object ListeningStats {
             val day = at.dayOfMonth
             bucket.days[day] = (bucket.days[day] ?: 0L) + playedMs
             dirty = true
+            dirtyTrackKeys.add(key)
         }
     }
 
     fun flush() {
-        pending()?.let { (key, snapshot) -> writer.launch { write(key, snapshot) } }
+        pending()?.let { (key, snapshot, changedEntries) ->
+            lastWriteJob = writer.launch {
+                write(key, snapshot)
+                val listener = syncListener ?: return@launch
+                changedEntries.forEach { entry -> listener(key, entry) }
+            }
+        }
     }
 
-    private suspend fun flushAndAwait() {
-        pending()?.let { (key, snapshot) -> writer.launch { write(key, snapshot) }.join() }
+    internal suspend fun flushAndAwait() {
+        val job = pending()?.let { (key, snapshot, changedEntries) ->
+            writer.launch {
+                write(key, snapshot)
+                val listener = syncListener ?: return@launch
+                changedEntries.forEach { entry -> listener(key, entry) }
+            }.also { lastWriteJob = it }
+        }
+        (job ?: lastWriteJob)?.join()
     }
 
-    private fun pending(): Pair<String, StoredBucket>? {
+    private fun pending(): Triple<String, StoredBucket, List<TrackEntry>>? {
         if (!ready) return null
         return synchronized(lock) {
             if (!dirty) return null
             val bucket = open ?: return null
             dirty = false
-            bucket.key to bucket.snapshot()
+            val changed = dirtyTrackKeys.mapNotNull { bucket.tracks[it]?.copy() }
+            dirtyTrackKeys.clear()
+            Triple(bucket.key, bucket.snapshot(), changed)
         }
     }
 
@@ -136,6 +186,7 @@ object ListeningStats {
                 if (file.delete() && temporary.renameTo(file)) Unit else temporary.delete()
             }
             version++
+            _revision.value++
         }.onFailure { Log.w(TAG, "Could not write listening bucket $key", it) }
     }
 
@@ -184,6 +235,290 @@ object ListeningStats {
         return runCatching { json.decodeFromString(StoredBucket.serializer(), file.readText()) }
             .onFailure { Log.w(TAG, "Discarding unreadable listening bucket $key", it) }
             .getOrNull()
+    }
+
+    /**
+     * Merges relational rows fetched from Supabase (`user_replay_stats`) into the
+     * local monthly `YYYY-MM.json` files without blocking playback.
+     */
+    suspend fun mergeRemoteRows(rows: List<UserReplayStatDto>) = withContext(Dispatchers.IO) {
+        if (!ready || rows.isEmpty()) return@withContext
+        val byMonth = rows.filter { it.month.isNotBlank() && it.playedMs >= MIN_QUALIFIED_MS && it.playCount > 0 }
+            .groupBy { it.month }
+        if (byMonth.isEmpty()) return@withContext
+
+        var anyChanged = false
+        val toWrite = mutableListOf<Pair<String, StoredBucket>>()
+        synchronized(lock) {
+            for ((monthKey, monthRows) in byMonth) {
+                val parsedMonth = runCatching { YearMonth.parse(monthKey) }.getOrNull() ?: continue
+                val bucket = if (open?.key == monthKey) {
+                    open!!
+                } else {
+                    OpenBucket.of(monthKey, read(monthKey) ?: StoredBucket(month = monthKey))
+                }
+                var monthChanged = false
+                for (row in monthRows) {
+                    val key = songKey(row.songTitle, row.artist).ifBlank { row.songId }
+                    val remoteLastMs = row.lastPlayedAt?.let {
+                        runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()
+                    } ?: System.currentTimeMillis()
+                    val existing = bucket.tracks[key]
+                    if (existing == null) {
+                        bucket.tracks[key] = TrackEntry(
+                            id = row.songId,
+                            title = row.songTitle,
+                            artist = row.artist,
+                            album = row.album,
+                            art = row.coverUrl,
+                            ms = row.playedMs,
+                            plays = row.playCount,
+                            last = remoteLastMs,
+                            durationMs = row.durationMs,
+                        )
+                        val deltaMs = row.playedMs
+                        primaryArtist(row.artist)?.let { name ->
+                            ArtistFacts.noticed(name)
+                            val artist = bucket.artists.getOrPut(name.lowercase(Locale.ROOT)) {
+                                NameEntry(name = name, art = row.coverUrl)
+                            }
+                            artist.ms += deltaMs
+                            artist.plays += row.playCount
+                        }
+                        row.album?.trim()?.takeIf { it.isNotEmpty() && it != "Unknown" }?.let { albumName ->
+                            val album = bucket.albums.getOrPut(albumKey(albumName, row.artist)) {
+                                NameEntry(name = albumName, sub = row.artist, art = row.coverUrl)
+                            }
+                            album.ms += deltaMs
+                            album.plays += row.playCount
+                        }
+                        val zoned = Instant.ofEpochMilli(remoteLastMs).atZone(ZoneId.systemDefault())
+                        if (YearMonth.from(zoned) == parsedMonth) {
+                            bucket.hours[zoned.hour] += deltaMs
+                            bucket.days[zoned.dayOfMonth] = (bucket.days[zoned.dayOfMonth] ?: 0L) + deltaMs
+                        } else {
+                            bucket.hours[12] += deltaMs
+                            bucket.days[1] = (bucket.days[1] ?: 0L) + deltaMs
+                        }
+                        monthChanged = true
+                    } else {
+                        val msDelta = (row.playedMs - existing.ms).coerceAtLeast(0L)
+                        val playsDelta = (row.playCount - existing.plays).coerceAtLeast(0)
+                        if (msDelta > 0L || playsDelta > 0) {
+                            existing.ms += msDelta
+                            existing.plays += playsDelta
+                            if (remoteLastMs > existing.last) existing.last = remoteLastMs
+                            if (existing.id.isBlank() && row.songId.isNotBlank()) existing.id = row.songId
+                            if (existing.album.isNullOrBlank() && !row.album.isNullOrBlank()) existing.album = row.album
+                            if (existing.art.isNullOrBlank() && !row.coverUrl.isNullOrBlank()) existing.art = row.coverUrl
+                            if (existing.durationMs <= 0L && row.durationMs > 0L) existing.durationMs = row.durationMs
+                            primaryArtist(row.artist)?.let { name ->
+                                val artist = bucket.artists.getOrPut(name.lowercase(Locale.ROOT)) {
+                                    NameEntry(name = name, art = row.coverUrl)
+                                }
+                                artist.ms += msDelta
+                                artist.plays += playsDelta
+                            }
+                            row.album?.trim()?.takeIf { it.isNotEmpty() && it != "Unknown" }?.let { albumName ->
+                                val album = bucket.albums.getOrPut(albumKey(albumName, row.artist)) {
+                                    NameEntry(name = albumName, sub = row.artist, art = row.coverUrl)
+                                }
+                                album.ms += msDelta
+                                album.plays += playsDelta
+                            }
+                            val zoned = Instant.ofEpochMilli(remoteLastMs).atZone(ZoneId.systemDefault())
+                            if (YearMonth.from(zoned) == parsedMonth) {
+                                bucket.hours[zoned.hour] += msDelta
+                                bucket.days[zoned.dayOfMonth] = (bucket.days[zoned.dayOfMonth] ?: 0L) + msDelta
+                            } else {
+                                bucket.hours[12] += msDelta
+                                bucket.days[1] = (bucket.days[1] ?: 0L) + msDelta
+                            }
+                            monthChanged = true
+                        }
+                    }
+                }
+                if (monthChanged) {
+                    toWrite.add(monthKey to bucket.snapshot())
+                    anyChanged = true
+                }
+            }
+            if (anyChanged) cached = null
+        }
+        for ((key, snapshot) in toWrite) {
+            write(key, snapshot)
+        }
+    }
+
+    /**
+     * Cold-boot stale-while-revalidate reconciliation: seamlessly replaces cached monthly buckets
+     * with authoritative remote rows from Supabase (`user_replay_stats`), preserving local
+     * hour/day distributions when a month's track totals already match.
+     */
+    suspend fun replaceWithRemoteRows(rows: List<UserReplayStatDto>) = withContext(Dispatchers.IO) {
+        if (!ready) return@withContext
+        if (rows.isEmpty()) {
+            clearAll()
+            return@withContext
+        }
+        val byMonth = rows.filter { it.month.isNotBlank() && it.playedMs >= MIN_QUALIFIED_MS && it.playCount > 0 }
+            .groupBy { it.month }
+        if (byMonth.isEmpty()) {
+            clearAll()
+            return@withContext
+        }
+
+        val toWrite = mutableListOf<Pair<String, StoredBucket>>()
+        val obsoleteMonths = mutableListOf<String>()
+        synchronized(lock) {
+            val existingMonths = months().map { it.toString() }.toSet()
+            for (m in existingMonths) {
+                if (m !in byMonth.keys) {
+                    obsoleteMonths.add(m)
+                }
+            }
+
+            for ((monthKey, monthRows) in byMonth) {
+                val parsedMonth = runCatching { YearMonth.parse(monthKey) }.getOrNull() ?: continue
+                val existingBucket = if (open?.key == monthKey) open?.snapshot() else read(monthKey)
+
+                val tracksMap = LinkedHashMap<String, TrackEntry>()
+                val artistsMap = LinkedHashMap<String, NameEntry>()
+                val albumsMap = LinkedHashMap<String, NameEntry>()
+                val hours = LongArray(24)
+                val days = HashMap<Int, Long>()
+
+                var remoteTotalMs = 0L
+                for (row in monthRows) {
+                    val key = songKey(row.songTitle, row.artist).ifBlank { row.songId }
+                    val remoteLastMs = row.lastPlayedAt?.let {
+                        runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()
+                    } ?: System.currentTimeMillis()
+                    remoteTotalMs += row.playedMs
+
+                    val entry = TrackEntry(
+                        id = row.songId,
+                        title = row.songTitle,
+                        artist = row.artist,
+                        album = row.album,
+                        art = row.coverUrl,
+                        ms = row.playedMs,
+                        plays = row.playCount,
+                        last = remoteLastMs,
+                        durationMs = row.durationMs,
+                    )
+                    val existingTrack = tracksMap[key]
+                    if (existingTrack == null) {
+                        tracksMap[key] = entry
+                    } else {
+                        existingTrack.absorb(entry)
+                    }
+
+                    primaryArtist(row.artist)?.let { name ->
+                        ArtistFacts.noticed(name)
+                        val aKey = name.lowercase(Locale.ROOT)
+                        val artist = artistsMap.getOrPut(aKey) {
+                            NameEntry(name = name, art = row.coverUrl)
+                        }
+                        artist.ms += row.playedMs
+                        artist.plays += row.playCount
+                    }
+
+                    row.album?.trim()?.takeIf { it.isNotEmpty() && it != "Unknown" }?.let { albumName ->
+                        val alKey = albumKey(albumName, row.artist)
+                        val album = albumsMap.getOrPut(alKey) {
+                            NameEntry(name = albumName, sub = row.artist, art = row.coverUrl)
+                        }
+                        album.ms += row.playedMs
+                        album.plays += row.playCount
+                    }
+
+                    val zoned = Instant.ofEpochMilli(remoteLastMs).atZone(ZoneId.systemDefault())
+                    if (YearMonth.from(zoned) == parsedMonth) {
+                        hours[zoned.hour] += row.playedMs
+                        days[zoned.dayOfMonth] = (days[zoned.dayOfMonth] ?: 0L) + row.playedMs
+                    } else {
+                        hours[12] += row.playedMs
+                        days[1] = (days[1] ?: 0L) + row.playedMs
+                    }
+                }
+
+                // Preserve existing fine-grained hour/day distribution when local tracks already match remote total
+                val finalHours = if (existingBucket != null && existingBucket.hours.sum() == remoteTotalMs) {
+                    existingBucket.hours
+                } else {
+                    hours.toList()
+                }
+                val finalDays = if (existingBucket != null && existingBucket.days.values.sum() == remoteTotalMs) {
+                    existingBucket.days
+                } else {
+                    days
+                }
+
+                val freshBucket = StoredBucket(
+                    month = monthKey,
+                    tracks = tracksMap.values.toList(),
+                    artists = artistsMap.values.toList(),
+                    albums = albumsMap.values.toList(),
+                    hours = finalHours,
+                    days = finalDays,
+                )
+                if (existingBucket != freshBucket) {
+                    toWrite.add(monthKey to freshBucket)
+                    if (open?.key == monthKey) {
+                        open = OpenBucket.of(monthKey, freshBucket)
+                    }
+                }
+            }
+
+            if (obsoleteMonths.isNotEmpty() && open?.key in obsoleteMonths) {
+                open = null
+            }
+            if (toWrite.isNotEmpty() || obsoleteMonths.isNotEmpty()) {
+                cached = null
+                dirty = false
+                dirtyTrackKeys.clear()
+            }
+        }
+
+        if (obsoleteMonths.isNotEmpty()) {
+            writeLock.withLock {
+                obsoleteMonths.forEach { month ->
+                    File(directory, "$month.json").delete()
+                }
+                if (toWrite.isEmpty()) {
+                    version++
+                    _revision.value++
+                }
+            }
+        }
+        for ((key, snapshot) in toWrite) {
+            write(key, snapshot)
+        }
+    }
+
+    /**
+     * Purges all local listening buckets and in-memory state (e.g. on logout or fresh account sync).
+     */
+    suspend fun clearAll() = withContext(Dispatchers.IO) {
+        if (!ready) return@withContext
+        synchronized(lock) {
+            open = null
+            cached = null
+            dirty = false
+            dirtyTrackKeys.clear()
+        }
+        writeLock.withLock {
+            runCatching {
+                directory.listFiles()?.forEach { file ->
+                    if (file.name.endsWith(".json") || file.name.endsWith(".json.tmp")) {
+                        file.delete()
+                    }
+                }
+            }.onFailure { Log.w(TAG, "Failed clearing listening directory", it) }
+            version++
+            _revision.value++
+        }
     }
 
     private fun prune() {
@@ -378,7 +713,7 @@ object ListeningStats {
             return ReplaySummary(
                 period = period,
                 label = period.label(today),
-                totalMs = hours.sum(),
+                totalMs = maxOf(hours.sum(), rankedSongs.sumOf { it.ms }),
                 totalPlays = rankedSongs.sumOf { it.plays },
                 songs = rankedSongs,
                 artists = rankedArtists,
@@ -439,6 +774,7 @@ object ListeningStats {
 
     private const val TAG = "ListeningStats"
     private const val DIRECTORY = "listening"
+    private const val MIN_QUALIFIED_MS = 60_000L
     private const val ARTISTS_TO_RESOLVE = 15
     private const val KEEP_MONTHS = 36
     private const val MAX_TRACKS = 600
@@ -457,6 +793,7 @@ data class TrackEntry(
     var ms: Long = 0L,
     var plays: Int = 0,
     var last: Long = 0L,
+    var durationMs: Long = 0L,
 ) {
     fun absorb(other: TrackEntry) {
         ms += other.ms
@@ -470,6 +807,7 @@ data class TrackEntry(
         if (albumId == null) albumId = other.albumId
         if (artistId == null) artistId = other.artistId
         if (art == null) art = other.art
+        if (durationMs <= 0L && other.durationMs > 0L) durationMs = other.durationMs
     }
 }
 

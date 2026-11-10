@@ -1,9 +1,19 @@
 package com.vibevault.app.ui.replay
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.os.Build
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -42,15 +53,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -61,10 +81,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.vibevault.app.R
 import com.vibevault.app.data.stats.ReplaySummary
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.floor
+import kotlin.math.sin
 
 /**
  * The Replay as a run of full-screen cards you tap through.
@@ -118,46 +145,51 @@ fun ReplayStories(
     val page = pages.getOrElse(current) { ReplayStoryPage.INTRO }
     val artwork = summary.storyArtwork(page)
     val palette = rememberArtworkColors(artwork).rotated(storyHue(page))
+    val topAlbumArtworks = remember(summary) {
+        summary.albums.take(STORY_ROWS)
+            .mapNotNull { it.artworkUrl?.trim()?.takeIf { url -> url.isNotEmpty() } }
+            .distinct()
+    }
+    val topAlbumPalettes = rememberMultiArtworkPalettes(topAlbumArtworks)
+
+    val view = LocalView.current
+    val activityWindow = remember(view) { view.context.findActivityWindow() }
+    DisposableEffect(activityWindow) {
+        val controller = activityWindow?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
 
     Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+        Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        StoryFrame {
-            Stage(
-                pages = pages,
-                pagerState = pagerState,
-                summary = summary,
-                current = current,
-                progress = progress,
-                onHold = { held = it },
-                onStep = ::step,
-                onClose = onClose,
-                onShare = onShare,
-                palette = palette,
-                artwork = artwork,
-                page = page,
-            )
-        }
+        Stage(
+            pages = pages,
+            pagerState = pagerState,
+            summary = summary,
+            current = current,
+            progress = progress,
+            onHold = { held = it },
+            onStep = ::step,
+            onClose = onClose,
+            onShare = onShare,
+            palette = palette,
+            topAlbumPalettes = topAlbumPalettes,
+            artwork = artwork,
+            page = page,
+        )
     }
 }
 
-@Composable
-private fun StoryFrame(content: @Composable () -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        val fitsByWidth = maxWidth / maxHeight < STORY_ASPECT
-        Box(
-            Modifier
-                .then(if (fitsByWidth) Modifier.fillMaxWidth() else Modifier.fillMaxHeight())
-                .aspectRatio(STORY_ASPECT),
-        ) {
-            content()
-        }
-    }
+private tailrec fun Context.findActivityWindow(): android.view.Window? = when (this) {
+    is Activity -> window
+    is ContextWrapper -> baseContext.findActivityWindow()
+    else -> null
 }
 
 @Composable
@@ -172,6 +204,7 @@ private fun Stage(
     onClose: () -> Unit,
     onShare: (ReplayStoryPage) -> Unit,
     palette: MeshPalette,
+    topAlbumPalettes: List<MeshPalette>,
     artwork: String?,
     page: ReplayStoryPage,
 ) {
@@ -191,7 +224,24 @@ private fun Stage(
                 )
             },
     ) {
-        MeshGradientBackground(palette = palette, trackKey = page.name, animated = false)
+        Crossfade(
+            targetState = current,
+            animationSpec = tween(550),
+            label = "storyBackground",
+        ) { pageIndex ->
+            when (pageIndex) {
+                3 -> LiveMeshStoryBackground(artworkUrl = artwork, palette = palette)
+                4 -> GlowingAnimationStoryBackground(
+                    palettes = topAlbumPalettes,
+                    fallbackPalette = palette,
+                )
+                else -> MeshGradientBackground(
+                    palette = palette,
+                    trackKey = pages.getOrNull(pageIndex)?.name ?: page.name,
+                    animated = false,
+                )
+            }
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -226,7 +276,12 @@ private fun StoryChrome(
     progress: Float,
     onClose: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp),
+    ) {
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.End) {
             Icon(
                 painter = painterResource(R.drawable.close),
@@ -322,7 +377,12 @@ private fun StoryPage(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            horizontalArrangement = Arrangement.End,
+        ) {
             Box(
                 Modifier
                     .size(44.dp)
@@ -591,11 +651,13 @@ private fun Cover(
     px: Int,
     modifier: Modifier = Modifier,
     elevated: Boolean = false,
+    bordered: Boolean = false,
 ) {
     val base = modifier
         .size(size)
-        .let { if (elevated) it.shadow(18.dp, shape, clip = false) else it }
+        .let { if (elevated) it.shadow(16.dp, shape, clip = false) else it }
         .clip(shape)
+        .let { if (bordered) it.border(1.dp, Color.White.copy(alpha = 0.16f), shape) else it }
     when {
         url != null -> AsyncImage(
             model = url.artworkAt(px),
@@ -608,58 +670,368 @@ private fun Cover(
     }
 }
 
+private data class CollageSlot(
+    val cx: Float,
+    val cy: Float,
+    val size: Dp,
+    val angle: Float = 0f,
+)
+
 @Composable
 private fun ArtworkCollage(summary: ReplaySummary, modifier: Modifier = Modifier) {
     val covers = remember(summary) {
-        summary.songs.mapNotNull { it.song.albumImageUrl.takeIf { url -> url.isNotBlank() } }.distinct().take(3)
+        (summary.albums.mapNotNull { it.artworkUrl?.trim()?.takeIf { url -> url.isNotEmpty() } } +
+            summary.songs.map { it.song.albumImageUrl.trim() }.filter { it.isNotEmpty() })
+            .distinct()
+            .take(7)
     }
     val faces = remember(summary) {
-        summary.artists.mapNotNull { it.artworkUrl }.distinct()
-            .filterNot { it in covers }
-            .take(3)
+        val allArtists = summary.artists
+            .mapNotNull { it.artworkUrl?.trim()?.takeIf { url -> url.isNotEmpty() } }
+            .distinct()
+        allArtists.filterNot { it in covers }.ifEmpty { allArtists }.take(6)
     }
     if (covers.isEmpty() && faces.isEmpty()) return
 
-    BoxWithConstraints(modifier.fillMaxWidth().height(300.dp)) {
+    val squareSlots = remember {
+        listOf(
+            CollageSlot(cx = 0.49f, cy = 0.48f, size = 124.dp, angle = -3f), // Hero album/track center
+            CollageSlot(cx = 0.18f, cy = 0.17f, size = 80.dp, angle = -8f),
+            CollageSlot(cx = 0.52f, cy = 0.14f, size = 64.dp, angle = 4f),
+            CollageSlot(cx = 0.83f, cy = 0.18f, size = 82.dp, angle = 7f),
+            CollageSlot(cx = 0.13f, cy = 0.52f, size = 66.dp, angle = 6f),
+            CollageSlot(cx = 0.21f, cy = 0.84f, size = 82.dp, angle = -5f),
+            CollageSlot(cx = 0.81f, cy = 0.81f, size = 86.dp, angle = 5f),
+        )
+    }
+    val circleSlots = remember {
+        listOf(
+            CollageSlot(cx = 0.33f, cy = 0.31f, size = 56.dp),
+            CollageSlot(cx = 0.69f, cy = 0.31f, size = 58.dp),
+            CollageSlot(cx = 0.87f, cy = 0.52f, size = 66.dp),
+            CollageSlot(cx = 0.35f, cy = 0.70f, size = 54.dp),
+            CollageSlot(cx = 0.54f, cy = 0.86f, size = 64.dp),
+            CollageSlot(cx = 0.68f, cy = 0.65f, size = 56.dp),
+        )
+    }
+
+    BoxWithConstraints(modifier.fillMaxWidth().height(340.dp)) {
         val w = maxWidth
         val h = maxHeight
-        val squares = listOf(
-            Triple(0.26f to 0.34f, 168.dp, -3f),
-            Triple(0.05f to 0.10f, 88.dp, -9f),
-            Triple(0.62f to 0.04f, 72.dp, 7f),
-        )
-        val circles = listOf(
-            Triple(0.02f to 0.62f, 62.dp, 0f),
-            Triple(0.70f to 0.34f, 76.dp, 0f),
-            Triple(0.44f to 0.78f, 66.dp, 0f),
-        )
-        covers.forEachIndexed { index, url ->
-            val (position, size, angle) = squares[index]
+
+        // Render surrounding album/track tiles first so the center hero tile stays unobstructed
+        for (index in 1 until covers.size.coerceAtMost(squareSlots.size)) {
+            val slot = squareSlots[index]
+            val shape = RoundedCornerShape(8.dp)
             Cover(
-                url = url,
+                url = covers[index],
                 fallbackText = "",
-                size = size,
-                shape = RoundedCornerShape(4.dp),
+                size = slot.size,
+                shape = shape,
                 px = CARD_ART_PX,
                 modifier = Modifier
-                    .offset(x = w * position.first, y = h * position.second)
-                    .rotate(angle),
+                    .offset(x = w * slot.cx - slot.size / 2, y = h * slot.cy - slot.size / 2)
+                    .rotate(slot.angle),
                 elevated = true,
+                bordered = true,
             )
         }
+
+        // Artist portrait circles nested into balanced pockets
         faces.forEachIndexed { index, url ->
-            val (position, size, _) = circles[index]
+            val slot = circleSlots[index]
             Cover(
                 url = url,
                 fallbackText = "",
-                size = size,
+                size = slot.size,
                 shape = CircleShape,
                 px = CARD_ART_PX,
-                modifier = Modifier.offset(x = w * position.first, y = h * position.second),
+                modifier = Modifier
+                    .offset(x = w * slot.cx - slot.size / 2, y = h * slot.cy - slot.size / 2),
                 elevated = true,
+                bordered = true,
+            )
+        }
+
+        // Focal hero artwork anchored on top
+        covers.firstOrNull()?.let { heroUrl ->
+            val hero = squareSlots[0]
+            Cover(
+                url = heroUrl,
+                fallbackText = "",
+                size = hero.size,
+                shape = RoundedCornerShape(10.dp),
+                px = CARD_ART_PX,
+                modifier = Modifier
+                    .offset(x = w * hero.cx - hero.size / 2, y = h * hero.cy - hero.size / 2)
+                    .rotate(hero.angle),
+                elevated = true,
+                bordered = true,
             )
         }
     }
+}
+
+@Composable
+private fun LiveMeshStoryBackground(artworkUrl: String?, palette: MeshPalette) {
+    val context = LocalContext.current
+    val infiniteTransition = rememberInfiniteTransition(label = "storyLiveMesh")
+    val anchorRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(80_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "storyAnchorRotation",
+    )
+    val fastRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(40_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "storyFastRotation",
+    )
+    val slowRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(60_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "storySlowRotation",
+    )
+
+    Box(Modifier.fillMaxSize()) {
+        // Animated mesh base (also acts as clean fallback on Android < 12 or missing artwork)
+        MeshGradientBackground(
+            palette = palette,
+            trackKey = artworkUrl ?: "live_mesh",
+            continuous = true,
+            blurRadius = 64.dp,
+            animated = true,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !artworkUrl.isNullOrBlank()) {
+            val saturationFilter = remember {
+                val matrix = ColorMatrix().apply { setToSaturation(1.8f) }
+                ColorFilter.colorMatrix(matrix)
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = 1.7f
+                        scaleY = 1.7f
+                    },
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(artworkUrl.artworkAt(HEADER_ART_PX))
+                        .size(128, 128)
+                        .allowHardware(false)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    colorFilter = saturationFilter,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(100.dp)
+                        .graphicsLayer { rotationZ = anchorRotation },
+                )
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(artworkUrl.artworkAt(HEADER_ART_PX))
+                        .size(128, 128)
+                        .allowHardware(false)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    colorFilter = saturationFilter,
+                    alignment = Alignment.TopStart,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(120.dp)
+                        .graphicsLayer {
+                            rotationZ = fastRotation
+                            alpha = 0.6f
+                        },
+                )
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(artworkUrl.artworkAt(HEADER_ART_PX))
+                        .size(128, 128)
+                        .allowHardware(false)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    colorFilter = saturationFilter,
+                    alignment = Alignment.BottomEnd,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(120.dp)
+                        .graphicsLayer {
+                            rotationZ = slowRotation
+                            alpha = 0.5f
+                        },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlowingAnimationStoryBackground(
+    palettes: List<MeshPalette>,
+    fallbackPalette: MeshPalette,
+) {
+    val defaultColors = listOf(
+        Color(0xFF3A1C71),
+        Color(0xFFD76D77),
+        Color(0xFF2B5876),
+        Color(0xFFFFAF7B),
+    )
+
+    fun expandSix(colors: List<Color>): List<Color> {
+        val base = colors.ifEmpty { defaultColors }
+        return List(6) { idx -> base[idx % base.size] }
+    }
+
+    val albumSwatches = remember(palettes, fallbackPalette) {
+        val source = palettes.ifEmpty { listOf(fallbackPalette) }
+        source.map { expandSix(it.colors) }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "storyGlowAnimation")
+    val progress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(20_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "storyGlowProgress",
+    )
+    // Smoothly cycles through Top 1 -> Top 5 albums across the 6s story window
+    val albumTransitionProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(PAGE_MILLIS.toInt(), easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "storyGlowAlbumTransition",
+    )
+
+    val activePalette: List<Color> = if (albumSwatches.size == 1) {
+        albumSwatches[0]
+    } else {
+        val count = albumSwatches.size
+        val scaled = albumTransitionProgress * count
+        val fromIdx = floor(scaled).toInt() % count
+        val toIdx = (fromIdx + 1) % count
+        val blend = scaled - floor(scaled)
+        val fromColors = albumSwatches[fromIdx]
+        val toColors = albumSwatches[toIdx]
+        List(6) { idx -> lerp(fromColors[idx], toColors[idx], blend) }
+    }
+
+    fun rotatedColorAt(index: Int): Color {
+        val count = activePalette.size
+        val idx = index.toFloat() + progress * count
+        val a = floor(idx).toInt() % count
+        val b = (a + 1) % count
+        val frac = idx - floor(idx)
+        return lerp(activePalette[a], activePalette[b], frac)
+    }
+
+    fun oscillate(min: Float, max: Float, phase: Float): Float {
+        val v = sin(2f * PI.toFloat() * (progress + phase))
+        return min + (max - min) * ((v + 1f) * 0.5f)
+    }
+
+    val color1 = rotatedColorAt(0)
+    val color2 = rotatedColorAt(1)
+    val color3 = rotatedColorAt(2)
+    val color4 = rotatedColorAt(3)
+    val color5 = rotatedColorAt(4)
+    val color6 = rotatedColorAt(5)
+
+    val o1x = oscillate(0.0f, 1.0f, 0.00f)
+    val o1y = oscillate(0.0f, 0.5f, 0.07f)
+    val r1 = oscillate(0.8f, 1.6f, 0.12f)
+
+    val o2x = oscillate(1.0f, 0.0f, 0.20f)
+    val o2y = oscillate(0.5f, 1.0f, 0.25f)
+    val r2 = oscillate(0.7f, 1.5f, 0.18f)
+
+    val o3x = oscillate(0.2f, 0.8f, 0.33f)
+    val o3y = oscillate(0.8f, 0.2f, 0.36f)
+    val r3 = oscillate(0.6f, 1.4f, 0.29f)
+
+    val o4x = oscillate(0.3f, 0.7f, 0.44f)
+    val o4y = oscillate(0.2f, 0.8f, 0.41f)
+    val r4 = oscillate(0.9f, 1.7f, 0.47f)
+
+    val o5x = oscillate(0.4f, 0.6f, 0.55f)
+    val o5y = oscillate(0.0f, 1.0f, 0.51f)
+    val r5 = oscillate(0.7f, 1.5f, 0.58f)
+
+    val o6x = oscillate(0.0f, 1.0f, 0.66f)
+    val o6y = oscillate(0.5f, 0.7f, 0.62f)
+    val r6 = oscillate(0.8f, 1.8f, 0.69f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawWithCache {
+                val width = size.width
+                val height = size.height
+                val baseColor = Color(0xFF050505)
+
+                val brush1 = Brush.radialGradient(
+                    colors = listOf(color1.copy(alpha = 0.85f), color1.copy(alpha = 0.5f), Color.Transparent),
+                    center = Offset(width * o1x, height * o1y),
+                    radius = width * r1,
+                )
+                val brush2 = Brush.radialGradient(
+                    colors = listOf(color2.copy(alpha = 0.80f), color2.copy(alpha = 0.45f), Color.Transparent),
+                    center = Offset(width * o2x, height * o2y),
+                    radius = width * r2,
+                )
+                val brush3 = Brush.radialGradient(
+                    colors = listOf(color3.copy(alpha = 0.75f), color3.copy(alpha = 0.40f), Color.Transparent),
+                    center = Offset(width * o3x, height * o3y),
+                    radius = width * r3,
+                )
+                val brush4 = Brush.radialGradient(
+                    colors = listOf(color4.copy(alpha = 0.70f), color4.copy(alpha = 0.35f), Color.Transparent),
+                    center = Offset(width * o4x, height * o4y),
+                    radius = width * r4,
+                )
+                val brush5 = Brush.radialGradient(
+                    colors = listOf(color5.copy(alpha = 0.65f), color5.copy(alpha = 0.30f), Color.Transparent),
+                    center = Offset(width * o5x, height * o5y),
+                    radius = width * r5,
+                )
+                val brush6 = Brush.radialGradient(
+                    colors = listOf(color6.copy(alpha = 0.60f), color6.copy(alpha = 0.25f), Color.Transparent),
+                    center = Offset(width * o6x, height * o6y),
+                    radius = width * r6,
+                )
+
+                onDrawBehind {
+                    drawRect(color = baseColor)
+                    drawRect(brush = brush1)
+                    drawRect(brush = brush2)
+                    drawRect(brush = brush3)
+                    drawRect(brush = brush4)
+                    drawRect(brush = brush5)
+                    drawRect(brush = brush6)
+                }
+            },
+    )
 }
 
 private fun MeshPalette.rotated(degrees: Float): MeshPalette {

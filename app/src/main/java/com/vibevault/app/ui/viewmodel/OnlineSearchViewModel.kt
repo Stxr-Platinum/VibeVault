@@ -42,29 +42,35 @@ class OnlineSearchViewModel @Inject constructor(
         viewModelScope.launch {
             filter.collect { currentFilter ->
                 val filterKey = currentFilter?.value ?: "all"
-                if (viewStateMap[filterKey] == null) {
-                    if (currentFilter == null) {
-                        // Check cache first for instant rendering
-                        SearchCache.getOnlineSummary(query)?.let { cachedSummary ->
-                            if (summaryPage == null) {
-                                summaryPage = cachedSummary
-                            }
-                        }
-                        YouTube.searchSummary(query).onSuccess { searchSummaryPage ->
+                if (currentFilter == null) {
+                    val cachedSummary = SearchCache.getOnlineSummary(query)
+                    if (cachedSummary != null && summaryPage == null) {
+                        summaryPage = cachedSummary
+                    }
+                    YouTube.searchSummary(query).onSuccess { searchSummaryPage ->
+                        if (summaryPage != searchSummaryPage) {
                             summaryPage = searchSummaryPage
-                            SearchCache.saveOnlineSummary(query, searchSummaryPage)
-                        }.onFailure {
-                            it.printStackTrace()
                         }
-                    } else {
-                        YouTube.search(query, currentFilter).onSuccess { searchResult ->
-                            viewStateMap[filterKey] = ItemsPage(
-                                items = searchResult.items.distinctBy { it.id },
-                                continuation = searchResult.continuation
-                            )
-                        }.onFailure {
-                            it.printStackTrace()
+                        SearchCache.saveOnlineSummary(query, searchSummaryPage)
+                    }.onFailure {
+                        it.printStackTrace()
+                    }
+                } else {
+                    val cachedTab = SearchCache.getOnlineTab(query, filterKey)
+                    if (cachedTab != null && viewStateMap[filterKey] == null) {
+                        viewStateMap[filterKey] = cachedTab
+                    }
+                    YouTube.search(query, currentFilter).onSuccess { searchResult ->
+                        val freshPage = ItemsPage(
+                            items = searchResult.items.distinctBy { it.id },
+                            continuation = searchResult.continuation
+                        )
+                        if (viewStateMap[filterKey] != freshPage) {
+                            viewStateMap[filterKey] = freshPage
                         }
+                        SearchCache.saveOnlineTab(query, filterKey, freshPage)
+                    }.onFailure {
+                        it.printStackTrace()
                     }
                 }
             }

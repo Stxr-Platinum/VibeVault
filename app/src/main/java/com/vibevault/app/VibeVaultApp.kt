@@ -32,8 +32,9 @@ class VibeVaultApp : Application(), Configuration.Provider, ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
 
-        // Pre-warm preferences cache asynchronously to prevent main-thread I/O blocking during UI rendering
+        // Pre-warm preferences cache and local listening stats cache for instant Replay loading
         com.vibevault.app.utils.ViviPrefCache.start(this)
+        com.vibevault.app.data.stats.ListeningStats.init(this)
 
         // Initialize appContext for cipher deobfuscators, N-transform solvers, and bot mitigators
         com.vibevault.app.utils.cipher.CipherDeobfuscator.initialize(this)

@@ -69,10 +69,15 @@ fun rememberReplayState(active: Boolean): Pair<ReplayState, (ReplayPeriod) -> Un
         summary = ListeningStats.summary(period)
         loading = false
 
-        ArtistFacts.revision.drop(1).collectLatest {
-            delay(SETTLE_MILLIS)
-            summary = ListeningStats.summary(period)
-        }
+        kotlinx.coroutines.flow.combine(
+            ArtistFacts.revision,
+            ListeningStats.revision,
+        ) { factsRev, statsRev -> factsRev to statsRev }
+            .drop(1)
+            .collectLatest {
+                delay(SETTLE_MILLIS)
+                summary = ListeningStats.summary(period)
+            }
     }
     return ReplayState(period, summary, loading, memberSince) to
         { next: ReplayPeriod -> period = next }
@@ -133,9 +138,9 @@ fun ReplaySummary.storyArtwork(page: ReplayStoryPage): String? {
             albums.map { it.artworkUrl }
         ).filterNotNull().filter { it.isNotBlank() }.distinct()
     val pinned = when (page) {
-        ReplayStoryPage.SONGS -> songs.firstOrNull()?.song?.albumImageUrl
-        ReplayStoryPage.ARTISTS -> artists.firstOrNull()?.artworkUrl
-        ReplayStoryPage.ALBUMS -> albums.firstOrNull()?.artworkUrl
+        ReplayStoryPage.SONGS -> songs.firstOrNull()?.song?.albumImageUrl?.takeIf { it.isNotBlank() }
+        ReplayStoryPage.ARTISTS -> artists.firstOrNull()?.artworkUrl?.takeIf { it.isNotBlank() }
+        ReplayStoryPage.ALBUMS -> albums.firstOrNull()?.artworkUrl?.takeIf { it.isNotBlank() }
         else -> null
     }
     if (pinned != null) return pinned
@@ -165,15 +170,21 @@ enum class ReplayStoryPage {
 // ── Formatting ──────────────────────────────────────────────────────────────
 
 fun formatListening(ms: Long): String {
-    val minutes = ms / 60_000
-    return when {
-        minutes < 60 -> "$minutes min"
-        minutes < 1_440 -> "${minutes / 60} hr ${minutes % 60} min"
-        else -> "${grouped(minutes)} min"
+    if (ms < 60_000L) return "0 min"
+    val minutes = ms / 60_000L
+    return if (minutes < 60L) {
+        "$minutes min"
+    } else {
+        val hours = minutes / 60L
+        val rem = minutes % 60L
+        if (rem == 0L) "${grouped(hours)} hr" else "${grouped(hours)} hr $rem min"
     }
 }
 
-fun formatMinutes(ms: Long): String = grouped(ms / 60_000)
+fun formatMinutes(ms: Long): String {
+    if (ms < 60_000L) return "0"
+    return grouped(ms / 60_000L)
+}
 
 fun grouped(value: Long): String = String.format(Locale.US, "%,d", value)
 
