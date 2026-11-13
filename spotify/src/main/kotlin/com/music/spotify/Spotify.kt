@@ -367,4 +367,205 @@ object Spotify {
             offset = offset,
         )
     }
+
+    data class HomeChip(
+        val id: String,
+        val label: String,
+        val subChips: List<HomeChip> = emptyList(),
+    )
+
+    sealed class HomeCard {
+        abstract val id: String
+        abstract val uri: String
+        abstract val name: String
+        abstract val imageUrl: String
+
+        data class Album(
+            override val id: String,
+            override val uri: String,
+            override val name: String,
+            override val imageUrl: String,
+            val subtitle: String,
+            val artists: String,
+        ) : HomeCard()
+
+        data class Artist(
+            override val id: String,
+            override val uri: String,
+            override val name: String,
+            override val imageUrl: String,
+        ) : HomeCard()
+
+        data class Playlist(
+            override val id: String,
+            override val uri: String,
+            override val name: String,
+            override val imageUrl: String,
+            val subtitle: String,
+        ) : HomeCard()
+
+        data class Show(
+            override val id: String,
+            override val uri: String,
+            override val name: String,
+            override val imageUrl: String,
+            val subtitle: String,
+            val isEpisode: Boolean,
+        ) : HomeCard()
+    }
+
+    data class HomeSection(
+        val uri: String,
+        val title: String,
+        val items: List<HomeCard>,
+    )
+
+    data class HomeFeed(
+        val greeting: String,
+        val chips: List<HomeChip>,
+        val sections: List<HomeSection>,
+    )
+
+    private fun isPromotionTypename(typename: String?): Boolean =
+        typename != null && Regex("Promotion|Sponsor|Advert|(^|[a-z])Ad([A-Z]|$)").containsMatchIn(typename)
+
+    private fun parseHomeChip(obj: JsonObject?): HomeChip? {
+        if (obj == null) return null
+        val id = obj.str("id")?.takeIf { it.isNotBlank() } ?: return null
+        val label = obj.obj("label")?.str("transformedLabel")?.takeIf { it.isNotBlank() } ?: return null
+        val subs = obj.arr("subChips")?.mapNotNull { parseHomeChip(it as? JsonObject) }.orEmpty()
+        return HomeChip(id = id, label = label, subChips = subs)
+    }
+
+    private fun extractImageUrl(d: JsonObject): String {
+        val sources = d.obj("coverArt")?.arr("sources")
+            ?: d.obj("visuals")?.obj("avatarImage")?.arr("sources")
+            ?: d.obj("images")?.arr("items")?.firstOrNull()?.let { (it as? JsonObject)?.arr("sources") }
+            ?: d.obj("avatar")?.arr("sources")
+            ?: d.obj("image")?.arr("sources")
+            ?: d.obj("albumOfTrack")?.obj("coverArt")?.arr("sources")
+            ?: return ""
+        return sources.mapNotNull { it as? JsonObject }
+            .maxByOrNull { (it.int("width") ?: 0) * (it.int("height") ?: 0) }
+            ?.str("url")
+            .orEmpty()
+    }
+
+    private fun parseHomeCard(wrapper: JsonObject?): HomeCard? {
+        if (wrapper == null) return null
+        val d = wrapper.obj("data") ?: wrapper
+        val type = d.str("__typename")
+        if (isPromotionTypename(wrapper.str("__typename")) || isPromotionTypename(type)) return null
+        val uri = d.str("uri") ?: wrapper.str("_uri") ?: wrapper.str("uri") ?: return null
+        val id = uri.substringAfterLast(':')
+        val name = d.str("name")
+            ?: d.obj("profile")?.str("name")
+            ?: d.str("displayName")
+            ?: d.obj("title")?.str("transformedLabel")
+            ?: d.str("title")
+            ?: return null
+        val imageUrl = extractImageUrl(d)
+
+        return when {
+            uri.startsWith("spotify:artist:") || type == "Artist" -> {
+                HomeCard.Artist(id = id, uri = uri, name = name, imageUrl = imageUrl)
+            }
+            uri.startsWith("spotify:album:") || type == "Album" -> {
+                val artists = d.obj("artists")?.arr("items")
+                    ?.mapNotNull { (it as? JsonObject)?.obj("profile")?.str("name") }
+                    ?.joinToString(", ")
+                    .orEmpty()
+                HomeCard.Album(
+                    id = id,
+                    uri = uri,
+                    name = name,
+                    imageUrl = imageUrl,
+                    subtitle = artists.ifBlank { "Album" },
+                    artists = artists,
+                )
+            }
+            uri.startsWith("spotify:episode:") || type == "Episode" || type == "Chapter" -> {
+                val podcastName = d.obj("podcastV2")?.obj("data")?.str("name").orEmpty()
+                HomeCard.Show(
+                    id = id,
+                    uri = uri,
+                    name = name,
+                    imageUrl = imageUrl,
+                    subtitle = podcastName.ifBlank { "Episode" },
+                    isEpisode = true,
+                )
+            }
+            uri.startsWith("spotify:show:") || uri.startsWith("spotify:audiobook:") || type == "Podcast" || type == "Audiobook" -> {
+                val publisher = d.obj("publisher")?.str("name")
+                    ?: d.arr("authorsV2")?.mapNotNull { (it as? JsonObject)?.str("name") }?.joinToString(", ")
+                    ?: ""
+                HomeCard.Show(
+                    id = id,
+                    uri = uri,
+                    name = name,
+                    imageUrl = imageUrl,
+                    subtitle = publisher.ifBlank { if (type == "Audiobook") "Audiobook" else "Podcast" },
+                    isEpisode = false,
+                )
+            }
+            else -> {
+                val owner = d.obj("ownerV2")?.obj("data")?.str("name") ?: d.str("description").orEmpty()
+                HomeCard.Playlist(
+                    id = id,
+                    uri = uri,
+                    name = name,
+                    imageUrl = imageUrl,
+                    subtitle = owner,
+                )
+            }
+        }
+    }
+
+    suspend fun home(
+        facet: String = "",
+        sectionItemsLimit: Int = 10,
+    ): Result<HomeFeed> = runCatching {
+        val vars = buildJsonObject {
+            put("timeZone", java.util.TimeZone.getDefault().id)
+            put("sp_t", "")
+            put("facet", facet)
+            put("sectionItemsLimit", sectionItemsLimit)
+            put("homeEndUserIntegration", "INTEGRATION_WEB_PLAYER")
+            put("includeEpisodeContentRatingsV2", true)
+            put("includeHomeChapterVideoCards", false)
+        }
+        val response = graphqlPost(operationName = "home", variables = vars)
+        val homeData = response.obj("data")?.obj("home")
+            ?: throw SpotifyException(500, "Invalid home response")
+
+        val greeting = homeData.obj("greeting")?.str("transformedLabel").orEmpty()
+        val chips = homeData.arr("homeChips")?.mapNotNull { parseHomeChip(it as? JsonObject) }.orEmpty()
+        val sections = homeData.obj("sectionContainer")?.obj("sections")?.arr("items")
+            ?.mapNotNull { sectionElem ->
+                val sec = sectionElem as? JsonObject ?: return@mapNotNull null
+                val secData = sec.obj("data")
+                if (isPromotionTypename(sec.str("__typename")) || isPromotionTypename(secData?.str("__typename"))) {
+                    return@mapNotNull null
+                }
+                val title = secData?.obj("title")?.str("transformedLabel")
+                    ?: secData?.obj("title")?.str("text")
+                    .orEmpty()
+                val items = sec.obj("sectionItems")?.arr("items")?.mapNotNull { itemElem ->
+                    val content = (itemElem as? JsonObject)?.obj("content")
+                    if (isPromotionTypename(content?.str("__typename")) || isPromotionTypename(content?.obj("data")?.str("__typename"))) {
+                        null
+                    } else {
+                        parseHomeCard(content)
+                    }
+                }.orEmpty()
+                if (items.isEmpty()) return@mapNotNull null
+                HomeSection(
+                    uri = sec.str("uri").orEmpty(),
+                    title = title,
+                    items = items,
+                )
+            }.orEmpty()
+
+        HomeFeed(greeting = greeting, chips = chips, sections = sections)
+    }
 }

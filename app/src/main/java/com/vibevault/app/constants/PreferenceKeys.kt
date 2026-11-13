@@ -16,6 +16,7 @@ import java.time.ZoneOffset
 import com.music.innertube.models.IpVersion
 
 val IsFirstRunKey = booleanPreferencesKey("isFirstRun")
+val HomeSessionOpenCountKey = intPreferencesKey("homeSessionOpenCount")
 val EnableDynamicIconKey = booleanPreferencesKey("enableDynamicIcon")
 val EnableHighRefreshRateKey = booleanPreferencesKey("enableHighRefreshRate")
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme_v2")
@@ -65,7 +66,18 @@ val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val SwipeToRemoveSongKey = booleanPreferencesKey("SwipeToRemoveSong")
 val UseNewPlayerDesignKey= booleanPreferencesKey("useNewPlayerDesign")
 val UseMinimalisticPlayerDesignKey = booleanPreferencesKey("useMinimalisticPlayerDesign")
-val NewHomeScreenDesignKey = booleanPreferencesKey("newHomeScreenDesign")
+val HomeLayoutModeKey = stringPreferencesKey("homeLayoutMode")
+val LiquidGlassKey = booleanPreferencesKey("liquidGlass")
+
+enum class HomeLayoutMode(val value: String) {
+    REFINED("refined"),
+    SPOTIFY("spotify");
+
+    companion object {
+        fun fromValue(value: String): HomeLayoutMode =
+            entries.find { it.value == value } ?: REFINED
+    }
+}
 val UseExpressiveAlbumDesignKey = booleanPreferencesKey("useExpressiveAlbumDesign")
 val ExpressiveSongAlbumImageKey = booleanPreferencesKey("expressiveSongAlbumImage")
 val UseNewMiniPlayerDesignKey = booleanPreferencesKey("useNewMiniPlayerDesign")

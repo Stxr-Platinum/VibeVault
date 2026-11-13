@@ -37,6 +37,14 @@ class SpotifyApiService @Inject constructor(
         }
     }
 
+    suspend fun getHomeFeed(facet: String = ""): Result<Spotify.HomeFeed> = withContext(Dispatchers.IO) {
+        runCatching {
+            spotifyCallWithTokenRetry {
+                Spotify.home(facet = facet, sectionItemsLimit = 10).getOrThrow()
+            }
+        }
+    }
+
     suspend fun searchTracks(query: String): Result<SpotifySearchResponse> = Result.failure(Exception("Stub"))
     suspend fun getRecommendations(seedId: String?): Result<List<SpotifyTrackDto>> = Result.success(emptyList())
     suspend fun getTrack(trackId: String): Result<SpotifyTrackDto> = Result.failure(Exception("Stub"))

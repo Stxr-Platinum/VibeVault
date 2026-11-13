@@ -73,6 +73,97 @@ class HomeViewModel @Inject constructor(
         .onEach { Log.d("SpotifyDebug", "HomeVM: Playlists flow emitted ${it.size} entities") }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    // Spotify & Featured Playlists (for Spotify Home / Playlist Viewer)
+    val spotifyPlaylists: StateFlow<List<Playlist>> = musicRepository.getUserSpotifyPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val featuredPlaylists: StateFlow<List<Playlist>> = musicRepository.getFeaturedPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val spotifyArtists: StateFlow<List<Artist>> = combine(
+        musicRepository.getTopArtists(),
+        _recentlyPlayed,
+        likedSongs
+    ) { top, recent, liked ->
+        if (top.isNotEmpty()) {
+            top
+        } else {
+            (recent + liked)
+                .filter { it.artist.isNotBlank() && it.artist != "Unknown Artist" && it.artist != "Unknown" }
+                .groupBy { it.artist.trim() }
+                .entries
+                .sortedByDescending { it.value.size }
+                .take(12)
+                .map { (name, tracks) ->
+                    Artist(
+                        id = name,
+                        name = name,
+                        imageUrl = tracks.firstOrNull { it.albumImageUrl.isNotBlank() }?.albumImageUrl.orEmpty()
+                    )
+                }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // Live Spotify `home` GraphQL feed + chip state (ported from myspoti HomeViewModel / HomeSubChips)
+    private val _spotifyHomeFeed = MutableStateFlow<com.music.spotify.Spotify.HomeFeed?>(null)
+    val spotifyHomeFeed: StateFlow<com.music.spotify.Spotify.HomeFeed?> = _spotifyHomeFeed.asStateFlow()
+
+    private val _spotifyHomeFacet = MutableStateFlow("")
+    val spotifyHomeFacet: StateFlow<String> = _spotifyHomeFacet.asStateFlow()
+
+    private val _spotifyHomeLoading = MutableStateFlow(false)
+    val spotifyHomeLoading: StateFlow<Boolean> = _spotifyHomeLoading.asStateFlow()
+
+    private val _spotifyHomeSubChips = MutableStateFlow<Map<String, List<Pair<String, String>>>>(emptyMap())
+    val spotifyHomeSubChips: StateFlow<Map<String, List<Pair<String, String>>>> = _spotifyHomeSubChips.asStateFlow()
+
+    private var spotifyHomeJob: kotlinx.coroutines.Job? = null
+    private var spotifyHomeFetchedAt: Long = 0L
+
+    fun selectSpotifyHomeFacet(facet: String) {
+        val current = _spotifyHomeFacet.value
+        val parentOfCurrent = parentOfSpotifyChip(current)
+        _spotifyHomeFacet.value = if (current != facet) facet
+        else parentOfCurrent?.takeIf { it != facet } ?: ""
+        fetchSpotifyHomeFeed(force = true)
+    }
+
+    fun parentOfSpotifyChip(facet: String): String? {
+        val map = _spotifyHomeSubChips.value
+        return if (facet in map) facet
+        else map.entries.firstOrNull { e -> e.value.any { it.first == facet } }?.key
+    }
+
+    fun refreshSpotifyHome(force: Boolean = false) {
+        val stale = System.currentTimeMillis() - spotifyHomeFetchedAt >= 30 * 60_000L
+        if (force || _spotifyHomeFeed.value == null || stale) {
+            fetchSpotifyHomeFeed(force = force)
+        }
+    }
+
+    private fun fetchSpotifyHomeFeed(force: Boolean) {
+        if (!sessionManager.isSpotifyConnected.value) return
+        spotifyHomeJob?.cancel()
+        val facet = _spotifyHomeFacet.value
+        spotifyHomeFetchedAt = System.currentTimeMillis()
+        spotifyHomeJob = viewModelScope.launch {
+            if (_spotifyHomeFeed.value == null || force) {
+                _spotifyHomeLoading.value = true
+            }
+            val result = spotifyApi.getHomeFeed(facet)
+            result.onSuccess { feed ->
+                _spotifyHomeFeed.value = feed
+                val learned = feed.chips
+                    .filter { it.subChips.isNotEmpty() }
+                    .associate { c -> c.id to c.subChips.map { it.id to it.label } }
+                if (learned.isNotEmpty()) {
+                    _spotifyHomeSubChips.value = _spotifyHomeSubChips.value + learned
+                }
+            }
+            _spotifyHomeLoading.value = false
+        }
+    }
+
     // Speed Dial Items
     private val _speedDialPicks = MutableStateFlow<List<QuickPickItem>>(emptyList())
     val speedDialPicks: StateFlow<List<QuickPickItem>> = _speedDialPicks.asStateFlow()

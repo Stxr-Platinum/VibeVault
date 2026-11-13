@@ -10,6 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,18 +21,25 @@ import androidx.compose.animation.slideOutVertically
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import com.vibevault.app.constants.NewHomeScreenDesignKey
+import com.vibevault.app.constants.HomeLayoutMode
+import com.vibevault.app.constants.HomeLayoutModeKey
+import com.vibevault.app.ui.immersive.motion.ImmersiveMotion
+import com.vibevault.app.ui.immersive.shell.backdrop.backdrops.LocalBackdropSourceAlpha
+import com.vibevault.app.ui.theme.rememberReduceMotion
 import com.vibevault.app.ui.replay.ReplayScreen
 import com.vibevault.app.ui.replay.ReplayShareSheet
 import com.vibevault.app.ui.replay.ReplayStories
 import com.vibevault.app.ui.replay.ReplayStoryPage
 import com.vibevault.app.ui.replay.rememberReplayState
 import com.vibevault.app.ui.screens.artist.ArtistScreen
-import com.vibevault.app.ui.screens.home.HomeScreen
+import com.vibevault.app.ui.screens.home.SpotifyHomeScreen
 import com.vibevault.app.ui.screens.home.ViviHomeScreen
 import com.vibevault.app.ui.screens.library.LibraryScreen
 import com.vibevault.app.ui.screens.liked.LikedSongsScreen
@@ -48,10 +58,15 @@ fun AppNavHost(
     startDestination: String,
     onReplayStoryOpenChange: (Boolean) -> Unit = {}
 ) {
+    val reduceState = rememberUpdatedState(rememberReduceMotion())
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        enterTransition = { ImmersiveMotion.Pages.enter(reduceState.value)(this) },
+        exitTransition = { ImmersiveMotion.Pages.exit(reduceState.value)(this) },
+        popEnterTransition = { ImmersiveMotion.Pages.popEnter(reduceState.value)(this) },
+        popExitTransition = { ImmersiveMotion.Pages.popExit(reduceState.value)(this) },
     ) {
         composable(Screen.Login.route) {
             LoginScreen(
@@ -63,7 +78,20 @@ fun AppNavHost(
             )
         }
         composable(Screen.Home.route) {
-            val (useViviDesign) = rememberPreference(NewHomeScreenDesignKey, true)
+            val (homeLayoutValue) = rememberPreference(HomeLayoutModeKey, HomeLayoutMode.REFINED.value)
+            val homeLayout = HomeLayoutMode.fromValue(homeLayoutValue)
+            val fade = transition.animateFloat(
+                transitionSpec = {
+                    val ms = if (targetState == EnterExitState.Visible) {
+                        ImmersiveMotion.PageFade.enterMs
+                    } else {
+                        ImmersiveMotion.PageFade.exitMs
+                    }
+                    tween(ms)
+                },
+                label = "homePageFade"
+            ) { if (it == EnterExitState.Visible) 1f else 0f }
+            val alphaProvider = remember(fade) { { fade.value } }
 
             val onTrackClick: (com.vibevault.app.domain.model.Track) -> Unit = { track ->
                 playerViewModel.playTrack(track.id, listOf(track))
@@ -90,24 +118,41 @@ fun AppNavHost(
                 navController.navigate(Screen.Settings.route)
             }
 
-            if (useViviDesign) {
-                ViviHomeScreen(
-                    onTrackClick = onTrackClick,
-                    onPlaylistClick = onPlaylistClick,
-                    onSwipeToQueue = onSwipeToQueue,
-                    onProfileClick = onProfileClick,
-                    onListenTogetherClick = onListenTogetherClick,
-                    onSettingsClick = onSettingsClick
-                )
-            } else {
-                HomeScreen(
-                    onTrackClick = onTrackClick,
-                    onPlaylistClick = onPlaylistClick,
-                    onSwipeToQueue = onSwipeToQueue,
-                    onProfileClick = onProfileClick,
-                    onListenTogetherClick = onListenTogetherClick,
-                    onSettingsClick = onSettingsClick
-                )
+            CompositionLocalProvider(LocalBackdropSourceAlpha provides alphaProvider) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { this.alpha = fade.value }
+                ) {
+                    Crossfade(targetState = homeLayout, label = "home_layout_switch") { layout ->
+                        when (layout) {
+                            HomeLayoutMode.REFINED -> {
+                                ViviHomeScreen(
+                                    onTrackClick = onTrackClick,
+                                    onPlaylistClick = onPlaylistClick,
+                                    onSwipeToQueue = onSwipeToQueue,
+                                    onProfileClick = onProfileClick,
+                                    onListenTogetherClick = onListenTogetherClick,
+                                    onSettingsClick = onSettingsClick
+                                )
+                            }
+                            HomeLayoutMode.SPOTIFY -> {
+                                SpotifyHomeScreen(
+                                    onTrackClick = onTrackClick,
+                                    onPlaylistClick = onPlaylistClick,
+                                    onArtistClick = { artistName ->
+                                        navController.navigate(Screen.Artist.createRoute(artistName))
+                                    },
+                                    onLikedSongsClick = {
+                                        navController.navigate("likedSongs")
+                                    },
+                                    onProfileClick = onProfileClick,
+                                    onSettingsClick = onSettingsClick
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
         composable(Screen.Profile.route) {

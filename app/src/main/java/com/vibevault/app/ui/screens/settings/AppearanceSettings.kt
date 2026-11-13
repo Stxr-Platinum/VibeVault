@@ -92,7 +92,9 @@ import com.vibevault.app.constants.LyricsAnimationStyle
 import com.vibevault.app.constants.LyricsAnimationStyleKey
 import com.vibevault.app.constants.LyricsStandardBlurKey
 import com.vibevault.app.constants.LyricsTextPositionKey
-import com.vibevault.app.constants.NewHomeScreenDesignKey
+import com.vibevault.app.constants.HomeLayoutMode
+import com.vibevault.app.constants.HomeLayoutModeKey
+import com.vibevault.app.constants.LiquidGlassKey
 import com.vibevault.app.constants.LyricsTextSizeKey
 import com.vibevault.app.constants.PlayerBackgroundStyle
 import com.vibevault.app.constants.PlayerBackgroundStyleKey
@@ -235,8 +237,13 @@ fun AppearanceSettings(
             onUseNewPlayerDesignChange(false)
         }
     }
-    val (newHomeScreenDesign, onNewHomeScreenDesignChange) = rememberPreference(
-        NewHomeScreenDesignKey,
+    val (homeLayoutModeValue, onHomeLayoutModeChange) = rememberPreference(
+        HomeLayoutModeKey,
+        defaultValue = HomeLayoutMode.REFINED.value
+    )
+    val isSpotifyHomeEnabled = HomeLayoutMode.fromValue(homeLayoutModeValue) == HomeLayoutMode.SPOTIFY
+    val (liquidGlassEnabled, onLiquidGlassChange) = rememberPreference(
+        LiquidGlassKey,
         defaultValue = true
     )
     val (useExpressiveAlbumDesign, onUseExpressiveAlbumDesignChange) = rememberPreference(
@@ -1363,15 +1370,19 @@ fun AppearanceSettings(
             items = listOfNotNull(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.home_outlined),
-                    title = { Text("New Home Screen Design") },
+                    title = { Text("Spotify home screen") },
                     trailingContent = {
                         Switch(
-                            checked = newHomeScreenDesign,
-                            onCheckedChange = onNewHomeScreenDesignChange,
+                            checked = isSpotifyHomeEnabled,
+                            onCheckedChange = { enabled ->
+                                onHomeLayoutModeChange(
+                                    if (enabled) HomeLayoutMode.SPOTIFY.value else HomeLayoutMode.REFINED.value
+                                )
+                            },
                             thumbContent = {
                                 Icon(
                                     painter = painterResource(
-                                        id = if (newHomeScreenDesign) R.drawable.check else R.drawable.close
+                                        id = if (isSpotifyHomeEnabled) R.drawable.check else R.drawable.close
                                     ),
                                     contentDescription = null,
                                     modifier = Modifier.size(SwitchDefaults.IconSize)
@@ -1379,7 +1390,35 @@ fun AppearanceSettings(
                             }
                         )
                     },
-                    onClick = { onNewHomeScreenDesignChange(!newHomeScreenDesign) },
+                    onClick = {
+                        onHomeLayoutModeChange(
+                            if (isSpotifyHomeEnabled) HomeLayoutMode.REFINED.value else HomeLayoutMode.SPOTIFY.value
+                        )
+                    },
+                    isExpressive = true
+                ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.palette),
+                    title = { Text("Liquid Glass") },
+                    enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !com.vibevault.app.ui.theme.rememberReduceMotion(),
+                    trailingContent = {
+                        val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !com.vibevault.app.ui.theme.rememberReduceMotion()
+                        Switch(
+                            checked = liquidGlassEnabled && supported,
+                            enabled = supported,
+                            onCheckedChange = onLiquidGlassChange,
+                            thumbContent = {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (liquidGlassEnabled && supported) R.drawable.check else R.drawable.close
+                                    ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SwitchDefaults.IconSize)
+                                )
+                            }
+                        )
+                    },
+                    onClick = { onLiquidGlassChange(!liquidGlassEnabled) },
                     isExpressive = true
                 ),
                 Material3SettingsItem(

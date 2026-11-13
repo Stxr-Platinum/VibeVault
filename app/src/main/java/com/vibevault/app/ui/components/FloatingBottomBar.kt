@@ -26,29 +26,48 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.vibevault.app.constants.DynamicBackgroundKey
 import com.vibevault.app.ui.haptics.Haptic
 import com.vibevault.app.ui.haptics.rememberHaptics
+import com.vibevault.app.ui.immersive.shell.FlatSelectionPill
+import com.vibevault.app.ui.immersive.shell.GlassPillMotion
+import com.vibevault.app.ui.immersive.shell.GlassSelectionPill
+import com.vibevault.app.ui.immersive.shell.LiftedSelectionPill
+import com.vibevault.app.ui.immersive.shell.LocalGlassExport
+import com.vibevault.app.ui.immersive.shell.LocalImmersiveBackdrop
+import com.vibevault.app.ui.immersive.shell.PILL_GROW_HEIGHT
+import com.vibevault.app.ui.immersive.shell.backdrop.backdrops.layerBackdrop
+import com.vibevault.app.ui.immersive.shell.backdrop.backdrops.rememberLayerBackdrop
+import com.vibevault.app.ui.immersive.shell.immersiveGlassSurface
+import com.vibevault.app.ui.immersive.shell.pillPlacement
+import com.vibevault.app.ui.immersive.shell.rememberLiquidGlassActive
+import com.vibevault.app.ui.theme.LocalReduceMotion
 import com.vibevault.app.utils.rememberPreference
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -84,10 +103,13 @@ fun FloatingBottomBar(
     val container = MaterialTheme.colorScheme.surface
     val (dynamicBackground) = rememberPreference(DynamicBackgroundKey, defaultValue = true)
     val glassSpec: AnimationSpec<Float> = GlassSpring
+    val liquidGlassActive = rememberLiquidGlassActive()
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val haptics = rememberHaptics()
     val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val isRtl = layoutDirection == LayoutDirection.Rtl
     val currentSelectedIndex by rememberUpdatedState(selectedIndex)
 
     var rowSize by remember { mutableStateOf(IntSize.Zero) }
@@ -100,6 +122,157 @@ fun FloatingBottomBar(
     val tabStepPx = if (rowSize.width > 0 && n > 0) {
         (rowSize.width + gapPx) / n
     } else 0f
+
+    if (liquidGlassActive) {
+        val coroutineScope = rememberCoroutineScope()
+        val reduceMotion = LocalReduceMotion.current ?: false
+        val page = LocalImmersiveBackdrop.current
+        val glassPill = page != null
+        val barGlass = rememberLayerBackdrop()
+        val tabRow = rememberLayerBackdrop()
+        val pill = remember { GlassPillMotion(coroutineScope, selectedIndex.coerceAtLeast(0)) }
+        pill.reduceMotion = reduceMotion
+        pill.stepDp = tabStepPx / density.density
+
+        val padPx = with(density) { PILL_INSET.toPx() }
+        val rowHeightPx = rowSize.height.toFloat()
+        val restSize = Size(tabWidthPx, rowHeightPx)
+        val liftedHeightPx = rowHeightPx + padPx * 2f + with(density) { PILL_GROW_HEIGHT.toPx() }
+        val liftedSize = if (rowHeightPx > 0f) {
+            Size(liftedHeightPx * tabWidthPx / rowHeightPx, liftedHeightPx)
+        } else {
+            restSize
+        }
+        val pillCenterInRow: (Float) -> Offset = { position ->
+            val x = position * tabStepPx + tabWidthPx / 2f
+            Offset(if (isRtl) rowSize.width - x else x, rowHeightPx / 2f)
+        }
+        val showPill = selectedIndex >= 0 && tabWidthPx > 0f
+        var lastHapticTab by remember { mutableIntStateOf(selectedIndex) }
+        var lastSelectedTabIndex by remember { mutableIntStateOf(selectedIndex) }
+        val pillFillColor = Color.White.copy(alpha = 0.12f)
+
+        LaunchedEffect(selectedIndex) {
+            if (selectedIndex >= 0) {
+                if (lastSelectedTabIndex < 0) {
+                    pill.snapTo(selectedIndex)
+                } else {
+                    pill.animateTo(selectedIndex)
+                }
+            }
+            lastSelectedTabIndex = selectedIndex
+            lastHapticTab = selectedIndex
+        }
+
+        Box(
+            modifier = modifier
+                .fillMaxWidth(),
+        ) {
+            CompositionLocalProvider(LocalGlassExport provides if (glassPill) barGlass else null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .immersiveGlassSurface(
+                            shape = pillShape,
+                            state = hazeState,
+                            liquid = true,
+                        )
+                        .padding(horizontal = PILL_INSET, vertical = PILL_INSET),
+                ) {
+                    if (showPill && (!glassPill || pill.isFlat)) {
+                        FlatSelectionPill(
+                            color = pillFillColor,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .pillPlacement(
+                                    center = { pillCenterInRow(pill.position) },
+                                    size = { pill.liveSize(restSize, liftedSize) },
+                                ),
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onSizeChanged { rowSize = it }
+                            .then(if (glassPill) Modifier.layerBackdrop(tabRow) else Modifier)
+                            .pointerInput(tabStepPx, isRtl, selectedIndex >= 0, n) {
+                                if (currentSelectedIndex < 0 || tabStepPx <= 0f) return@pointerInput
+                                val direction = if (isRtl) -1f else 1f
+                                var totalDrag = 0f
+                                var dragStartIndex = currentSelectedIndex
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        totalDrag = 0f
+                                        dragStartIndex = currentSelectedIndex
+                                        pill.startDrag()
+                                    },
+                                    onDragCancel = { pill.release(currentSelectedIndex) },
+                                    onDragEnd = {
+                                        val absoluteIndexFloat = (dragStartIndex + totalDrag / tabStepPx)
+                                            .coerceIn(0f, tabs.lastIndex.toFloat())
+                                        val newIndex = absoluteIndexFloat.roundToInt()
+                                        pill.release(newIndex)
+                                        if (newIndex != currentSelectedIndex) {
+                                            onTabSelected(newIndex)
+                                        }
+                                    },
+                                    onHorizontalDrag = { _, delta ->
+                                        totalDrag += delta * direction
+                                        val absoluteIndexFloat = (dragStartIndex + totalDrag / tabStepPx)
+                                            .coerceIn(0f, tabs.lastIndex.toFloat())
+                                        pill.dragTo(absoluteIndexFloat)
+                                        val approxTab = absoluteIndexFloat.roundToInt()
+                                        if (approxTab != lastHapticTab) {
+                                            haptics.play(Haptic.Tick)
+                                            lastHapticTab = approxTab
+                                        }
+                                    },
+                                )
+                            },
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        tabs.forEachIndexed { index, tab ->
+                            BottomBarItem(
+                                tab = tab,
+                                selected = index == selectedIndex,
+                                glassSpec = glassSpec,
+                                onClick = { onTabSelected(index) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (showPill && !pill.isFlat) {
+                val placement = Modifier
+                    .matchParentSize()
+                    .pillPlacement(
+                        center = { pillCenterInRow(pill.position) + Offset(padPx, padPx) },
+                        size = { pill.liveSize(restSize, liftedSize) },
+                    )
+                if (page != null) {
+                    GlassSelectionPill(
+                        motion = pill,
+                        fillColor = pillFillColor,
+                        page = page,
+                        barGlass = barGlass,
+                        tabRow = tabRow,
+                        modifier = placement,
+                    )
+                } else {
+                    LiftedSelectionPill(
+                        motion = pill,
+                        fillColor = pillFillColor,
+                        modifier = placement,
+                    )
+                }
+            }
+        }
+        return
+    }
 
     val pillTargetPx = if (tabStepPx > 0f) {
         selectedIndex * tabStepPx + dragOffset
@@ -123,21 +296,9 @@ fun FloatingBottomBar(
 
     Box(
         modifier = modifier
-            .navigationBarsPadding()
-            .padding(horizontal = PAGE_GUTTER)
-            .padding(bottom = 2.dp)
             .fillMaxWidth()
             .clip(pillShape)
-            .then(
-                if (!dynamicBackground) {
-                    Modifier.background(container.copy(alpha = 0.94f))
-                } else {
-                    Modifier.hazeEffect(
-                        state = hazeState,
-                        style = HazeMaterials.regular(container),
-                    )
-                },
-            )
+            .background(Color.Black.copy(alpha = 0.85f))
             .border(0.5.dp, Color.White.copy(alpha = 0.10f), pillShape)
             .padding(horizontal = PILL_INSET, vertical = PILL_INSET),
     ) {

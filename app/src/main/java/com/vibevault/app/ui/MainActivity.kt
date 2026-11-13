@@ -17,15 +17,36 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.util.lerp
+import com.vibevault.app.ui.immersive.Immersive
+import com.vibevault.app.ui.immersive.motion.ImmersiveMotion
+import com.vibevault.app.ui.immersive.shell.LocalImmersiveChrome
+import com.vibevault.app.ui.immersive.shell.immersiveGlassSurface
+import com.vibevault.app.ui.immersive.shell.rememberImmersiveChromeState
+import com.vibevault.app.ui.theme.rememberReduceMotion
+import kotlin.math.max
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
@@ -33,7 +54,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import com.vibevault.app.ui.immersive.shell.LocalImmersiveBackdrop
+import com.vibevault.app.ui.immersive.shell.LocalImmersiveFrostPage
+import com.vibevault.app.ui.immersive.shell.LocalImmersiveHaze
+import com.vibevault.app.ui.immersive.shell.immersiveHazeSource
+import com.vibevault.app.ui.immersive.shell.rememberImmersiveBackdrop
+import com.vibevault.app.ui.immersive.shell.rememberImmersiveHazeState
+import com.vibevault.app.ui.immersive.shell.rememberLiquidGlassActive
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -270,7 +302,15 @@ class MainActivity : ComponentActivity() {
                             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
                         }
                         
-                        val mainHazeState = remember { HazeState() }
+                        val mainHazeState = rememberImmersiveHazeState()
+                        val liquidGlassActive = rememberLiquidGlassActive()
+                        val pageBackdrop = rememberImmersiveBackdrop()
+                        val chromeState = rememberImmersiveChromeState()
+                        val reduceMotion = rememberReduceMotion()
+                        LaunchedEffect(currentRoute) { chromeState.expand() }
+                        val frostBackdrop = if (!liquidGlassActive && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            pageBackdrop
+                        } else null
                         var isReplayStoryOpen by remember { mutableStateOf(false) }
                         val tabs = remember {
                             listOf(
@@ -288,6 +328,12 @@ class MainActivity : ComponentActivity() {
                             else -> 0
                         }
 
+                        CompositionLocalProvider(
+                            LocalImmersiveHaze provides mainHazeState,
+                            LocalImmersiveBackdrop provides if (liquidGlassActive) pageBackdrop else null,
+                            LocalImmersiveFrostPage provides frostBackdrop,
+                            LocalImmersiveChrome provides chromeState,
+                        ) {
                         Scaffold(
                             modifier = Modifier.fillMaxSize(),
                             containerColor = Color.Transparent,
@@ -297,49 +343,159 @@ class MainActivity : ComponentActivity() {
                                     currentRoute != Screen.Login.route &&
                                     !isReplayStoryOpen
                                 ) {
+                                    val hasMiniPlayer = currentTrack != null
+                                    val isMinimized = chromeState.minimized && hasMiniPlayer
+                                    val chromeProgress = remember { Animatable(if (isMinimized) 1f else 0f) }
+                                    LaunchedEffect(isMinimized) {
+                                        chromeProgress.animateTo(
+                                            if (isMinimized) 1f else 0f,
+                                            ImmersiveMotion.chromeSpring(reduceMotion),
+                                        )
+                                    }
+                                    val showTabs by remember { derivedStateOf { chromeProgress.value < 0.999f } }
+                                    val showPill by remember { derivedStateOf { chromeProgress.value > 0.001f } }
+                                    val density = LocalDensity.current
+                                    val pillSizeDp = 64.dp
+                                    val pillPx = with(density) { pillSizeDp.roundToPx() }
+                                    val gapPx = with(density) { 8.dp.roundToPx() }
+                                    val insetPx = with(density) { 14.dp.roundToPx() }
+                                    val navBottomPx = with(density) {
+                                        androidx.compose.foundation.layout.WindowInsets.navigationBars
+                                            .getBottom(density)
+                                    }
+
                                     Box(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.navigationBars)
+                                            .padding(bottom = 2.dp),
                                         contentAlignment = Alignment.BottomCenter
                                     ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .widthIn(max = FLOATING_BAR_MAX_WIDTH)
-                                                .fillMaxWidth(),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            // MiniPlayer sits directly above the bottom nav
-                                            if (currentTrack != null) {
-                                                MiniPlayer(
-                                                    playerViewModel = playerViewModel,
-                                                    onExpand = { trackId ->
-                                                        navController.navigate(Screen.Player.createRoute(trackId))
+                                        Layout(
+                                            contents = listOf<@Composable () -> Unit>(
+                                                {
+                                                    if (showTabs) {
+                                                        FloatingBottomBar(
+                                                            tabs = tabs,
+                                                            selectedIndex = selectedTab,
+                                                            hazeState = mainHazeState,
+                                                            onTabSelected = { index ->
+                                                                val targetRoute = when (index) {
+                                                                    0 -> Screen.Home.route
+                                                                    1 -> Screen.Search.route
+                                                                    2 -> Screen.Explore.route
+                                                                    3 -> Screen.Library.route
+                                                                    else -> Screen.Home.route
+                                                                }
+                                                                if (currentRoute != targetRoute) {
+                                                                    navController.navigate(targetRoute) {
+                                                                        popUpTo(Screen.Home.route) { saveState = true }
+                                                                        launchSingleTop = true
+                                                                        restoreState = true
+                                                                    }
+                                                                }
+                                                            }
+                                                        )
                                                     }
-                                                )
-                                            }
-
-                                            // Floating Bottom Bar with exact BitChord liquid spring physics
-                                            FloatingBottomBar(
-                                                tabs = tabs,
-                                                selectedIndex = selectedTab,
-                                                hazeState = mainHazeState,
-                                                onTabSelected = { index ->
-                                                    val targetRoute = when (index) {
-                                                        0 -> Screen.Home.route
-                                                        1 -> Screen.Search.route
-                                                        2 -> Screen.Explore.route
-                                                        3 -> Screen.Library.route
-                                                        else -> Screen.Home.route
-                                                    }
-                                                    if (currentRoute != targetRoute) {
-                                                        navController.navigate(targetRoute) {
-                                                            popUpTo(Screen.Home.route) { saveState = true }
-                                                            launchSingleTop = true
-                                                            restoreState = true
+                                                },
+                                                {
+                                                    if (showPill) {
+                                                        val activeTab = tabs.getOrElse(selectedTab) { tabs.first() }
+                                                        val pillSource = remember { MutableInteractionSource() }
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(pillSizeDp)
+                                                                .immersiveGlassSurface(
+                                                                    shape = CircleShape,
+                                                                    state = mainHazeState,
+                                                                    interactionSource = pillSource,
+                                                                )
+                                                                .clickable(
+                                                                    interactionSource = pillSource,
+                                                                    indication = null,
+                                                                    role = Role.Button,
+                                                                    onClick = { chromeState.expand() },
+                                                                ),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = activeTab.icon,
+                                                                contentDescription = activeTab.label,
+                                                                tint = Immersive.Text,
+                                                                modifier = Modifier.size(24.dp),
+                                                            )
                                                         }
                                                     }
-                                                }
+                                                },
+                                                {
+                                                    if (hasMiniPlayer) {
+                                                        MiniPlayer(
+                                                            playerViewModel = playerViewModel,
+                                                            onExpand = { trackId ->
+                                                                navController.navigate(Screen.Player.createRoute(trackId))
+                                                            }
+                                                        )
+                                                    }
+                                                },
+                                            ),
+                                            modifier = Modifier
+                                                .widthIn(max = FLOATING_BAR_MAX_WIDTH)
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp),
+                                        ) { (tabSlot, pillSlot, miniSlot), constraints ->
+                                            val p = chromeProgress.value
+                                            val width = constraints.maxWidth
+                                            val tab = tabSlot.firstOrNull()?.measure(Constraints(maxWidth = width))
+                                            val pill = pillSlot.firstOrNull()?.measure(Constraints.fixed(pillPx, pillPx))
+                                            val inlineX = pillPx + gapPx
+                                            val miniWidth = lerp(width.toFloat(), (width - inlineX).toFloat(), p)
+                                                .roundToInt().coerceIn(0, width)
+                                            val mini = miniSlot.firstOrNull()?.measure(
+                                                Constraints(minWidth = miniWidth, maxWidth = miniWidth)
                                             )
+                                            val tabHeight = tab?.height ?: pillPx
+                                            val miniHeight = mini?.height ?: pillPx
+                                            val height = if (p < 0.001f) {
+                                                // Expanded at rest: stacked
+                                                if (hasMiniPlayer) tabHeight + gapPx + miniHeight else tabHeight
+                                            } else if (p > 0.999f) {
+                                                // Fully folded: side-by-side on the exact same baseline
+                                                max(pillPx, miniHeight)
+                                            } else {
+                                                // Transitioning
+                                                max(
+                                                    max(pillPx, miniHeight),
+                                                    if (hasMiniPlayer) tabHeight + gapPx + miniHeight else tabHeight
+                                                )
+                                            }
+                                            layout(width, height) {
+                                                if (tab != null && p == 0f) {
+                                                    tab.place(0, height - tab.height)
+                                                } else {
+                                                    tab?.placeWithLayer(0, height - tab.height) {
+                                                        val q = chromeProgress.value.coerceIn(0f, 1f)
+                                                        alpha = 1f - q
+                                                        transformOrigin = TransformOrigin(0f, 1f)
+                                                        scaleX = lerp(1f, pillPx / tab.width.coerceAtLeast(1).toFloat(), q)
+                                                        scaleY = lerp(1f, pillPx / tab.height.coerceAtLeast(1).toFloat(), q)
+                                                    }
+                                                }
+                                                // Minimized pill and mini player align at the exact same bottom Y baseline
+                                                pill?.placeWithLayer(0, height - pillPx) {
+                                                    val q = chromeProgress.value.coerceIn(0f, 1f)
+                                                    alpha = q
+                                                    transformOrigin = TransformOrigin(0f, 1f)
+                                                    scaleX = lerp(0.8f, 1f, q)
+                                                    scaleY = lerp(0.8f, 1f, q)
+                                                }
+                                                if (mini != null) {
+                                                    val expandedY = height - tabHeight - gapPx - mini.height
+                                                    val foldedY = height - mini.height
+                                                    val x = lerp(0f, inlineX.toFloat(), p).roundToInt()
+                                                    val y = lerp(expandedY.toFloat(), foldedY.toFloat(), p).roundToInt()
+                                                    mini.place(x, y)
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -348,7 +504,7 @@ class MainActivity : ComponentActivity() {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .hazeSource(mainHazeState)
+                                    .immersiveHazeSource()
                             ) {
                                 AppNavHost(
                                     navController = navController,
@@ -358,6 +514,7 @@ class MainActivity : ComponentActivity() {
                                     onReplayStoryOpenChange = { isReplayStoryOpen = it }
                                 )
                             }
+                        }
                         }
                     }
                 }

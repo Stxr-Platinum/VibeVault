@@ -32,6 +32,8 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.vibevault.app.ui.theme.*
+import com.vibevault.app.ui.immersive.shell.immersiveGlassSurface
+import com.vibevault.app.ui.immersive.shell.rememberLiquidGlassActive
 import com.vibevault.app.constants.DynamicBackgroundKey
 import com.vibevault.app.constants.SwipeSensitivityKey
 import com.vibevault.app.utils.rememberPreference
@@ -128,6 +130,7 @@ fun MiniPlayer(
     }
 
     val coroutineScope = rememberCoroutineScope()
+    val liquidGlassActive = rememberLiquidGlassActive()
     val offsetXAnimatable = remember { Animatable(0f) }
     val offsetYAnimatable = remember { Animatable(0f) }
     var dragStartTime by remember { mutableLongStateOf(0L) }
@@ -152,7 +155,6 @@ fun MiniPlayer(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
                     .pointerInput(Unit) {
                         detectHorizontalDragGestures(
                             onDragStart = {
@@ -246,20 +248,33 @@ fun MiniPlayer(
                     }
             ) {
                 // The main Pill
+                val pillShape = RoundedCornerShape(32.dp)
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(offsetXAnimatable.value.roundToInt(), offsetYAnimatable.value.roundToInt()) }
                         .fillMaxWidth()
                         .height(64.dp)
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(com.vibevault.app.ui.theme.LocalSolidColorScheme.current.surfaceContainer)
+                        .then(
+                            if (liquidGlassActive) {
+                                Modifier.immersiveGlassSurface(
+                                    shape = pillShape,
+                                    liquid = true,
+                                )
+                            } else {
+                                Modifier
+                                    .clip(pillShape)
+                                    .background(Color.Black.copy(alpha = 0.85f))
+                            }
+                        )
                         .clickable { onExpand(track.id) }
                 ) {
-                    MiniPlayerBackgroundLayer(
-                        style = miniPlayerBackground,
-                        track = track,
-                        gradientColors = gradientColors
-                    )
+                    if (!liquidGlassActive) {
+                        MiniPlayerBackgroundLayer(
+                            style = miniPlayerBackground,
+                            track = track,
+                            gradientColors = gradientColors
+                        )
+                    }
 
                     Row(
                         modifier = Modifier
